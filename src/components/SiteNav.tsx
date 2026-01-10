@@ -58,6 +58,20 @@ function pickDisplayName(args: {
   return email ?? "Member";
 }
 
+function getInitials(nameOrEmail: string) {
+  const s = (nameOrEmail ?? "").trim();
+  if (!s) return "ME";
+
+  // If it's an email, use first letter before @
+  if (s.includes("@")) return s[0]?.toUpperCase() ?? "ME";
+
+  const parts = s.split(/\s+/).filter(Boolean);
+  const a = parts[0]?.[0]?.toUpperCase() ?? "";
+  const b = parts[1]?.[0]?.toUpperCase() ?? "";
+  const out = (a + b).trim();
+  return out || (s[0]?.toUpperCase() ?? "ME");
+}
+
 function HamburgerIcon() {
   return (
     <svg
@@ -112,7 +126,7 @@ export default function SiteNav() {
   const [userMeta, setUserMeta] = useState<UserMeta | null>(null);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
 
-  const [menuOpen, setMenuOpen] = useState(false); // user pill menu
+  const [menuOpen, setMenuOpen] = useState(false); // user pill menu (desktop)
   const [mobileOpen, setMobileOpen] = useState(false); // full-screen nav
 
   const pillRef = useRef<HTMLDivElement | null>(null);
@@ -125,6 +139,7 @@ export default function SiteNav() {
     meta: userMeta,
     email: userEmail,
   });
+  const initials = getInitials(welcomeName);
   const isAdmin = (profile?.role ?? "") === "admin";
 
   // Lock body scroll when mobile overlay is open
@@ -230,21 +245,16 @@ export default function SiteNav() {
   }
 
   function goTo(href: string) {
-    // Close overlays first (prevents overlay sticking on route change)
     setMobileOpen(false);
     setMenuOpen(false);
 
-    // Hash links:
     if (href.startsWith("#")) {
-      // If we're not on homepage, navigate to homepage + hash
       if (pathname !== "/") {
         router.push(`/${href}`);
         return;
       }
 
-      // If we are on homepage, scroll to target
       const id = href.slice(1);
-      // Small defer so overlay unmount doesn't fight scroll
       window.setTimeout(() => {
         const el = document.getElementById(id);
         if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -253,7 +263,6 @@ export default function SiteNav() {
       return;
     }
 
-    // Normal links
     router.push(href);
   }
 
@@ -283,7 +292,7 @@ export default function SiteNav() {
             </Link>
           </div>
 
-          {/* Links centered + pill on the right + hamburger on the left (mobile/tablet) */}
+          {/* Links centered + right pill + hamburger (mobile/tablet) */}
           <div className="relative mt-5 flex items-center">
             {/* Mobile hamburger (shows below lg) */}
             <button
@@ -327,77 +336,112 @@ export default function SiteNav() {
               })}
             </nav>
 
-            {/* Right pill */}
+            {/* Right area */}
             <div
               className="absolute right-0 top-1/2 -translate-y-1/2"
               ref={pillRef}
             >
-              {!isLoggedIn ? (
-                <Link
-                  href="/login"
-                  aria-current={isLoginPage ? "page" : undefined}
-                  className={
-                    "inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[11px] font-semibold tracking-[0.28em] text-white/90 normal-case" +
-                    (isLoginPage ? " pointer-events-none opacity-60" : "")
-                  }
-                  onClick={() => setMobileOpen(false)}
-                >
-                  Login
-                </Link>
-              ) : (
-                <div className="relative inline-block text-left">
+              {/* ✅ Mobile/Tablet: circle initials button (below lg) */}
+              <div className="lg:hidden">
+                {!isLoggedIn ? (
                   <button
                     type="button"
+                    aria-label="Login"
+                    onClick={() => goTo("/login")}
+                    className={
+                      "inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/10 text-[12px] font-semibold tracking-[0.10em] text-white/90" +
+                      (isLoginPage ? " pointer-events-none opacity-60" : "")
+                    }
+                    title="Login"
+                  >
+                    {/* Keep it simple for guests */}
+                    IN
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    aria-label="Account menu"
                     onClick={() => setMenuOpen((v) => !v)}
-                    className="inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/10 px-5 py-2 text-[11px] font-semibold tracking-[0.12em] text-white/95"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/10 text-[12px] font-semibold tracking-[0.10em] text-white/95"
+                    title={welcomeName}
                     aria-haspopup="menu"
                     aria-expanded={menuOpen}
                   >
-                    <span className="whitespace-nowrap">
-                      Welcome {welcomeName}
-                    </span>
-                    <span className="text-white/70">▼</span>
+                    {initials}
                   </button>
+                )}
+              </div>
 
-                  {menuOpen ? (
-                    <div
-                      role="menu"
-                      className="absolute right-0 mt-3 w-56 overflow-hidden rounded-2xl border border-white/10 bg-[#0b0b0b] shadow-[0_18px_40px_rgba(0,0,0,0.45)]"
+              {/* Desktop: original pill (lg+) */}
+              <div className="hidden lg:block">
+                {!isLoggedIn ? (
+                  <Link
+                    href="/login"
+                    aria-current={isLoginPage ? "page" : undefined}
+                    className={
+                      "inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[11px] font-semibold tracking-[0.28em] text-white/90 normal-case" +
+                      (isLoginPage ? " pointer-events-none opacity-60" : "")
+                    }
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    Login
+                  </Link>
+                ) : (
+                  <div className="relative inline-block text-left">
+                    <button
+                      type="button"
+                      onClick={() => setMenuOpen((v) => !v)}
+                      className="inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/10 px-5 py-2 text-[11px] font-semibold tracking-[0.12em] text-white/95"
+                      aria-haspopup="menu"
+                      aria-expanded={menuOpen}
                     >
-                      <div className="py-2">
-                        <Link
-                          href="/dashboard"
-                          role="menuitem"
-                          onClick={() => setMenuOpen(false)}
-                          className="block px-4 py-3 text-sm text-white/90 hover:bg-white/5"
-                        >
-                          Profile
-                        </Link>
+                      <span className="whitespace-nowrap">
+                        Welcome {welcomeName}
+                      </span>
+                      <span className="text-white/70">▼</span>
+                    </button>
+                  </div>
+                )}
+              </div>
 
-                        {isAdmin ? (
-                          <Link
-                            href="/admin"
-                            role="menuitem"
-                            onClick={() => setMenuOpen(false)}
-                            className="block px-4 py-3 text-sm text-white/90 hover:bg-white/5"
-                          >
-                            Admin Dashboard
-                          </Link>
-                        ) : null}
+              {/* Shared dropdown menu (both desktop + mobile circle) */}
+              {isLoggedIn && menuOpen ? (
+                <div
+                  role="menu"
+                  className="absolute right-0 mt-3 w-56 overflow-hidden rounded-2xl border border-white/10 bg-[#0b0b0b] shadow-[0_18px_40px_rgba(0,0,0,0.45)]"
+                >
+                  <div className="py-2">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => goTo("/dashboard")}
+                      className="w-full text-left px-4 py-3 text-sm text-white/90 hover:bg-white/5"
+                    >
+                      Profile
+                    </button>
 
-                        <button
-                          type="button"
-                          onClick={logout}
-                          role="menuitem"
-                          className="w-full text-left px-4 py-3 text-sm text-white/90 hover:bg-white/5"
-                        >
-                          Logout
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
+                    {isAdmin ? (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => goTo("/admin")}
+                        className="w-full text-left px-4 py-3 text-sm text-white/90 hover:bg-white/5"
+                      >
+                        Admin Dashboard
+                      </button>
+                    ) : null}
+
+                    <button
+                      type="button"
+                      onClick={logout}
+                      role="menuitem"
+                      className="w-full text-left px-4 py-3 text-sm text-white/90 hover:bg-white/5"
+                    >
+                      Logout
+                    </button>
+                  </div>
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
         </div>
