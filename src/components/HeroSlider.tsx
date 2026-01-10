@@ -53,122 +53,102 @@ const FALLBACK_SLIDES: HeroSlideRow[] = [
     title: "Train like it matters.",
     body: "Cages, HitTrax, lessons, clinics, and camps — built for serious hitters.",
     cta_text: "Book Now",
-    cta_href: "#book",
+    cta_href: "#pricing",
     image_url: null,
     overlay_opacity: null,
   },
 ];
 
+type ScreenKind = "mobile" | "tablet" | "desktop";
+
+function getScreenKind() {
+  if (typeof window === "undefined") return "desktop" as ScreenKind;
+  const w = window.innerWidth;
+  if (w < 640) return "mobile";
+  if (w < 1024) return "tablet";
+  return "desktop";
+}
+
 /**
  * HeroSlider
  * - Pulls hero settings + slides from Supabase (hero_settings, hero_slides)
  * - Matches the “big rounded dark card centered on white page” style
- *
- * ✅ Fix: remove the quick “flash bar” on first load.
- *    We wait until the initial Supabase load finishes before rendering anything.
- *
- * ✅ Fix: React Hooks order error
- *    Do NOT return early before hooks like useMemo run.
- *    We compute hooks first, then conditionally return at the end.
+ * - Responsive for phone + tablet (no hover-only controls on touch)
  */
 export default function HeroSlider() {
   const [settings, setSettings] = useState<HeroSettingsRow>(DEFAULT_SETTINGS);
-
-  // Start empty so we DON'T render fallback first, then swap quickly.
-  const [slides, setSlides] = useState<HeroSlideRow[]>([]);
+  const [slides, setSlides] = useState<HeroSlideRow[]>(FALLBACK_SLIDES);
   const [idx, setIdx] = useState(0);
-  const [isMobile, setIsMobile] = useState(false);
+
+  // ✅ Fix layout shift: pick initial screen kind without needing an effect
+  const [screen, setScreen] = useState<ScreenKind>(() => getScreenKind());
 
   // Prevent setInterval drift/leaks
   const timerRef = useRef<number | null>(null);
 
-  // Gate render until mounted + initial load complete (prevents the “flash bar”).
-  const [mounted, setMounted] = useState(false);
-  const [initialLoaded, setInitialLoaded] = useState(false);
-
+  // 1) Track screen size (mobile/tablet/desktop)
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  // 1) Detect mobile for height choice
-  useEffect(() => {
-    if (!mounted) return;
-
     function onResize() {
-      setIsMobile(window.innerWidth < 768);
+      setScreen(getScreenKind());
     }
     onResize();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, [mounted]);
+  }, []);
 
   // 2) Load settings + slides from Supabase
   useEffect(() => {
-    if (!mounted) return;
-
     let cancelled = false;
 
     async function load() {
-      try {
-        // Settings (single row key='default')
-        const { data: s, error: sErr } = await supabase
-          .from("hero_settings")
-          .select("*")
-          .eq("key", "default")
-          .maybeSingle();
+      const { data: s, error: sErr } = await supabase
+        .from("hero_settings")
+        .select("*")
+        .eq("key", "default")
+        .maybeSingle();
 
-        // Slides (active only)
-        const { data: sl, error: slErr } = await supabase
-          .from("hero_slides")
-          .select("*")
-          .eq("is_active", true)
-          .order("sort_order", { ascending: true })
-          .order("created_at", { ascending: true });
+      const { data: sl, error: slErr } = await supabase
+        .from("hero_slides")
+        .select("*")
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true });
 
-        if (cancelled) return;
+      if (cancelled) return;
 
-        if (!sErr && s) {
-          setSettings((prev) => ({ ...prev, ...s } as HeroSettingsRow));
-        }
-
-        if (!slErr && Array.isArray(sl) && sl.length > 0) {
-          setSlides(sl as HeroSlideRow[]);
-          setIdx(0);
-        } else {
-          // If no slides exist yet, use fallback (but ONLY after initial load completes).
-          setSlides(FALLBACK_SLIDES);
-          setIdx(0);
-        }
-      } finally {
-        if (!cancelled) setInitialLoaded(true);
+      if (!sErr && s) setSettings((prev) => ({ ...prev, ...s } as HeroSettingsRow));
+      if (!slErr && Array.isArray(sl) && sl.length > 0) {
+        setSlides(sl as HeroSlideRow[]);
+        setIdx(0);
       }
     }
 
-    load();
-
+    void load();
     return () => {
       cancelled = true;
     };
-  }, [mounted]);
+  }, []);
 
-  const safeSlides = slides.length > 0 ? slides : FALLBACK_SLIDES;
-  const slide = safeSlides[idx] ?? safeSlides[0] ?? FALLBACK_SLIDES[0];
+  const slide = slides[idx] ?? slides[0] ?? FALLBACK_SLIDES[0];
 
   const effectiveOverlayOpacity =
-    typeof slide?.overlay_opacity === "number"
-      ? slide.overlay_opacity
-      : settings.overlay_opacity;
+    typeof slide?.overlay_opacity === "number" ? slide.overlay_opacity : settings.overlay_opacity;
 
-  const heightPx = isMobile ? settings.height_mobile : settings.height_desktop;
+  // ✅ Responsive height: mobile uses height_mobile, desktop uses height_desktop,
+  // tablet blends in-between so iPad looks correct.
+  const heightPx = useMemo(() => {
+    const d = settings.height_desktop;
+    const m = settings.height_mobile;
+
+    if (screen === "mobile") return m;
+    if (screen === "tablet") return Math.round(m + (d - m) * 0.55);
+    return d;
+  }, [screen, settings.height_desktop, settings.height_mobile]);
 
   const textAlignClass =
-    settings.text_align === "left"
-      ? "items-start text-left"
-      : "items-center text-center";
+    settings.text_align === "left" ? "items-start text-left" : "items-center text-center";
 
   const bgStyle = useMemo(() => {
-    // If you set image_url from Supabase, it will be used as the background.
-    // We still keep a subtle gradient even with an image (looks like your reference).
     const baseGradient =
       "linear-gradient(90deg, rgba(6,20,34,0.92) 0%, rgba(6,20,34,0.78) 55%, rgba(6,20,34,0.55) 100%)";
 
@@ -181,16 +161,15 @@ export default function HeroSlider() {
     }
 
     return {
-      backgroundImage:
-        "linear-gradient(135deg, #071b2e 0%, #051524 50%, #071b2e 100%)",
+      backgroundImage: "linear-gradient(135deg, #071b2e 0%, #051524 50%, #071b2e 100%)",
       backgroundSize: "cover",
       backgroundPosition: "center",
     } as React.CSSProperties;
   }, [slide?.image_url]);
 
   function clampIdx(next: number) {
-    if (safeSlides.length === 0) return 0;
-    const n = safeSlides.length;
+    if (slides.length === 0) return 0;
+    const n = slides.length;
     return (next + n) % n;
   }
 
@@ -204,14 +183,13 @@ export default function HeroSlider() {
 
   // 3) Auto-rotate (if enabled in settings)
   useEffect(() => {
-    // clear old
     if (timerRef.current) {
       window.clearInterval(timerRef.current);
       timerRef.current = null;
     }
 
     if (!settings.auto_rotate) return;
-    if (safeSlides.length <= 1) return;
+    if (slides.length <= 1) return;
 
     timerRef.current = window.setInterval(() => {
       setIdx((v) => clampIdx(v + 1));
@@ -223,21 +201,31 @@ export default function HeroSlider() {
         timerRef.current = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.auto_rotate, settings.interval_ms, safeSlides.length]);
+  }, [settings.auto_rotate, settings.interval_ms, slides.length]);
 
-  // ✅ IMPORTANT: only return here (after hooks) to avoid Rules of Hooks error.
-  if (!mounted || !initialLoaded) return null;
+  // Touch-friendly controls:
+  // - On desktop: arrows appear on hover (your original behavior)
+  // - On tablet/phone: arrows are visible (hover doesn't exist)
+  const arrowBase =
+    "absolute top-1/2 z-20 -translate-y-1/2 rounded-full border border-white/20 bg-white/10 text-white shadow-sm transition-none";
+  const arrowVisibility =
+    screen === "desktop" ? "opacity-0 group-hover:opacity-100" : "opacity-100";
+  const arrowSize = screen === "mobile" ? "h-10 w-10 text-sm" : "h-11 w-11 text-sm";
+
+  // Content sizing tweaks for smaller screens
+  const wrapPadding = screen === "mobile" ? "px-5" : "px-6 sm:px-12";
+  const headlineSize = screen === "mobile" ? "text-[10px]" : "text-[11px]";
+  const titleSize =
+    screen === "mobile" ? "text-3xl" : "text-3xl sm:text-4xl md:text-5xl";
+  const bodySize = screen === "mobile" ? "text-sm" : "text-sm sm:text-base";
 
   return (
     <section className="bg-white">
       <div className="mx-auto max-w-6xl px-4 pt-10 pb-8">
-        {/* Big centered rounded “hero card” */}
         <div
           className="group relative mx-auto w-full overflow-hidden rounded-[34px]"
           style={{ height: `${heightPx}px`, ...bgStyle }}
         >
-          {/* Dark overlay (matches the reference’s moody look) */}
           <div
             className="absolute inset-0"
             style={{
@@ -246,14 +234,11 @@ export default function HeroSlider() {
             }}
           />
 
-          {/* Content */}
-          <div className="relative z-10 flex h-full w-full flex-col justify-center px-6 sm:px-12">
-            <div
-              className={`mx-auto flex w-full max-w-3xl flex-col ${textAlignClass}`}
-            >
+          <div className={"relative z-10 flex h-full w-full flex-col justify-center " + wrapPadding}>
+            <div className={`mx-auto flex w-full max-w-3xl flex-col ${textAlignClass}`}>
               {slide?.headline ? (
                 <div
-                  className="text-[11px] tracking-[0.28em] uppercase"
+                  className={`${headlineSize} tracking-[0.28em] uppercase`}
                   style={{ color: "rgba(255,255,255,0.65)" }}
                 >
                   {slide.headline}
@@ -261,17 +246,14 @@ export default function HeroSlider() {
               ) : null}
 
               <h1
-                className="mt-4 text-3xl sm:text-4xl md:text-5xl font-semibold leading-tight"
+                className={`mt-4 ${titleSize} font-semibold leading-tight`}
                 style={{ color: settings.text_color }}
               >
                 {slide?.title}
               </h1>
 
               {slide?.body ? (
-                <p
-                  className="mt-4 text-sm sm:text-base leading-relaxed"
-                  style={{ color: "rgba(255,255,255,0.86)" }}
-                >
+                <p className={`mt-4 ${bodySize} leading-relaxed`} style={{ color: "rgba(255,255,255,0.86)" }}>
                   {slide.body}
                 </p>
               ) : null}
@@ -289,10 +271,9 @@ export default function HeroSlider() {
             </div>
           </div>
 
-          {/* Dots */}
-          {settings.show_dots && safeSlides.length > 1 ? (
+          {settings.show_dots && slides.length > 1 ? (
             <div className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2">
-              {safeSlides.map((_, i) => {
+              {slides.map((_, i) => {
                 const active = i === idx;
                 return (
                   <button
@@ -300,23 +281,24 @@ export default function HeroSlider() {
                     type="button"
                     onClick={() => setIdx(i)}
                     aria-label={`Go to slide ${i + 1}`}
-                    className={`rounded-full transition-none ${
-                      active ? "h-2 w-10 bg-white" : "h-2 w-2 bg-white/35"
-                    }`}
+                    className={[
+                      "rounded-full transition-none",
+                      active ? "h-2 w-10 bg-white" : "h-2 w-2 bg-white/35",
+                      screen === "mobile" && !active ? "h-2.5 w-2.5" : "",
+                    ].join(" ").trim()}
                   />
                 );
               })}
             </div>
           ) : null}
 
-          {/* Arrows (hidden until hover, like the reference) */}
-          {settings.show_arrows && safeSlides.length > 1 ? (
+          {settings.show_arrows && slides.length > 1 ? (
             <>
               <button
                 type="button"
                 onClick={prev}
                 aria-label="Previous slide"
-                className="absolute left-6 top-1/2 z-20 -translate-y-1/2 rounded-full border border-white/20 bg-white/10 px-4 py-3 text-white opacity-0 transition-none group-hover:opacity-100"
+                className={`${arrowBase} ${arrowVisibility} ${arrowSize} left-4 sm:left-6 flex items-center justify-center`}
               >
                 ←
               </button>
@@ -324,7 +306,7 @@ export default function HeroSlider() {
                 type="button"
                 onClick={next}
                 aria-label="Next slide"
-                className="absolute right-6 top-1/2 z-20 -translate-y-1/2 rounded-full border border-white/20 bg-white/10 px-4 py-3 text-white opacity-0 transition-none group-hover:opacity-100"
+                className={`${arrowBase} ${arrowVisibility} ${arrowSize} right-4 sm:right-6 flex items-center justify-center`}
               >
                 →
               </button>
@@ -333,7 +315,6 @@ export default function HeroSlider() {
         </div>
       </div>
 
-      {/* gray divider line under the hero section (leave as-is if you still want it) */}
       <div className="h-px w-full bg-gray-200" />
     </section>
   );

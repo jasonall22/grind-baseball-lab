@@ -58,6 +58,41 @@ function pickDisplayName(args: {
   return email ?? "Member";
 }
 
+function HamburgerIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-6 w-6"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+    >
+      <path d="M4 7h16" />
+      <path d="M4 12h16" />
+      <path d="M4 17h16" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-6 w-6"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+    >
+      <path d="M6 6l12 12" />
+      <path d="M18 6L6 18" />
+    </svg>
+  );
+}
+
 export default function SiteNav() {
   const pathname = usePathname();
   const router = useRouter();
@@ -65,11 +100,9 @@ export default function SiteNav() {
   const items: NavItem[] = useMemo(
     () => [
       { label: "HOME", href: "/" },
-      // ✅ Change: BOOK NOW should jump to Pricing section
       { label: "BOOK NOW", href: "#pricing" },
       { label: "OUR PLACE", href: "#our-place" },
       { label: "TRAINERS", href: "#trainers" },
-      // ✅ Change: CAGE RENTAL -> CONTACT US (goes to the new /contact page)
       { label: "CONTACT US", href: "/contact" },
     ],
     []
@@ -78,7 +111,9 @@ export default function SiteNav() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userMeta, setUserMeta] = useState<UserMeta | null>(null);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
+
+  const [menuOpen, setMenuOpen] = useState(false); // user pill menu
+  const [mobileOpen, setMobileOpen] = useState(false); // full-screen nav
 
   const pillRef = useRef<HTMLDivElement | null>(null);
 
@@ -92,11 +127,20 @@ export default function SiteNav() {
   });
   const isAdmin = (profile?.role ?? "") === "admin";
 
+  // Lock body scroll when mobile overlay is open
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [mobileOpen]);
+
   useEffect(() => {
     let alive = true;
 
     async function loadProfile(userId: string) {
-      // Pull the name from profiles table
       const { data: prof } = await supabase
         .from("profiles")
         .select("id, role, full_name, first_name, last_name")
@@ -116,7 +160,6 @@ export default function SiteNav() {
       const email = session?.user?.email ?? null;
       setUserEmail(email);
 
-      // Pull name fallback from Auth metadata too
       const meta = (session?.user?.user_metadata ?? null) as UserMeta | null;
       setUserMeta(meta);
 
@@ -129,20 +172,23 @@ export default function SiteNav() {
 
     boot();
 
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const email = session?.user?.email ?? null;
-      setUserEmail(email);
+    const { data: sub } = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        const email = session?.user?.email ?? null;
+        setUserEmail(email);
 
-      const meta = (session?.user?.user_metadata ?? null) as UserMeta | null;
-      setUserMeta(meta);
+        const meta = (session?.user?.user_metadata ?? null) as UserMeta | null;
+        setUserMeta(meta);
 
-      if (session?.user?.id) {
-        await loadProfile(session.user.id);
-      } else {
-        setProfile(null);
-        setMenuOpen(false);
+        if (session?.user?.id) {
+          await loadProfile(session.user.id);
+        } else {
+          setProfile(null);
+          setMenuOpen(false);
+          setMobileOpen(false);
+        }
       }
-    });
+    );
 
     return () => {
       alive = false;
@@ -150,6 +196,7 @@ export default function SiteNav() {
     };
   }, []);
 
+  // Close menus on outside click / escape
   useEffect(() => {
     function onDocMouseDown(e: MouseEvent) {
       if (!menuOpen) return;
@@ -161,7 +208,10 @@ export default function SiteNav() {
     }
 
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setMenuOpen(false);
+      if (e.key === "Escape") {
+        setMenuOpen(false);
+        setMobileOpen(false);
+      }
     }
 
     document.addEventListener("mousedown", onDocMouseDown);
@@ -174,126 +224,288 @@ export default function SiteNav() {
 
   async function logout() {
     setMenuOpen(false);
+    setMobileOpen(false);
     await supabase.auth.signOut();
     router.push("/");
   }
 
+  function goTo(href: string) {
+    // Close overlays first (prevents overlay sticking on route change)
+    setMobileOpen(false);
+    setMenuOpen(false);
+
+    // Hash links:
+    if (href.startsWith("#")) {
+      // If we're not on homepage, navigate to homepage + hash
+      if (pathname !== "/") {
+        router.push(`/${href}`);
+        return;
+      }
+
+      // If we are on homepage, scroll to target
+      const id = href.slice(1);
+      // Small defer so overlay unmount doesn't fight scroll
+      window.setTimeout(() => {
+        const el = document.getElementById(id);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+        else window.location.hash = href;
+      }, 0);
+      return;
+    }
+
+    // Normal links
+    router.push(href);
+  }
+
   return (
-    <header className="sticky top-0 z-50 bg-black text-white">
-      <div className="mx-auto max-w-7xl px-4 py-6">
-        {/* Logo centered */}
-        <div className="flex items-center justify-center">
-          <Link href="/" aria-label="The Grind Baseball Lab home" className="block">
-            <Image
-              src="/logo.png"
-              alt="The Grind Baseball Lab"
-              width={720}
-              height={280}
-              priority
-              className="h-[92px] sm:h-[112px] w-auto select-none"
-            />
-          </Link>
-        </div>
+    <>
+      <header className="sticky top-0 z-50 bg-black text-white">
+        <div className="mx-auto max-w-7xl px-4 py-6">
+          {/* Logo centered */}
+          <div className="flex items-center justify-center">
+            <Link
+              href="/"
+              aria-label="The Grind Baseball Lab home"
+              className="block"
+              onClick={() => {
+                setMobileOpen(false);
+                setMenuOpen(false);
+              }}
+            >
+              <Image
+                src="/logo.png"
+                alt="The Grind Baseball Lab"
+                width={720}
+                height={280}
+                priority
+                className="h-[92px] sm:h-[112px] w-auto select-none"
+              />
+            </Link>
+          </div>
 
-        {/* Links centered + pill on the right */}
-        <div className="relative mt-5 flex items-center">
-          {/* Center links */}
-          <nav className="mx-auto flex flex-wrap items-center justify-center gap-6">
-            {items.map((item) => {
-              const isActive = item.href === "/" ? pathname === "/" : pathname === item.href;
+          {/* Links centered + pill on the right + hamburger on the left (mobile/tablet) */}
+          <div className="relative mt-5 flex items-center">
+            {/* Mobile hamburger (shows below lg) */}
+            <button
+              type="button"
+              aria-label="Open menu"
+              onClick={() => setMobileOpen(true)}
+              className="absolute left-0 top-1/2 -translate-y-1/2 inline-flex items-center justify-center rounded-full border border-white/15 bg-white/10 p-2 text-white/90 lg:hidden"
+            >
+              <HamburgerIcon />
+            </button>
 
-              const base =
-                "uppercase underline-offset-[10px] hover:underline hover:text-white";
-              const text =
-                "text-[11px] font-semibold tracking-[0.28em] text-white/80";
-              const active = isActive ? "underline text-white" : "";
+            {/* Center links (desktop only) */}
+            <nav className="mx-auto hidden flex-wrap items-center justify-center gap-6 lg:flex">
+              {items.map((item) => {
+                const isActive =
+                  item.href === "/"
+                    ? pathname === "/"
+                    : pathname === item.href;
 
-              const cls = [base, text, active].join(" ").trim();
+                const base =
+                  "uppercase underline-offset-[10px] hover:underline hover:text-white";
+                const text =
+                  "text-[11px] font-semibold tracking-[0.28em] text-white/80";
+                const active = isActive ? "underline text-white" : "";
 
-              if (item.href.startsWith("#")) {
-                return (
-                  <a key={item.href} href={item.href} className={cls}>
-                    {item.label}
-                  </a>
-                );
-              }
+                const cls = [base, text, active].join(" ").trim();
 
-              return (
-                <Link key={item.href} href={item.href} className={cls}>
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-
-          {/* Right pill */}
-          <div className="absolute right-0 top-1/2 -translate-y-1/2" ref={pillRef}>
-            {!isLoggedIn ? (
-              <Link
-                href="/login"
-                aria-current={isLoginPage ? "page" : undefined}
-                className={
-                  "inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[11px] font-semibold tracking-[0.28em] text-white/90 normal-case" +
-                  (isLoginPage ? " pointer-events-none opacity-60" : "")
+                if (item.href.startsWith("#")) {
+                  return (
+                    <a key={item.href} href={item.href} className={cls}>
+                      {item.label}
+                    </a>
+                  );
                 }
-              >
-                Login
-              </Link>
-            ) : (
-              <div className="relative inline-block text-left">
-                <button
-                  type="button"
-                  onClick={() => setMenuOpen((v) => !v)}
-                  className="inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/10 px-5 py-2 text-[11px] font-semibold tracking-[0.12em] text-white/95"
-                  aria-haspopup="menu"
-                  aria-expanded={menuOpen}
+
+                return (
+                  <Link key={item.href} href={item.href} className={cls}>
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
+
+            {/* Right pill */}
+            <div
+              className="absolute right-0 top-1/2 -translate-y-1/2"
+              ref={pillRef}
+            >
+              {!isLoggedIn ? (
+                <Link
+                  href="/login"
+                  aria-current={isLoginPage ? "page" : undefined}
+                  className={
+                    "inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[11px] font-semibold tracking-[0.28em] text-white/90 normal-case" +
+                    (isLoginPage ? " pointer-events-none opacity-60" : "")
+                  }
+                  onClick={() => setMobileOpen(false)}
                 >
-                  <span className="whitespace-nowrap">Welcome {welcomeName}</span>
-                  <span className="text-white/70">▼</span>
-                </button>
-
-                {menuOpen ? (
-                  <div
-                    role="menu"
-                    className="absolute right-0 mt-3 w-56 overflow-hidden rounded-2xl border border-white/10 bg-[#0b0b0b] shadow-[0_18px_40px_rgba(0,0,0,0.45)]"
+                  Login
+                </Link>
+              ) : (
+                <div className="relative inline-block text-left">
+                  <button
+                    type="button"
+                    onClick={() => setMenuOpen((v) => !v)}
+                    className="inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/10 px-5 py-2 text-[11px] font-semibold tracking-[0.12em] text-white/95"
+                    aria-haspopup="menu"
+                    aria-expanded={menuOpen}
                   >
-                    <div className="py-2">
-                      <Link
-                        href="/dashboard"
-                        role="menuitem"
-                        onClick={() => setMenuOpen(false)}
-                        className="block px-4 py-3 text-sm text-white/90 hover:bg-white/5"
-                      >
-                        Profile
-                      </Link>
+                    <span className="whitespace-nowrap">
+                      Welcome {welcomeName}
+                    </span>
+                    <span className="text-white/70">▼</span>
+                  </button>
 
-                      {isAdmin ? (
+                  {menuOpen ? (
+                    <div
+                      role="menu"
+                      className="absolute right-0 mt-3 w-56 overflow-hidden rounded-2xl border border-white/10 bg-[#0b0b0b] shadow-[0_18px_40px_rgba(0,0,0,0.45)]"
+                    >
+                      <div className="py-2">
                         <Link
-                          href="/admin"
+                          href="/dashboard"
                           role="menuitem"
                           onClick={() => setMenuOpen(false)}
                           className="block px-4 py-3 text-sm text-white/90 hover:bg-white/5"
                         >
-                          Admin Dashboard
+                          Profile
                         </Link>
+
+                        {isAdmin ? (
+                          <Link
+                            href="/admin"
+                            role="menuitem"
+                            onClick={() => setMenuOpen(false)}
+                            className="block px-4 py-3 text-sm text-white/90 hover:bg-white/5"
+                          >
+                            Admin Dashboard
+                          </Link>
+                        ) : null}
+
+                        <button
+                          type="button"
+                          onClick={logout}
+                          role="menuitem"
+                          className="w-full text-left px-4 py-3 text-sm text-white/90 hover:bg-white/5"
+                        >
+                          Logout
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Full-screen mobile/tablet menu */}
+      {mobileOpen ? (
+        <div className="fixed inset-0 z-[60] bg-black text-white">
+          <div className="mx-auto max-w-7xl px-4 py-6">
+            {/* Top row: logo + close */}
+            <div className="relative flex items-center justify-center">
+              <Link
+                href="/"
+                aria-label="The Grind Baseball Lab home"
+                className="block"
+                onClick={() => setMobileOpen(false)}
+              >
+                <Image
+                  src="/logo.png"
+                  alt="The Grind Baseball Lab"
+                  width={720}
+                  height={280}
+                  priority
+                  className="h-[64px] w-auto select-none"
+                />
+              </Link>
+
+              <button
+                type="button"
+                aria-label="Close menu"
+                onClick={() => setMobileOpen(false)}
+                className="absolute right-0 inline-flex items-center justify-center rounded-full border border-white/15 bg-white/10 p-2 text-white/90"
+              >
+                <CloseIcon />
+              </button>
+            </div>
+
+            <div className="mt-10">
+              <div className="text-xs font-semibold tracking-[0.28em] text-white/55 uppercase">
+                Menu
+              </div>
+
+              <div className="mt-5 flex flex-col">
+                {items.map((item) => (
+                  <button
+                    key={item.href}
+                    type="button"
+                    onClick={() => goTo(item.href)}
+                    className="w-full text-left py-5 text-3xl font-semibold tracking-tight text-white hover:text-white/90 border-b border-white/10"
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-8">
+                {!isLoggedIn ? (
+                  <button
+                    type="button"
+                    onClick={() => goTo("/login")}
+                    className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/10 px-6 py-3 text-sm font-semibold text-white/90"
+                  >
+                    Login
+                  </button>
+                ) : (
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+                    <div className="text-sm font-semibold text-white/90">
+                      Welcome {welcomeName}
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => goTo("/dashboard")}
+                        className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white/90"
+                      >
+                        Profile
+                      </button>
+
+                      {isAdmin ? (
+                        <button
+                          type="button"
+                          onClick={() => goTo("/admin")}
+                          className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white/90"
+                        >
+                          Admin
+                        </button>
                       ) : null}
 
                       <button
                         type="button"
                         onClick={logout}
-                        role="menuitem"
-                        className="w-full text-left px-4 py-3 text-sm text-white/90 hover:bg-white/5"
+                        className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white/90"
                       >
                         Logout
                       </button>
                     </div>
                   </div>
-                ) : null}
+                )}
+
+                <div className="mt-10 text-xs text-white/45">
+                  © {new Date().getFullYear()} The Grind Baseball Lab
+                </div>
               </div>
-            )}
+            </div>
           </div>
         </div>
-      </div>
-    </header>
+      ) : null}
+    </>
   );
 }
