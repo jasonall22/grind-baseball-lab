@@ -55,9 +55,13 @@ function getScreenKind(): ScreenKind {
 }
 
 /**
- * HeroSlider (Responsive + Placeholder)
- * - NO fallback slide content (per request)
- * - Placeholder reserves the SAME hero height so nothing "shrinks" while loading
+ * HeroSlider (Responsive + No Flash)
+ * - No fallback slide content
+ * - ✅ Prevents the "quick first hero" flash by NOT rendering the hero visuals until:
+ *   1) Slides are loaded, and
+ *   2) The first slide image (if any) is preloaded
+ *
+ * While loading, we only reserve the correct height (blank space), so the page doesn't jump.
  */
 export default function HeroSlider() {
   const [settings, setSettings] = useState<HeroSettingsRow>(DEFAULT_SETTINGS);
@@ -65,7 +69,9 @@ export default function HeroSlider() {
   const [idx, setIdx] = useState(0);
 
   const [screen, setScreen] = useState<ScreenKind>(() => getScreenKind());
+  const [ready, setReady] = useState(false); // ✅ controls when we show the hero visuals
 
+  // Prevent setInterval drift/leaks
   const timerRef = useRef<number | null>(null);
 
   // Track screen size
@@ -78,11 +84,23 @@ export default function HeroSlider() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // Load settings + slides from Supabase
+  // Height tuning (mobile gets extra room so text never clips)
+  const heightPx = useMemo(() => {
+    const d = settings.height_desktop;
+    const m = settings.height_mobile;
+
+    if (screen === "mobile") return Math.max(m, 560);
+    if (screen === "tablet") return Math.max(Math.round(m + (d - m) * 0.6), 520);
+    return d;
+  }, [screen, settings.height_desktop, settings.height_mobile]);
+
+  // Load settings + slides from Supabase (and preload the first slide image)
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
+      setReady(false);
+
       const { data: s, error: sErr } = await supabase
         .from("hero_settings")
         .select("*")
@@ -100,17 +118,52 @@ export default function HeroSlider() {
 
       if (!sErr && s) setSettings((prev) => ({ ...prev, ...s } as HeroSettingsRow));
 
-      if (!slErr && Array.isArray(sl) && sl.length > 0) {
-        setSlides(sl as HeroSlideRow[]);
-        setIdx(0);
-      } else {
-        // No fallback content — keep placeholder
-        setSlides([]);
-        setIdx(0);
+      const nextSlides: HeroSlideRow[] =
+        !slErr && Array.isArray(sl) && sl.length > 0 ? (sl as HeroSlideRow[]) : [];
+
+      setSlides(nextSlides);
+      setIdx(0);
+
+      // If no slides, don't show the hero (blank reserved space only)
+      if (nextSlides.length === 0) {
+        setReady(false);
+        return;
       }
+
+      // Preload ALL images (so slide changes won't flash)
+      const urls = nextSlides
+        .map((x) => (x?.image_url ? String(x.image_url) : ""))
+        .filter(Boolean);
+
+      for (const url of urls) {
+        const img = new window.Image();
+        img.src = url;
+      }
+
+      // Ensure the first slide image (if any) is loaded before showing hero
+      const firstUrl = nextSlides[0]?.image_url ? String(nextSlides[0].image_url) : "";
+
+      if (!firstUrl) {
+        setReady(true);
+        return;
+      }
+
+      const firstImg = new window.Image();
+      firstImg.src = firstUrl;
+
+      firstImg.onload = () => {
+        if (cancelled) return;
+        setReady(true);
+      };
+      firstImg.onerror = () => {
+        if (cancelled) return;
+        // Even if the image fails, show the hero (gradient background will still render)
+        setReady(true);
+      };
     }
 
     void load();
+
     return () => {
       cancelled = true;
     };
@@ -129,16 +182,6 @@ export default function HeroSlider() {
 
   const effectiveOverlayOpacity =
     typeof slide?.overlay_opacity === "number" ? slide.overlay_opacity : settings.overlay_opacity;
-
-  // Height tuning (mobile gets extra room so text never clips)
-  const heightPx = useMemo(() => {
-    const d = settings.height_desktop;
-    const m = settings.height_mobile;
-
-    if (screen === "mobile") return Math.max(m, 560);
-    if (screen === "tablet") return Math.max(Math.round(m + (d - m) * 0.6), 520);
-    return d;
-  }, [screen, settings.height_desktop, settings.height_mobile]);
 
   const textAlignClass =
     settings.text_align === "left" ? "items-start text-left" : "items-center text-center";
@@ -192,7 +235,7 @@ export default function HeroSlider() {
     };
   }, [settings.auto_rotate, settings.interval_ms, slides.length]);
 
-  const showArrows = settings.show_arrows && slides.length > 1 && screen !== "mobile";
+  const showArrows = ready && settings.show_arrows && slides.length > 1 && screen !== "mobile";
   const arrowsOnDesktop = screen === "desktop";
 
   const arrowBase =
@@ -222,12 +265,39 @@ export default function HeroSlider() {
 
   const dotsBottom = screen === "mobile" ? "bottom-4" : "bottom-6";
 
+  // ✅ While not ready, reserve the hero height but show NOTHING (no "quick hero")
+  if (!ready) {
+    return (
+      <section className="bg-white">
+        <div className="mx-auto max-w-6xl px-4 pt-10 pb-8">
+          <div
+            className="mx-auto w-full rounded-[34px]"
+            style={{ height: `${heightPx}px`, minHeight: `${heightPx}px` }}
+          />
+        </div>
+      </section>
+    );
+  }
+
+  // If ready but still no slides, keep it blank (same reserved space)
+  if (!hasSlides) {
+    return (
+      <section className="bg-white">
+        <div className="mx-auto max-w-6xl px-4 pt-10 pb-8">
+          <div
+            className="mx-auto w-full rounded-[34px]"
+            style={{ height: `${heightPx}px`, minHeight: `${heightPx}px` }}
+          />
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="bg-white">
       <div className="mx-auto max-w-6xl px-4 pt-10 pb-8">
         <div
           className="group relative mx-auto w-full overflow-hidden rounded-[34px]"
-          // ✅ Force BOTH height + minHeight so placeholder is never smaller
           style={{
             height: `${heightPx}px`,
             minHeight: `${heightPx}px`,
@@ -246,50 +316,34 @@ export default function HeroSlider() {
           {/* Content */}
           <div className={"relative z-10 flex h-full w-full flex-col justify-center " + wrapPadding}>
             <div className={`mx-auto flex w-full ${maxTextWidth} flex-col ${textAlignClass}`}>
-              {!hasSlides ? (
-                <>
-                  <div className={`${headlineCls} uppercase`} style={{ color: "rgba(255,255,255,0.65)" }}>
-                    THE GRIND BASEBALL LAB
-                  </div>
-                  <h1 className={`mt-3 sm:mt-4 font-semibold ${titleCls}`} style={{ color: settings.text_color }}>
-                    Hero Slider Placeholder
-                  </h1>
-                  <p className={`mt-3 sm:mt-4 ${bodyCls}`} style={{ color: "rgba(255,255,255,0.86)" }}>
-                    Add slides in Admin → Hero Slider. Once active slides exist, they will show here.
-                  </p>
-                </>
-              ) : (
-                <>
-                  {slide?.headline ? (
-                    <div className={`${headlineCls} uppercase`} style={{ color: "rgba(255,255,255,0.65)" }}>
-                      {slide.headline}
-                    </div>
-                  ) : null}
+              {slide?.headline ? (
+                <div className={`${headlineCls} uppercase`} style={{ color: "rgba(255,255,255,0.65)" }}>
+                  {slide.headline}
+                </div>
+              ) : null}
 
-                  <h1 className={`mt-3 sm:mt-4 font-semibold ${titleCls}`} style={{ color: settings.text_color }}>
-                    {slide?.title}
-                  </h1>
+              <h1 className={`mt-3 sm:mt-4 font-semibold ${titleCls}`} style={{ color: settings.text_color }}>
+                {slide?.title}
+              </h1>
 
-                  {slide?.body ? (
-                    <p
-                      className={`mt-3 sm:mt-4 ${bodyCls} text-white/85 break-words ${screen === "mobile" ? "line-clamp-6" : ""}`}
-                    >
-                      {slide.body}
-                    </p>
-                  ) : null}
+              {slide?.body ? (
+                <p
+                  className={`mt-3 sm:mt-4 ${bodyCls} text-white/85 break-words ${screen === "mobile" ? "line-clamp-6" : ""}`}
+                >
+                  {slide.body}
+                </p>
+              ) : null}
 
-                  {slide?.cta_text ? (
-                    <div className="mt-5 sm:mt-6">
-                      <a
-                        href={slide.cta_href || "#"}
-                        className={`inline-flex items-center justify-center rounded-full bg-white font-medium text-black ${ctaCls}`}
-                      >
-                        {slide.cta_text}
-                      </a>
-                    </div>
-                  ) : null}
-                </>
-              )}
+              {slide?.cta_text ? (
+                <div className="mt-5 sm:mt-6">
+                  <a
+                    href={slide.cta_href || "#"}
+                    className={`inline-flex items-center justify-center rounded-full bg-white font-medium text-black ${ctaCls}`}
+                  >
+                    {slide.cta_text}
+                  </a>
+                </div>
+              ) : null}
             </div>
           </div>
 
