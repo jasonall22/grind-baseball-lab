@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -13,26 +13,61 @@ function cleanEmail(v: string) {
   return v.trim();
 }
 
-export default function LoginPage() {
+function isSafeInternalPath(path: string | null | undefined) {
+  if (!path) return false;
+  if (!path.startsWith("/")) return false;
+  // prevent open-redirect-like values
+  if (path.startsWith("//")) return false;
+  return true;
+}
+
+function LoginInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-
-  // optional ?next=/somewhere
-  const nextParam = useMemo(() => {
-    const n = searchParams?.get("next");
-    if (!n) return null;
-    // basic safety: only allow internal paths
-    if (!n.startsWith("/")) return null;
-    return n;
-  }, [searchParams]);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // If already logged in, route them correctly
+  const nextParam = useMemo(() => {
+    const raw = searchParams.get("next");
+    return isSafeInternalPath(raw) ? raw : null;
+  }, [searchParams]);
+
+  async function getRole(userId: string): Promise<string | null> {
+    const { data } = await supabase
+      .from("profiles")
+      .select("id, role")
+      .eq("id", userId)
+      .maybeSingle();
+
+    return (data as ProfileRow | null)?.role ?? null;
+  }
+
+  async function routeAfterLogin(userId: string) {
+    const role = await getRole(userId);
+
+    // ✅ Requested behavior:
+    // - Admin -> /admin
+    // - Everyone else -> homepage
+    if ((role ?? "") === "admin") {
+      router.push("/admin");
+      return;
+    }
+
+    // If next param exists (like /pricing), allow it for non-admin users too
+    // but never auto-send non-admin into /admin
+    if (nextParam && !nextParam.startsWith("/admin")) {
+      router.push(nextParam);
+      return;
+    }
+
+    router.push("/");
+  }
+
+  // If already logged in, route immediately
   useEffect(() => {
     let alive = true;
 
@@ -41,155 +76,146 @@ export default function LoginPage() {
       const session = data.session;
       if (!alive) return;
 
-      if (!session?.user?.id) return;
+      const userId = session?.user?.id ?? null;
+      if (!userId) return;
 
-      const { data: prof } = await supabase
-        .from("profiles")
-        .select("id, role")
-        .eq("id", session.user.id)
-        .maybeSingle();
-
-      if (!alive) return;
-
-      const role = (prof as ProfileRow | null)?.role ?? null;
-
-      if (role === "admin") {
-        router.replace("/admin");
-        return;
-      }
-
-      // Non-admin: go to next=... if present, else HOME
-      if (nextParam) {
-        router.replace(nextParam);
-        return;
-      }
-
-      router.replace("/");
+      await routeAfterLogin(userId);
     }
 
     void boot();
+
     return () => {
       alive = false;
     };
-  }, [router, nextParam]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (busy) return;
 
-    setError(null);
     setBusy(true);
+    setErrorMsg(null);
 
-    try {
-      const cleaned = cleanEmail(email);
-      const { data, error: signInErr } = await supabase.auth.signInWithPassword({
-        email: cleaned,
-        password,
-      });
-
-      if (signInErr) {
-        setError(signInErr.message);
-        return;
-      }
-
-      const userId = data.user?.id ?? null;
-      if (!userId) {
-        setError("Login failed. Please try again.");
-        return;
-      }
-
-      // ✅ Admins go straight to /admin
-      const { data: prof } = await supabase
-        .from("profiles")
-        .select("id, role")
-        .eq("id", userId)
-        .maybeSingle();
-
-      const role = (prof as ProfileRow | null)?.role ?? null;
-
-      if (role === "admin") {
-        router.replace("/admin");
-        return;
-      }
-
-      // Non-admin: go to next=... if present, else HOME
-      if (nextParam) {
-        router.replace(nextParam);
-        return;
-      }
-
-      router.replace("/");
-    } catch (err: any) {
-      setError(err?.message ?? "Something went wrong.");
-    } finally {
+    const em = cleanEmail(email);
+    if (!em || !password) {
+      setErrorMsg("Please enter your email and password.");
       setBusy(false);
+      return;
     }
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: em,
+      password,
+    });
+
+    if (error || !data.user) {
+      setErrorMsg(error?.message ?? "Login failed. Please try again.");
+      setBusy(false);
+      return;
+    }
+
+    await routeAfterLogin(data.user.id);
+    setBusy(false);
   }
 
   return (
     <div className="min-h-[calc(100vh-120px)] bg-white text-black">
-      <div className="mx-auto max-w-lg px-4 py-14">
-        <h1 className="text-3xl font-extrabold tracking-tight">Login</h1>
-        <p className="mt-2 text-sm text-black/65">
-          Sign in to your account. Admins will be taken to the Admin Dashboard.
-        </p>
-
-        <form onSubmit={onSubmit} className="mt-8 space-y-4">
-          <div>
-            <label className="block text-xs font-semibold tracking-wide text-black/70">
-              EMAIL
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none focus:border-black/30"
-              placeholder="you@email.com"
-              required
-            />
+      <div className="mx-auto max-w-md px-4 py-16">
+        <div className="rounded-3xl border border-black/10 bg-white p-8 shadow-sm">
+          <div className="text-center">
+            <div className="text-[11px] font-semibold tracking-[0.28em] text-black/55">
+              THE GRIND BASEBALL LAB
+            </div>
+            <h1 className="mt-3 text-3xl font-semibold tracking-tight">Sign in</h1>
+            <p className="mt-2 text-sm text-black/60">
+              Access your account and manage bookings.
+            </p>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold tracking-wide text-black/70">
-              PASSWORD
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none focus:border-black/30"
-              placeholder="••••••••"
-              required
-            />
-          </div>
-
-          {error ? (
-            <div className="rounded-2xl border border-red-500/30 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {error}
+          {errorMsg ? (
+            <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {errorMsg}
             </div>
           ) : null}
 
-          <button
-            type="submit"
-            disabled={busy}
-            className={
-              "w-full rounded-full bg-black px-6 py-3 text-sm font-semibold text-white transition-none " +
-              (busy ? "opacity-60" : "hover:bg-black/90")
-            }
-          >
-            {busy ? "Signing in..." : "Sign In"}
-          </button>
+          <form onSubmit={onSubmit} className="mt-6 space-y-4">
+            <div>
+              <label className="block text-xs font-semibold tracking-wide text-black/70">
+                Email
+              </label>
+              <input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                type="email"
+                autoComplete="email"
+                className="mt-2 w-full rounded-2xl border border-black/15 bg-white px-4 py-3 text-sm outline-none focus:border-black/35"
+                placeholder="you@example.com"
+              />
+            </div>
 
-          <div className="pt-2 text-sm text-black/70">
-            Don’t have an account?{" "}
-            <a href="/signup" className="font-semibold underline underline-offset-4">
-              Create one
-            </a>
+            <div>
+              <label className="block text-xs font-semibold tracking-wide text-black/70">
+                Password
+              </label>
+              <input
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                type="password"
+                autoComplete="current-password"
+                className="mt-2 w-full rounded-2xl border border-black/15 bg-white px-4 py-3 text-sm outline-none focus:border-black/35"
+                placeholder="••••••••"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={busy}
+              className={
+                "mt-2 w-full rounded-full bg-black px-5 py-3 text-sm font-semibold text-white transition " +
+                (busy ? "opacity-70" : "hover:bg-[#1FA2FF]")
+              }
+            >
+              {busy ? "Signing in..." : "Sign In"}
+            </button>
+
+            <div className="pt-2 text-center text-sm text-black/70">
+              Don’t have an account?{" "}
+              <a href="/signup" className="font-semibold underline underline-offset-4">
+                Create one
+              </a>
+            </div>
+          </form>
+
+          <div className="mt-6 text-center text-xs text-black/45">
+            Admin accounts route to the Admin Dashboard automatically.
           </div>
-        </form>
+        </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  // ✅ Fix for Vercel build:
+  // useSearchParams is inside LoginInner, wrapped by Suspense here.
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-[calc(100vh-120px)] bg-white">
+          <div className="mx-auto max-w-md px-4 py-16">
+            <div className="rounded-3xl border border-black/10 bg-white p-8 shadow-sm">
+              <div className="h-4 w-40 rounded bg-black/10" />
+              <div className="mt-4 h-10 w-3/4 rounded bg-black/10" />
+              <div className="mt-6 h-11 w-full rounded-2xl bg-black/10" />
+              <div className="mt-3 h-11 w-full rounded-2xl bg-black/10" />
+              <div className="mt-6 h-12 w-full rounded-full bg-black/10" />
+            </div>
+          </div>
+        </div>
+      }
+    >
+      <LoginInner />
+    </Suspense>
   );
 }
