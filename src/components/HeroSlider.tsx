@@ -8,9 +8,9 @@ type HeroSettingsRow = {
   height_desktop: number;
   height_mobile: number;
   text_align: "left" | "center";
-  overlay_color: string; // hex like #000000
-  overlay_opacity: number; // 0..0.95
-  text_color: string; // hex
+  overlay_color: string;
+  overlay_opacity: number;
+  text_color: string;
   show_arrows: boolean;
   show_dots: boolean;
   auto_rotate: boolean;
@@ -54,14 +54,42 @@ function getScreenKind(): ScreenKind {
   return "desktop";
 }
 
+function preloadImage(url: string, timeoutMs: number) {
+  return new Promise<void>((resolve) => {
+    if (!url) return resolve();
+
+    const img = new window.Image();
+    let done = false;
+
+    const finish = () => {
+      if (done) return;
+      done = true;
+      resolve();
+    };
+
+    const t = window.setTimeout(() => finish(), timeoutMs);
+
+    img.onload = () => {
+      window.clearTimeout(t);
+      finish();
+    };
+
+    img.onerror = () => {
+      window.clearTimeout(t);
+      finish();
+    };
+
+    // set handlers BEFORE src (avoids cached-image edge cases)
+    img.src = url;
+  });
+}
+
 /**
- * HeroSlider (Responsive + No Flash)
+ * HeroSlider (Responsive + No "stuck" feeling)
  * - No fallback slide content
- * - ✅ Prevents the "quick first hero" flash by NOT rendering the hero visuals until:
- *   1) Slides are loaded, and
- *   2) The first slide image (if any) is preloaded
- *
- * While loading, we only reserve the correct height (blank space), so the page doesn't jump.
+ * - No placeholder TEXT
+ * - Prevents the "quick first hero" flash by waiting for the first slide image to preload
+ * - While loading, it renders only the hero shell (same size) with the base gradient (no text)
  */
 export default function HeroSlider() {
   const [settings, setSettings] = useState<HeroSettingsRow>(DEFAULT_SETTINGS);
@@ -69,9 +97,10 @@ export default function HeroSlider() {
   const [idx, setIdx] = useState(0);
 
   const [screen, setScreen] = useState<ScreenKind>(() => getScreenKind());
-  const [ready, setReady] = useState(false); // ✅ controls when we show the hero visuals
 
-  // Prevent setInterval drift/leaks
+  // When false, we show only the shell (no text/dots/arrows), so nothing "flashes"
+  const [ready, setReady] = useState(false);
+
   const timerRef = useRef<number | null>(null);
 
   // Track screen size
@@ -124,42 +153,28 @@ export default function HeroSlider() {
       setSlides(nextSlides);
       setIdx(0);
 
-      // If no slides, don't show the hero (blank reserved space only)
       if (nextSlides.length === 0) {
         setReady(false);
         return;
       }
 
-      // Preload ALL images (so slide changes won't flash)
-      const urls = nextSlides
+      // Preload the first slide image (fast timeout so it never "feels stuck")
+      const firstUrl = nextSlides[0]?.image_url ? String(nextSlides[0].image_url) : "";
+      await preloadImage(firstUrl, 1200);
+
+      if (cancelled) return;
+      setReady(true);
+
+      // Preload the rest in the background (doesn't block rendering)
+      const rest = nextSlides
+        .slice(1)
         .map((x) => (x?.image_url ? String(x.image_url) : ""))
         .filter(Boolean);
 
-      for (const url of urls) {
+      for (const url of rest) {
         const img = new window.Image();
         img.src = url;
       }
-
-      // Ensure the first slide image (if any) is loaded before showing hero
-      const firstUrl = nextSlides[0]?.image_url ? String(nextSlides[0].image_url) : "";
-
-      if (!firstUrl) {
-        setReady(true);
-        return;
-      }
-
-      const firstImg = new window.Image();
-      firstImg.src = firstUrl;
-
-      firstImg.onload = () => {
-        if (cancelled) return;
-        setReady(true);
-      };
-      firstImg.onerror = () => {
-        if (cancelled) return;
-        // Even if the image fails, show the hero (gradient background will still render)
-        setReady(true);
-      };
     }
 
     void load();
@@ -190,7 +205,7 @@ export default function HeroSlider() {
     const baseGradient =
       "linear-gradient(90deg, rgba(6,20,34,0.92) 0%, rgba(6,20,34,0.78) 55%, rgba(6,20,34,0.55) 100%)";
 
-    if (slide?.image_url) {
+    if (ready && slide?.image_url) {
       return {
         backgroundImage: `${baseGradient}, url(${slide.image_url})`,
         backgroundSize: "cover",
@@ -198,12 +213,13 @@ export default function HeroSlider() {
       } as React.CSSProperties;
     }
 
+    // Shell/background while loading (no text)
     return {
       backgroundImage: "linear-gradient(135deg, #071b2e 0%, #051524 50%, #071b2e 100%)",
       backgroundSize: "cover",
       backgroundPosition: "center",
     } as React.CSSProperties;
-  }, [slide?.image_url]);
+  }, [ready, slide?.image_url]);
 
   function prev() {
     setIdx((v) => clampIdx(v - 1));
@@ -213,14 +229,14 @@ export default function HeroSlider() {
     setIdx((v) => clampIdx(v + 1));
   }
 
-  // Auto-rotate (only when we actually have multiple slides)
+  // Auto-rotate (only when ready and multiple slides)
   useEffect(() => {
     if (timerRef.current) {
       window.clearInterval(timerRef.current);
       timerRef.current = null;
     }
 
-    if (!settings.auto_rotate) return;
+    if (!(ready && settings.auto_rotate)) return;
     if (slides.length <= 1) return;
 
     timerRef.current = window.setInterval(() => {
@@ -233,7 +249,7 @@ export default function HeroSlider() {
         timerRef.current = null;
       }
     };
-  }, [settings.auto_rotate, settings.interval_ms, slides.length]);
+  }, [ready, settings.auto_rotate, settings.interval_ms, slides.length]);
 
   const showArrows = ready && settings.show_arrows && slides.length > 1 && screen !== "mobile";
   const arrowsOnDesktop = screen === "desktop";
@@ -247,9 +263,7 @@ export default function HeroSlider() {
   const maxTextWidth = screen === "mobile" ? "max-w-[26rem]" : "max-w-3xl";
 
   const headlineCls =
-    screen === "mobile"
-      ? "text-[10px] tracking-[0.24em]"
-      : "text-[11px] tracking-[0.28em]";
+    screen === "mobile" ? "text-[10px] tracking-[0.24em]" : "text-[11px] tracking-[0.28em]";
 
   const titleCls =
     screen === "mobile"
@@ -257,41 +271,11 @@ export default function HeroSlider() {
       : "text-3xl sm:text-4xl md:text-5xl leading-tight";
 
   const bodyCls =
-    screen === "mobile"
-      ? "text-[13px] leading-[1.45]"
-      : "text-sm sm:text-base leading-relaxed";
+    screen === "mobile" ? "text-[13px] leading-[1.45]" : "text-sm sm:text-base leading-relaxed";
 
   const ctaCls = screen === "mobile" ? "px-6 py-2.5 text-sm" : "px-8 py-3 text-sm";
 
   const dotsBottom = screen === "mobile" ? "bottom-4" : "bottom-6";
-
-  // ✅ While not ready, reserve the hero height but show NOTHING (no "quick hero")
-  if (!ready) {
-    return (
-      <section className="bg-white">
-        <div className="mx-auto max-w-6xl px-4 pt-10 pb-8">
-          <div
-            className="mx-auto w-full rounded-[34px]"
-            style={{ height: `${heightPx}px`, minHeight: `${heightPx}px` }}
-          />
-        </div>
-      </section>
-    );
-  }
-
-  // If ready but still no slides, keep it blank (same reserved space)
-  if (!hasSlides) {
-    return (
-      <section className="bg-white">
-        <div className="mx-auto max-w-6xl px-4 pt-10 pb-8">
-          <div
-            className="mx-auto w-full rounded-[34px]"
-            style={{ height: `${heightPx}px`, minHeight: `${heightPx}px` }}
-          />
-        </div>
-      </section>
-    );
-  }
 
   return (
     <section className="bg-white">
@@ -313,42 +297,46 @@ export default function HeroSlider() {
             }}
           />
 
-          {/* Content */}
-          <div className={"relative z-10 flex h-full w-full flex-col justify-center " + wrapPadding}>
-            <div className={`mx-auto flex w-full ${maxTextWidth} flex-col ${textAlignClass}`}>
-              {slide?.headline ? (
-                <div className={`${headlineCls} uppercase`} style={{ color: "rgba(255,255,255,0.65)" }}>
-                  {slide.headline}
-                </div>
-              ) : null}
+          {/* Content only when ready */}
+          {ready && hasSlides ? (
+            <div className={"relative z-10 flex h-full w-full flex-col justify-center " + wrapPadding}>
+              <div className={`mx-auto flex w-full ${maxTextWidth} flex-col ${textAlignClass}`}>
+                {slide?.headline ? (
+                  <div className={`${headlineCls} uppercase`} style={{ color: "rgba(255,255,255,0.65)" }}>
+                    {slide.headline}
+                  </div>
+                ) : null}
 
-              <h1 className={`mt-3 sm:mt-4 font-semibold ${titleCls}`} style={{ color: settings.text_color }}>
-                {slide?.title}
-              </h1>
+                <h1 className={`mt-3 sm:mt-4 font-semibold ${titleCls}`} style={{ color: settings.text_color }}>
+                  {slide?.title}
+                </h1>
 
-              {slide?.body ? (
-                <p
-                  className={`mt-3 sm:mt-4 ${bodyCls} text-white/85 break-words ${screen === "mobile" ? "line-clamp-6" : ""}`}
-                >
-                  {slide.body}
-                </p>
-              ) : null}
-
-              {slide?.cta_text ? (
-                <div className="mt-5 sm:mt-6">
-                  <a
-                    href={slide.cta_href || "#"}
-                    className={`inline-flex items-center justify-center rounded-full bg-white font-medium text-black ${ctaCls}`}
+                {slide?.body ? (
+                  <p
+                    className={`mt-3 sm:mt-4 ${bodyCls} text-white/85 break-words ${
+                      screen === "mobile" ? "line-clamp-6" : ""
+                    }`}
                   >
-                    {slide.cta_text}
-                  </a>
-                </div>
-              ) : null}
+                    {slide.body}
+                  </p>
+                ) : null}
+
+                {slide?.cta_text ? (
+                  <div className="mt-5 sm:mt-6">
+                    <a
+                      href={slide.cta_href || "#"}
+                      className={`inline-flex items-center justify-center rounded-full bg-white font-medium text-black ${ctaCls}`}
+                    >
+                      {slide.cta_text}
+                    </a>
+                  </div>
+                ) : null}
+              </div>
             </div>
-          </div>
+          ) : null}
 
           {/* Dots */}
-          {settings.show_dots && slides.length > 1 ? (
+          {ready && settings.show_dots && slides.length > 1 ? (
             <div className={`absolute ${dotsBottom} left-1/2 z-20 flex -translate-x-1/2 items-center gap-2`}>
               {slides.map((_, i) => {
                 const active = i === idx;
@@ -361,7 +349,9 @@ export default function HeroSlider() {
                     className={
                       active
                         ? "h-2 w-10 rounded-full bg-white transition-none"
-                        : `rounded-full bg-white/35 transition-none ${screen === "mobile" ? "h-3 w-3" : "h-2 w-2"}`
+                        : `rounded-full bg-white/35 transition-none ${
+                            screen === "mobile" ? "h-3 w-3" : "h-2 w-2"
+                          }`
                     }
                   />
                 );
