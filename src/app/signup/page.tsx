@@ -1,6 +1,7 @@
+// src/app/signup/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
@@ -48,30 +49,27 @@ async function sleep(ms: number) {
  * - So we MUST UPDATE the existing row after signUp, not UPSERT.
  */
 async function updateProfileWithRetry(userId: string, patch: Partial<ProfileRow>) {
-  // Retry briefly because the trigger insert can race the first client request
   const attempts = 6;
   const delayMs = 400;
 
   let lastErr: any = null;
 
   for (let i = 0; i < attempts; i++) {
-    const res = await supabase
-      .from("profiles")
-      .update(patch)
-      .eq("id", userId);
+    const res = await supabase.from("profiles").update(patch).eq("id", userId);
 
     if (!res.error) return;
 
     lastErr = res.error;
-
-    // If row isn't there yet (rare), wait and try again
     await sleep(delayMs);
   }
 
   throw lastErr ?? new Error("Could not update profile.");
 }
 
-export default function SignupPage() {
+/* ======================================================
+   INNER PAGE — SAFE TO USE useSearchParams HERE
+   ====================================================== */
+function SignupInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -82,14 +80,12 @@ export default function SignupPage() {
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
-  // If already logged in, send them home (signup isn't needed)
   useEffect(() => {
     let alive = true;
     async function boot() {
@@ -123,7 +119,6 @@ export default function SignupPage() {
 
       const fullName = [fn, ln].filter(Boolean).join(" ").trim();
 
-      // ✅ Create auth user + also store names in auth metadata (useful fallback)
       const { data, error } = await supabase.auth.signUp({
         email: em,
         password: pw,
@@ -143,8 +138,6 @@ export default function SignupPage() {
 
       const userId = data.user?.id ?? null;
 
-      // If email confirmation is enabled, there may be NO session yet.
-      // We still try to save profile names when possible, but we won't block signup if it fails.
       if (userId) {
         try {
           await updateProfileWithRetry(userId, {
@@ -153,18 +146,13 @@ export default function SignupPage() {
             full_name: fullName || null,
           });
         } catch (profileErr) {
-          // Don't fail signup just because profile update failed.
-          // Show a helpful message.
-          // eslint-disable-next-line no-console
           console.error("Profile update failed:", profileErr);
           setStatus(
             "Account created, but we could not save your profile details yet. Please log in again (or contact admin)."
           );
-          // Continue to login page anyway
         }
       }
 
-      // Route: if "next" provided, go to login with next param
       if (nextParam) {
         router.replace(`/login?next=${encodeURIComponent(nextParam)}`);
         return;
@@ -200,88 +188,62 @@ export default function SignupPage() {
 
           <form onSubmit={onSubmit} className="mt-6 space-y-4">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label className="block text-xs font-semibold tracking-wide text-black/70">
-                  First name
-                </label>
-                <input
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  type="text"
-                  autoComplete="given-name"
-                  className="mt-2 w-full rounded-2xl border border-black/15 bg-white px-4 py-3 text-sm outline-none focus:border-black/35"
-                  placeholder="First"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold tracking-wide text-black/70">
-                  Last name
-                </label>
-                <input
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  type="text"
-                  autoComplete="family-name"
-                  className="mt-2 w-full rounded-2xl border border-black/15 bg-white px-4 py-3 text-sm outline-none focus:border-black/35"
-                  placeholder="Last"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold tracking-wide text-black/70">
-                Email
-              </label>
               <input
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                type="email"
-                autoComplete="email"
-                className="mt-2 w-full rounded-2xl border border-black/15 bg-white px-4 py-3 text-sm outline-none focus:border-black/35"
-                placeholder="you@example.com"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                placeholder="First name"
+                className="rounded-2xl border border-black/15 px-4 py-3 text-sm"
+              />
+              <input
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                placeholder="Last name"
+                className="rounded-2xl border border-black/15 px-4 py-3 text-sm"
               />
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold tracking-wide text-black/70">
-                Password
-              </label>
-              <input
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                type="password"
-                autoComplete="new-password"
-                className="mt-2 w-full rounded-2xl border border-black/15 bg-white px-4 py-3 text-sm outline-none focus:border-black/35"
-                placeholder="••••••••"
-              />
-            </div>
+            <input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email"
+              className="w-full rounded-2xl border border-black/15 px-4 py-3 text-sm"
+            />
+
+            <input
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              type="password"
+              placeholder="Password"
+              className="w-full rounded-2xl border border-black/15 px-4 py-3 text-sm"
+            />
 
             <button
               type="submit"
               disabled={busy}
-              className={
-                "mt-2 w-full rounded-full bg-black px-5 py-3 text-sm font-semibold text-white transition " +
-                (busy ? "opacity-70" : "hover:bg-[#1FA2FF]")
-              }
+              className="w-full rounded-full bg-black py-3 text-sm font-semibold text-white"
             >
               {busy ? "Creating account..." : "Create account"}
             </button>
 
-            <div className="pt-2 text-center text-sm text-black/70">
-              Already have an account?{" "}
-              <Link href="/login" className="font-semibold underline underline-offset-4">
-                Sign in
+            <div className="text-center text-sm">
+              <Link href="/login" className="underline">
+                Already have an account?
               </Link>
             </div>
           </form>
-
-          <div className="mt-6 text-center text-xs text-black/45">
-            New accounts start as <span className="font-semibold">member</span>. Admin can upgrade to{" "}
-            <span className="font-semibold">grind_member</span>.
-          </div>
         </div>
       </div>
     </div>
+  );
+}
+
+/* ======================================================
+   PAGE WRAPPER — SUSPENSE FIX
+   ====================================================== */
+export default function SignupPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignupInner />
+    </Suspense>
   );
 }
