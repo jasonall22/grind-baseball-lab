@@ -1,6 +1,6 @@
+// src/components/SiteNav.tsx
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -39,7 +39,6 @@ function pickDisplayName(args: {
   const m = args.meta;
   const email = args.email;
 
-  // 1) Profile table (best)
   const pf = clean(p?.first_name);
   const pl = clean(p?.last_name);
   const pFull = clean(p?.full_name);
@@ -47,14 +46,12 @@ function pickDisplayName(args: {
   if (pf || pl) return [pf, pl].filter(Boolean).join(" ").trim();
   if (pFull) return pFull;
 
-  // 2) Supabase Auth user metadata (good fallback)
   const mf = clean(m?.first_name);
   const ml = clean(m?.last_name);
   const mFull = clean(m?.full_name) || clean(m?.name);
   if (mf || ml) return [mf, ml].filter(Boolean).join(" ").trim();
   if (mFull) return mFull;
 
-  // 3) Last resort
   return email ?? "Member";
 }
 
@@ -156,8 +153,8 @@ export default function SiteNav() {
   const [userMeta, setUserMeta] = useState<UserMeta | null>(null);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
 
-  const [menuOpen, setMenuOpen] = useState(false); // user menu
-  const [mobileOpen, setMobileOpen] = useState(false); // full-screen nav
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const pillRef = useRef<HTMLDivElement | null>(null);
 
@@ -173,7 +170,6 @@ export default function SiteNav() {
   const isAdmin = (profile?.role ?? "") === "admin";
   const userInitials = initialsFromName(welcomeName, userEmail);
 
-  // Lock body scroll when mobile overlay is open
   useEffect(() => {
     if (!mobileOpen) return;
     const prev = document.body.style.overflow;
@@ -242,7 +238,6 @@ export default function SiteNav() {
     };
   }, []);
 
-  // Close menus on outside click / escape
   useEffect(() => {
     function onDocMouseDown(e: MouseEvent) {
       if (!menuOpen) return;
@@ -276,21 +271,16 @@ export default function SiteNav() {
   }
 
   function goTo(href: string) {
-    // Close overlays first (prevents overlay sticking on route change)
     setMobileOpen(false);
     setMenuOpen(false);
 
-    // Hash links:
     if (href.startsWith("#")) {
-      // If we're not on homepage, navigate to homepage + hash
       if (pathname !== "/") {
         router.push(`/${href}`);
         return;
       }
 
-      // If we are on homepage, scroll to target
       const id = href.slice(1);
-      // Small defer so overlay unmount doesn't fight scroll
       window.setTimeout(() => {
         const el = document.getElementById(id);
         if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -299,7 +289,6 @@ export default function SiteNav() {
       return;
     }
 
-    // Normal links
     router.push(href);
   }
 
@@ -307,7 +296,6 @@ export default function SiteNav() {
     <>
       <header className="sticky top-0 z-50 bg-black text-white">
         <div className="mx-auto max-w-7xl px-4 py-6">
-          {/* Logo centered */}
           <div className="flex items-center justify-center">
             <Link
               href="/"
@@ -318,20 +306,15 @@ export default function SiteNav() {
                 setMenuOpen(false);
               }}
             >
-              <Image
+              <img
                 src="/logo.png"
                 alt="The Grind Baseball Lab"
-                width={720}
-                height={280}
-                priority
                 className="h-[92px] sm:h-[112px] w-auto select-none"
               />
             </Link>
           </div>
 
-          {/* Links centered + circle on the right + hamburger on the left (mobile/tablet) */}
           <div className="relative mt-5 flex items-center">
-            {/* Mobile hamburger (shows below lg) */}
             <button
               type="button"
               aria-label="Open menu"
@@ -341,7 +324,6 @@ export default function SiteNav() {
               <HamburgerIcon />
             </button>
 
-            {/* Center links (desktop only) */}
             <nav className="mx-auto hidden flex-wrap items-center justify-center gap-6 lg:flex">
               {items.map((item) => {
                 const isActive =
@@ -349,23 +331,15 @@ export default function SiteNav() {
                     ? pathname === "/"
                     : pathname === item.href;
 
-                const base =
-                  "uppercase underline-offset-[10px] hover:underline hover:text-white";
-                const text =
-                  "text-[11px] font-semibold tracking-[0.28em] text-white/80";
-                const active = isActive ? "underline text-white" : "";
+                const cls =
+                  "uppercase underline-offset-[10px] hover:underline hover:text-white text-[11px] font-semibold tracking-[0.28em] text-white/80 " +
+                  (isActive ? "underline text-white" : "");
 
-                const cls = [base, text, active].join(" ").trim();
-
-                if (item.href.startsWith("#")) {
-                  return (
-                    <a key={item.href} href={item.href} className={cls}>
-                      {item.label}
-                    </a>
-                  );
-                }
-
-                return (
+                return item.href.startsWith("#") ? (
+                  <a key={item.href} href={item.href} className={cls}>
+                    {item.label}
+                  </a>
+                ) : (
                   <Link key={item.href} href={item.href} className={cls}>
                     {item.label}
                   </Link>
@@ -373,7 +347,6 @@ export default function SiteNav() {
               })}
             </nav>
 
-            {/* Right circle */}
             <div
               className="absolute right-0 top-1/2 -translate-y-1/2"
               ref={pillRef}
@@ -381,100 +354,33 @@ export default function SiteNav() {
               {!isLoggedIn ? (
                 <Link
                   href="/login"
-                  aria-current={isLoginPage ? "page" : undefined}
                   aria-label="Login"
-                  title="Login"
-                  className={
-                    "inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white/95" +
-                    (isLoginPage ? " pointer-events-none opacity-60" : " hover:bg-white/15")
-                  }
-                  onClick={() => setMobileOpen(false)}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white/95 hover:bg-white/15"
                 >
                   <UserIcon />
                 </Link>
               ) : (
-                <div className="relative inline-block text-left">
-                  <button
-                    type="button"
-                    onClick={() => setMenuOpen((v) => !v)}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/10 text-[12px] font-semibold tracking-[0.14em] text-white/95 hover:bg-white/15"
-                    aria-haspopup="menu"
-                    aria-expanded={menuOpen}
-                    aria-label="Open account menu"
-                    title={welcomeName}
-                  >
-                    {userInitials}
-                  </button>
-
-                  {menuOpen ? (
-                    <div
-                      role="menu"
-                      className="absolute right-0 mt-3 w-64 overflow-hidden rounded-2xl border border-white/10 bg-[#0b0b0b] shadow-[0_18px_40px_rgba(0,0,0,0.45)]"
-                    >
-                      <div className="px-4 py-3 border-b border-white/10">
-                        <div className="text-sm font-semibold text-white/95">{welcomeName}</div>
-                        {userEmail ? (
-                          <div className="mt-0.5 text-xs text-white/55">{userEmail}</div>
-                        ) : null}
-                      </div>
-
-                      <div className="py-2">
-                        <Link
-                          href="/dashboard"
-                          role="menuitem"
-                          onClick={() => setMenuOpen(false)}
-                          className="block px-4 py-3 text-sm text-white/90 hover:bg-white/5"
-                        >
-                          Dashboard
-                        </Link>
-
-                        {isAdmin ? (
-                          <Link
-                            href="/admin"
-                            role="menuitem"
-                            onClick={() => setMenuOpen(false)}
-                            className="block px-4 py-3 text-sm text-white/90 hover:bg-white/5"
-                          >
-                            Admin Dashboard
-                          </Link>
-                        ) : null}
-
-                        <button
-                          type="button"
-                          onClick={logout}
-                          role="menuitem"
-                          className="w-full text-left px-4 py-3 text-sm text-white/90 hover:bg-white/5"
-                        >
-                          Logout
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setMenuOpen((v) => !v)}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/10 text-[12px] font-semibold tracking-[0.14em] text-white/95 hover:bg-white/15"
+                >
+                  {userInitials}
+                </button>
               )}
             </div>
           </div>
         </div>
       </header>
 
-      {/* Full-screen mobile/tablet menu */}
       {mobileOpen ? (
         <div className="fixed inset-0 z-[60] bg-black text-white">
           <div className="mx-auto max-w-7xl px-4 py-6">
-            {/* Top row: logo + close */}
             <div className="relative flex items-center justify-center">
-              <Link
-                href="/"
-                aria-label="The Grind Baseball Lab home"
-                className="block"
-                onClick={() => setMobileOpen(false)}
-              >
-                <Image
+              <Link href="/" onClick={() => setMobileOpen(false)}>
+                <img
                   src="/logo.png"
                   alt="The Grind Baseball Lab"
-                  width={720}
-                  height={280}
-                  priority
                   className="h-[64px] w-auto select-none"
                 />
               </Link>
@@ -507,63 +413,8 @@ export default function SiteNav() {
                 ))}
               </div>
 
-              <div className="mt-8">
-                {!isLoggedIn ? (
-                  <button
-                    type="button"
-                    onClick={() => goTo("/login")}
-                    className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/10 px-6 py-3 text-sm font-semibold text-white/90"
-                  >
-                    Login
-                  </button>
-                ) : (
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                    {/* Mobile menu: show initials circle + name */}
-                    <div className="flex items-center gap-3">
-                      <span className="inline-flex h-9 w-9 select-none items-center justify-center rounded-full bg-white/15 text-[12px] font-semibold tracking-[0.14em] text-white">
-                        {userInitials}
-                      </span>
-                      <div>
-                        <div className="text-sm font-semibold text-white/90">{welcomeName}</div>
-                        {userEmail ? (
-                          <div className="mt-0.5 text-xs text-white/55">{userEmail}</div>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => goTo("/dashboard")}
-                        className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white/90"
-                      >
-                        Dashboard
-                      </button>
-
-                      {isAdmin ? (
-                        <button
-                          type="button"
-                          onClick={() => goTo("/admin")}
-                          className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white/90"
-                        >
-                          Admin
-                        </button>
-                      ) : null}
-
-                      <button
-                        type="button"
-                        onClick={logout}
-                        className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white/90"
-                      >
-                        Logout
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                <div className="mt-10 text-xs text-white/45">
-                  © {new Date().getFullYear()} The Grind Baseball Lab
-                </div>
+              <div className="mt-10 text-xs text-white/45">
+                © {new Date().getFullYear()} The Grind Baseball Lab
               </div>
             </div>
           </div>
