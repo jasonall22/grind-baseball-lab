@@ -4,21 +4,33 @@ import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
+type Role = "admin" | "grind_member" | "member";
+
 type ProfileRow = {
   id: string;
-  role: "admin" | "member" | "parent" | "coach" | string | null;
+  role: Role | string | null;
 };
 
+const BUILD_TAG = "LOGIN_PAGE_V3_2026-01-12";
+
 function cleanEmail(v: string) {
-  return v.trim();
+  return (v ?? "").trim();
 }
 
 function isSafeInternalPath(path: string | null | undefined) {
   if (!path) return false;
   if (!path.startsWith("/")) return false;
-  // prevent open-redirect-like values
   if (path.startsWith("//")) return false;
   return true;
+}
+
+async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return await Promise.race([
+    p,
+    new Promise<T>((_resolve, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    ),
+  ]);
 }
 
 function LoginInner() {
@@ -36,50 +48,76 @@ function LoginInner() {
     return isSafeInternalPath(raw) ? raw : null;
   }, [searchParams]);
 
-  async function getRole(userId: string): Promise<string | null> {
-    const { data } = await supabase
+  useEffect(() => {
+    // Verifies you are running the latest file (no UI change).
+    // Check DevTools console for this line.
+    // eslint-disable-next-line no-console
+    console.log(`[LoginPage] ${BUILD_TAG}`);
+  }, []);
+
+  async function getRole(userId: string): Promise<Role> {
+    const { data, error } = await supabase
       .from("profiles")
       .select("id, role")
       .eq("id", userId)
       .maybeSingle();
 
-    return (data as ProfileRow | null)?.role ?? null;
+    if (error) throw new Error(error.message || "Could not read your profile role.");
+
+    const role = (data as ProfileRow | null)?.role ?? "member";
+    if (role === "admin") return "admin";
+    if (role === "grind_member") return "grind_member";
+    return "member";
   }
 
   async function routeAfterLogin(userId: string) {
-    const role = await getRole(userId);
+    // Never allow this to hang forever:
+    const role = await withTimeout(getRole(userId), 6000, "Role lookup");
 
-    // ✅ Requested behavior:
-    // - Admin -> /admin
-    // - Everyone else -> homepage
-    if ((role ?? "") === "admin") {
-      router.push("/admin");
+    if (role === "admin") {
+      router.replace("/admin");
       return;
     }
 
-    // If next param exists (like /pricing), allow it for non-admin users too
-    // but never auto-send non-admin into /admin
-    if (nextParam && !nextParam.startsWith("/admin")) {
-      router.push(nextParam);
+    if (role === "grind_member") {
+      if (nextParam && !nextParam.startsWith("/admin")) {
+        router.replace(nextParam);
+        return;
+      }
+      router.replace("/dashboard");
       return;
     }
 
-    router.push("/");
+    if (nextParam && !nextParam.startsWith("/admin") && !nextParam.startsWith("/dashboard")) {
+      router.replace(nextParam);
+      return;
+    }
+
+    router.replace("/");
   }
 
-  // If already logged in, route immediately
+  // If already logged in, route immediately (and show error if role lookup fails)
   useEffect(() => {
     let alive = true;
 
     async function boot() {
-      const { data } = await supabase.auth.getSession();
-      const session = data.session;
-      if (!alive) return;
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (!alive) return;
 
-      const userId = session?.user?.id ?? null;
-      if (!userId) return;
+        if (error) {
+          setErrorMsg(error.message || "Session error. Please sign in again.");
+          return;
+        }
 
-      await routeAfterLogin(userId);
+        const userId = data.session?.user?.id ?? null;
+        if (!userId) return;
+
+        await routeAfterLogin(userId);
+      } catch (e: any) {
+        if (!alive) return;
+        setErrorMsg(e?.message || "Could not route you after login.");
+      }
     }
 
     void boot();
@@ -97,26 +135,32 @@ function LoginInner() {
     setBusy(true);
     setErrorMsg(null);
 
-    const em = cleanEmail(email);
-    if (!em || !password) {
-      setErrorMsg("Please enter your email and password.");
+    try {
+      const em = cleanEmail(email);
+      if (!em || !password) {
+        setErrorMsg("Please enter your email and password.");
+        return;
+      }
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: em,
+        password,
+      });
+
+      if (error || !data.user) {
+        setErrorMsg(error?.message ?? "Login failed. Please try again.");
+        return;
+      }
+
+      // Ensure the session is fully available before routing
+      await withTimeout(supabase.auth.getSession(), 4000, "Session sync");
+
+      await routeAfterLogin(data.user.id);
+    } catch (e: any) {
+      setErrorMsg(e?.message || "Login failed. Please try again.");
+    } finally {
       setBusy(false);
-      return;
     }
-
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: em,
-      password,
-    });
-
-    if (error || !data.user) {
-      setErrorMsg(error?.message ?? "Login failed. Please try again.");
-      setBusy(false);
-      return;
-    }
-
-    await routeAfterLogin(data.user.id);
-    setBusy(false);
   }
 
   return (
@@ -188,7 +232,7 @@ function LoginInner() {
           </form>
 
           <div className="mt-6 text-center text-xs text-black/45">
-            Admin accounts route to the Admin Dashboard automatically.
+            Admin routes to /admin. GrindMember routes to /dashboard.
           </div>
         </div>
       </div>
@@ -197,8 +241,6 @@ function LoginInner() {
 }
 
 export default function LoginPage() {
-  // ✅ Fix for Vercel build:
-  // useSearchParams is inside LoginInner, wrapped by Suspense here.
   return (
     <Suspense
       fallback={

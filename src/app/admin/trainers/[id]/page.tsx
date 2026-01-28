@@ -4,97 +4,154 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
+/**
+ * ✅ 2D drag that persists to the DB:
+ * - photo_position: "X% Y%" (object-position)
+ * - photo_scale: number (zoom)
+ */
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function safeFileName(name: string) {
+  const trimmed = (name || "").trim();
+  const base = trimmed.replace(/\s+/g, "-").replace(/[^a-zA-Z0-9._-]/g, "");
+  return base.length ? base : "image";
+}
+
+function parsePos(pos: string | null | undefined): { x: number; y: number } {
+  const s = (pos ?? "").trim();
+  if (!s) return { x: 50, y: 50 };
+  const parts = s.split(/\s+/).slice(0, 2);
+  const x = Number(String(parts[0] ?? "").replace("%", ""));
+  const y = Number(String(parts[1] ?? "").replace("%", ""));
+  return {
+    x: Number.isFinite(x) ? clamp(x, 0, 100) : 50,
+    y: Number.isFinite(y) ? clamp(y, 0, 100) : 50,
+  };
+}
+
+function fmtPos(x: number, y: number) {
+  return `${Math.round(clamp(x, 0, 100))}% ${Math.round(clamp(y, 0, 100))}%`;
+}
+
 export default function EditTrainerPage() {
   const router = useRouter();
   const params = useParams();
   const trainerId = params.id as string;
-
-  const dragging = useRef(false);
-  const last = useRef<{ x: number; y: number } | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const [firstName, setFirstName] = useState(""); 
-  const [lastName, setLastName] = useState(""); 
-  const [title, setTitle] = useState(""); 
-  const [bio, setBio] = useState(""); 
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [title, setTitle] = useState("");
+  const [bio, setBio] = useState("");
 
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
 
-  // Crop-frame model
-  const [posX, setPosX] = useState(0);
-  const [posY, setPosY] = useState(0);
   const [zoom, setZoom] = useState(1);
+  const [pos, setPos] = useState<{ x: number; y: number }>(() => parsePos(null));
+
+  // Drag state
+  const dragRef = useRef<{
+    dragging: boolean;
+    startClientX: number;
+    startClientY: number;
+    startPosX: number;
+    startPosY: number;
+    boxW: number;
+    boxH: number;
+  } | null>(null);
 
   useEffect(() => {
     let alive = true;
 
     async function load() {
-      try {
-        const { data, error } = await supabase
-          .from("trainers")
-          .select("first_name,last_name,title,bio,photo_url")
-          .eq("id", trainerId)
-          .single();
+      setLoading(true);
 
-        if (!alive) return;
+      const { data, error } = await supabase
+        .from("trainers")
+        .select("first_name,last_name,title,bio,photo_url,photo_position,photo_scale")
+        .eq("id", trainerId)
+        .single();
 
-        if (error || !data) {
-          console.error("Trainer load error:", error);
-          setLoading(false);
-          return;
-        }
+      if (!alive) return;
 
-        setFirstName(data.first_name ?? "");
-        setLastName(data.last_name ?? "");
-        setTitle(data.title ?? "");
-        setBio(data.bio ?? "");
-        setPhotoUrl(data.photo_url ?? null);
-
-        setPosX(0);
-        setPosY(0);
-        setZoom(1);
-
+      if (error || !data) {
+        console.error("Trainer load error:", error);
         setLoading(false);
-      } catch (err) {
-        console.error("Unexpected load error:", err);
-        setLoading(false);
+        return;
       }
+
+      setFirstName(data.first_name ?? "");
+      setLastName(data.last_name ?? "");
+      setTitle(data.title ?? "");
+      setBio(data.bio ?? "");
+      setPhotoUrl(data.photo_url ?? null);
+
+      setPos(parsePos(data.photo_position ?? null));
+      setZoom(typeof data.photo_scale === "number" && Number.isFinite(data.photo_scale) ? data.photo_scale : 1);
+
+      setLoading(false);
     }
 
-    load();
+    void load();
+
     return () => {
       alive = false;
     };
   }, [trainerId]);
 
-  function onPointerDown(e: React.PointerEvent) {
-    dragging.current = true;
-    last.current = { x: e.clientX, y: e.clientY };
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    const activeImage = previewUrl ?? photoUrl;
+    if (!activeImage) return;
+
+    const box = e.currentTarget.getBoundingClientRect();
+    dragRef.current = {
+      dragging: true,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startPosX: pos.x,
+      startPosY: pos.y,
+      boxW: Math.max(1, box.width),
+      boxH: Math.max(1, box.height),
+    };
+
+    e.currentTarget.setPointerCapture(e.pointerId);
   }
 
-  function onPointerMove(e: React.PointerEvent) {
-    if (!dragging.current || !last.current) return;
+  function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const st = dragRef.current;
+    if (!st || !st.dragging) return;
 
-    const dx = e.clientX - last.current.x;
-    const dy = e.clientY - last.current.y;
+    const dx = e.clientX - st.startClientX;
+    const dy = e.clientY - st.startClientY;
 
-    setPosX((v) => Math.max(-50, Math.min(50, v + dx * 0.15)));
-    setPosY((v) => Math.max(-50, Math.min(50, v + dy * 0.15)));
+    const deltaXPercent = (dx / st.boxW) * 100;
+    const deltaYPercent = (dy / st.boxH) * 100;
 
-    last.current = { x: e.clientX, y: e.clientY };
+    const damp = 0.85;
+
+    const nextX = clamp(st.startPosX + deltaXPercent * damp, 0, 100);
+    const nextY = clamp(st.startPosY + deltaYPercent * damp, 0, 100);
+
+    setPos({ x: nextX, y: nextY });
   }
 
-  function onPointerUp(e: React.PointerEvent) {
-    dragging.current = false;
-    last.current = null;
-    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+  function onPointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    const st = dragRef.current;
+    if (st) st.dragging = false;
+    dragRef.current = null;
+
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {}
   }
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -103,15 +160,15 @@ export default function EditTrainerPage() {
 
     setPhotoFile(file);
     setPreviewUrl(URL.createObjectURL(file));
-    setPosX(0);
-    setPosY(0);
-    setZoom(1);
+
+    // Keep their existing crop unless they want Reset.
   }
 
   function handleReset() {
-    setPosX(0);
-    setPosY(0);
+    setPos({ x: 50, y: 50 });
     setZoom(1);
+    setPreviewUrl(null);
+    setPhotoFile(null);
   }
 
   async function handleSave() {
@@ -119,20 +176,27 @@ export default function EditTrainerPage() {
     let finalUrl = photoUrl;
 
     try {
+      // Upload new photo (optional)
       if (photoFile) {
-        const ext = photoFile.name.split(".").pop();
-        const fileName = `${trainerId}-${Date.now()}.${ext}`;
+        const clean = safeFileName(photoFile.name);
+        const stamp = Date.now();
+        const path = `trainers/${trainerId}/${stamp}-${clean}`;
 
-        await supabase.storage
+        const { error: upErr } = await supabase.storage
           .from("trainer-photos")
-          .upload(fileName, photoFile, { upsert: true });
+          .upload(path, photoFile, { upsert: true, contentType: photoFile.type });
 
-        finalUrl = supabase.storage
-          .from("trainer-photos")
-          .getPublicUrl(fileName).data.publicUrl;
+        if (upErr) {
+          console.error("Upload error:", upErr);
+          alert("Upload failed. Check bucket + policies.");
+          setSaving(false);
+          return;
+        }
+
+        finalUrl = supabase.storage.from("trainer-photos").getPublicUrl(path).data.publicUrl ?? null;
       }
 
-      await supabase
+      const { error: upErr } = await supabase
         .from("trainers")
         .update({
           first_name: firstName,
@@ -140,23 +204,41 @@ export default function EditTrainerPage() {
           title,
           bio,
           photo_url: finalUrl,
+          photo_position: fmtPos(pos.x, pos.y),
+          photo_scale: zoom,
         })
         .eq("id", trainerId);
+
+      if (upErr) {
+        console.error("Save error:", upErr);
+        alert("Could not save trainer. (Are you logged in as admin?)");
+        setSaving(false);
+        return;
+      }
 
       router.push("/admin/trainers");
     } catch (err) {
       console.error("Save error:", err);
+      alert("Unexpected save error.");
       setSaving(false);
     }
   }
 
   async function handleDelete() {
     setDeleting(true);
+
     try {
-      await supabase.from("trainers").delete().eq("id", trainerId);
+      const { error } = await supabase.from("trainers").delete().eq("id", trainerId);
+      if (error) {
+        console.error("Delete error:", error);
+        alert("Could not delete trainer.");
+        setDeleting(false);
+        return;
+      }
       router.push("/admin/trainers");
     } catch (err) {
       console.error("Delete error:", err);
+      alert("Unexpected delete error.");
       setDeleting(false);
     }
   }
@@ -174,10 +256,31 @@ export default function EditTrainerPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
         {/* FORM */}
         <div className="space-y-4">
-          <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className="w-full rounded-lg border px-3 py-2" />
-          <input value={lastName} onChange={(e) => setLastName(e.target.value)} className="w-full rounded-lg border px-3 py-2" />
-          <input value={title} onChange={(e) => setTitle(e.target.value)} className="w-full rounded-lg border px-3 py-2" />
-          <textarea value={bio} onChange={(e) => setBio(e.target.value)} rows={4} className="w-full rounded-lg border px-3 py-2" />
+          <input
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            className="w-full rounded-lg border px-3 py-2"
+            placeholder="First name"
+          />
+          <input
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
+            className="w-full rounded-lg border px-3 py-2"
+            placeholder="Last name"
+          />
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="w-full rounded-lg border px-3 py-2"
+            placeholder="Title"
+          />
+          <textarea
+            value={bio}
+            onChange={(e) => setBio(e.target.value)}
+            rows={6}
+            className="w-full rounded-lg border px-3 py-2"
+            placeholder="Bio"
+          />
 
           <input type="file" accept="image/*" onChange={handleFile} />
 
@@ -195,24 +298,29 @@ export default function EditTrainerPage() {
           <div className="w-[320px]">
             <div className="relative rounded-2xl border border-black/10 overflow-hidden bg-white shadow-sm">
               <div className="aspect-[4/3] bg-black/5 relative overflow-hidden">
-                {activeImage && (
+                {activeImage ? (
                   <div
                     className="absolute inset-0 cursor-grab active:cursor-grabbing"
+                    style={{ touchAction: "none" }}
                     onPointerDown={onPointerDown}
                     onPointerMove={onPointerMove}
                     onPointerUp={onPointerUp}
                   >
                     <img
                       src={activeImage}
-                      className="absolute top-1/2 left-1/2 select-none pointer-events-none"
+                      alt="Trainer"
+                      className="h-full w-full select-none pointer-events-none"
                       style={{
-                        width: "auto",
-                        height: "auto",
-                        minWidth: "100%",
-                        minHeight: "100%",
-                        transform: `translate(calc(-50% + ${posX}%), calc(-50% + ${posY}%)) scale(${zoom})`,
+                        objectFit: "cover",
+                        objectPosition: fmtPos(pos.x, pos.y),
+                        transform: `scale(${zoom})`,
+                        transformOrigin: "center",
                       }}
                     />
+                  </div>
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center text-sm font-semibold text-black/40">
+                    No image yet
                   </div>
                 )}
 
@@ -221,8 +329,10 @@ export default function EditTrainerPage() {
               </div>
 
               <div className="p-4 text-center">
-                <div className="font-bold">{firstName} {lastName}</div>
-                {title && <div className="text-sm text-black/60">{title}</div>}
+                <div className="font-bold">
+                  {firstName} {lastName}
+                </div>
+                {title ? <div className="text-sm text-black/60">{title}</div> : null}
               </div>
             </div>
 
@@ -237,6 +347,10 @@ export default function EditTrainerPage() {
                 onChange={(e) => setZoom(Number(e.target.value))}
                 className="flex-1"
               />
+            </div>
+
+            <div className="mt-2 text-[11px] text-black/45">
+              Tip: drag the photo any direction to reposition • the same crop shows on the Trainers page
             </div>
           </div>
         </div>
@@ -256,6 +370,7 @@ export default function EditTrainerPage() {
           type="button"
           onClick={() => router.push("/admin/trainers")}
           className="rounded-full border border-black/25 px-6 py-2 text-sm font-semibold text-black"
+          disabled={saving}
         >
           Cancel
         </button>
@@ -264,13 +379,14 @@ export default function EditTrainerPage() {
           type="button"
           onClick={() => setShowDeleteConfirm(true)}
           className="rounded-full border border-red-500 px-6 py-2 text-sm font-semibold text-red-600"
+          disabled={saving}
         >
           Delete
         </button>
       </div>
 
       {/* DELETE CONFIRM MODAL */}
-      {showDeleteConfirm && (
+      {showDeleteConfirm ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/60" onClick={() => setShowDeleteConfirm(false)} />
           <div className="relative z-10 w-[90vw] max-w-sm rounded-2xl bg-white p-6 shadow-xl">
@@ -298,7 +414,7 @@ export default function EditTrainerPage() {
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

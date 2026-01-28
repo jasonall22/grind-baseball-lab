@@ -1,3 +1,5 @@
+// src/app/page.tsx
+
 import HeroSlider from "@/components/HeroSlider";
 import NewsUpdatesSection from "@/components/NewsUpdatesSection";
 import OurTrainingFacilitySection from "@/components/OurTrainingFacilitySection";

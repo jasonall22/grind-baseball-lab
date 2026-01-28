@@ -27,7 +27,15 @@ type HeroSlideRow = {
   cta_text: string;
   cta_href: string;
   image_url: string | null;
+
+  // Per-slide "darkness" amount (0 = none, 1 = full)
   overlay_opacity: number | null;
+
+  // ✅ Per-line colors (optional)
+  headline_color?: string | null;
+  title_color?: string | null;
+  body_color?: string | null;
+  cta_text_color?: string | null;
 };
 
 const DEFAULT_SETTINGS: HeroSettingsRow = {
@@ -35,8 +43,8 @@ const DEFAULT_SETTINGS: HeroSettingsRow = {
   height_desktop: 520,
   height_mobile: 440,
   text_align: "center",
-  overlay_color: "#000000",
-  overlay_opacity: 0.45,
+  overlay_color: "#000000", // kept for compatibility, but not used when using gradient overlay
+  overlay_opacity: 0.45,     // used as fallback for gradient darkness
   text_color: "#ffffff",
   show_arrows: true,
   show_dots: true,
@@ -84,12 +92,46 @@ function preloadImage(url: string, timeoutMs: number) {
   });
 }
 
+function safeColor(v: any): string | undefined {
+  const s = typeof v === "string" ? v.trim() : "";
+  if (!s) return undefined;
+  if (/^#[0-9a-fA-F]{3}$/.test(s)) return s;
+  if (/^#[0-9a-fA-F]{6}$/.test(s)) return s;
+  return undefined;
+}
+
+function clamp01(n: number) {
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(1, n));
+}
+
+// ✅ Dark baseGradient that we can "fade" using an opacity multiplier.
+// When darkness = 0 => gradient becomes transparent.
+// When darkness = 1 => gradient is the original dark gradient.
+function buildGradient(darkness: number) {
+  const d = clamp01(darkness);
+
+  // Original gradient alphas: 0.92 / 0.78 / 0.55
+  const a1 = (0.92 * d).toFixed(3);
+  const a2 = (0.78 * d).toFixed(3);
+  const a3 = (0.55 * d).toFixed(3);
+
+  return `linear-gradient(90deg, rgba(6,20,34,${a1}) 0%, rgba(6,20,34,${a2}) 55%, rgba(6,20,34,${a3}) 100%)`;
+}
+
 /**
  * HeroSlider (Responsive + No "stuck" feeling)
  * - No fallback slide content
  * - No placeholder TEXT
  * - Prevents the "quick first hero" flash by waiting for the first slide image to preload
  * - While loading, it renders only the hero shell (same size) with the base gradient (no text)
+ *
+ * Overlay behavior (requested):
+ * ✅ Removed the overlay DIV.
+ * ✅ Uses the built-in baseGradient overlay.
+ * ✅ The admin slider controls the gradient "darkness":
+ *    - overlay_opacity = 0 => NO overlay
+ *    - overlay_opacity = 1 => FULL overlay
  */
 export default function HeroSlider() {
   const [settings, setSettings] = useState<HeroSettingsRow>(DEFAULT_SETTINGS);
@@ -195,19 +237,23 @@ export default function HeroSlider() {
   const safeIdx = Math.max(0, Math.min(idx, Math.max(0, slides.length - 1)));
   const slide = hasSlides ? slides[safeIdx] : null;
 
-  const effectiveOverlayOpacity =
-    typeof slide?.overlay_opacity === "number" ? slide.overlay_opacity : settings.overlay_opacity;
+  // ✅ This is the "darkness" for the gradient overlay.
+  const darkness =
+    typeof slide?.overlay_opacity === "number"
+      ? clamp01(slide.overlay_opacity)
+      : clamp01(settings.overlay_opacity);
 
   const textAlignClass =
     settings.text_align === "left" ? "items-start text-left" : "items-center text-center";
 
   const bgStyle = useMemo(() => {
-    const baseGradient =
-      "linear-gradient(90deg, rgba(6,20,34,0.92) 0%, rgba(6,20,34,0.78) 55%, rgba(6,20,34,0.55) 100%)";
+    const shellBg =
+      "linear-gradient(135deg, #071b2e 0%, #051524 50%, #071b2e 100%)";
 
     if (ready && slide?.image_url) {
+      const gradient = buildGradient(darkness);
       return {
-        backgroundImage: `${baseGradient}, url(${slide.image_url})`,
+        backgroundImage: `${gradient}, url(${slide.image_url})`,
         backgroundSize: "cover",
         backgroundPosition: "center",
       } as React.CSSProperties;
@@ -215,11 +261,11 @@ export default function HeroSlider() {
 
     // Shell/background while loading (no text)
     return {
-      backgroundImage: "linear-gradient(135deg, #071b2e 0%, #051524 50%, #071b2e 100%)",
+      backgroundImage: shellBg,
       backgroundSize: "cover",
       backgroundPosition: "center",
     } as React.CSSProperties;
-  }, [ready, slide?.image_url]);
+  }, [ready, slide?.image_url, darkness]);
 
   function prev() {
     setIdx((v) => clampIdx(v - 1));
@@ -277,6 +323,12 @@ export default function HeroSlider() {
 
   const dotsBottom = screen === "mobile" ? "bottom-4" : "bottom-6";
 
+  // ✅ Apply per-slide colors if present; otherwise fall back to existing styling
+  const headlineColor = safeColor(slide?.headline_color) ?? "rgba(255,255,255,0.65)";
+  const titleColor = safeColor(slide?.title_color) ?? settings.text_color;
+  const bodyColor = safeColor(slide?.body_color); // if undefined, keep existing class color
+  const ctaTextColor = safeColor(slide?.cta_text_color); // if undefined, keep black
+
   return (
     <section className="bg-white">
       <div className="mx-auto max-w-6xl px-4 pt-10 pb-8">
@@ -288,26 +340,17 @@ export default function HeroSlider() {
             ...bgStyle,
           }}
         >
-          {/* Overlay */}
-          <div
-            className="absolute inset-0"
-            style={{
-              backgroundColor: settings.overlay_color,
-              opacity: effectiveOverlayOpacity,
-            }}
-          />
-
           {/* Content only when ready */}
           {ready && hasSlides ? (
             <div className={"relative z-10 flex h-full w-full flex-col justify-center " + wrapPadding}>
               <div className={`mx-auto flex w-full ${maxTextWidth} flex-col ${textAlignClass}`}>
                 {slide?.headline ? (
-                  <div className={`${headlineCls} uppercase`} style={{ color: "rgba(255,255,255,0.65)" }}>
+                  <div className={`${headlineCls} uppercase`} style={{ color: headlineColor }}>
                     {slide.headline}
                   </div>
                 ) : null}
 
-                <h1 className={`mt-3 sm:mt-4 font-semibold ${titleCls}`} style={{ color: settings.text_color }}>
+                <h1 className={`mt-3 sm:mt-4 font-semibold ${titleCls}`} style={{ color: titleColor }}>
                   {slide?.title}
                 </h1>
 
@@ -316,6 +359,7 @@ export default function HeroSlider() {
                     className={`mt-3 sm:mt-4 ${bodyCls} text-white/85 break-words ${
                       screen === "mobile" ? "line-clamp-6" : ""
                     }`}
+                    style={bodyColor ? { color: bodyColor } : undefined}
                   >
                     {slide.body}
                   </p>
@@ -326,6 +370,7 @@ export default function HeroSlider() {
                     <a
                       href={slide.cta_href || "#"}
                       className={`inline-flex items-center justify-center rounded-full bg-white font-medium text-black ${ctaCls}`}
+                      style={ctaTextColor ? { color: ctaTextColor } : undefined}
                     >
                       {slide.cta_text}
                     </a>
