@@ -1,3 +1,4 @@
+// src/components/member/WorkoutList.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -8,7 +9,7 @@ type WorkoutAssignment = {
   workout_templates: {
     title: string;
     category: string;
-  };
+  }[];
 };
 
 type Props = {
@@ -41,7 +42,7 @@ export default function WorkoutList({ weekStart, onSelectWorkout }: Props) {
         .order('created_at', { ascending: true });
 
       if (!error && data) {
-        setWorkouts(data as WorkoutAssignment[]);
+        setWorkouts(data);
       }
 
       setLoading(false);
@@ -66,18 +67,22 @@ export default function WorkoutList({ weekStart, onSelectWorkout }: Props) {
     <div className="space-y-3">
       <h2 className="text-lg font-semibold">This Week’s Workouts</h2>
 
-      {workouts.map((w) => (
-        <button
-          key={w.id}
-          onClick={() => onSelectWorkout(w.id)}
-          className="w-full text-left bg-gray-900 rounded p-4"
-        >
-          <div className="font-medium">{w.workout_templates.title}</div>
-          <div className="text-xs text-gray-400">
-            {w.workout_templates.category}
-          </div>
-        </button>
-      ))}
+      {workouts.map((w) => {
+        const template = w.workout_templates[0];
+
+        return (
+          <button
+            key={w.id}
+            onClick={() => onSelectWorkout(w.id)}
+            className="w-full text-left bg-gray-900 rounded p-4"
+          >
+            <div className="font-medium">{template?.title}</div>
+            <div className="text-xs text-gray-400">
+              {template?.category}
+            </div>
+          </button>
+        );
+      })}
     </div>
   );
 }
