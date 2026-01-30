@@ -1,3 +1,4 @@
+// src/components/SiteNav.tsx
 "use client";
 
 import Image from "next/image";
@@ -30,7 +31,11 @@ function clean(v?: string | null) {
   return (v ?? "").trim();
 }
 
-function pickDisplayName(profile: ProfileRow | null, meta: UserMeta | null, email: string | null) {
+function pickDisplayName(
+  profile: ProfileRow | null,
+  meta: UserMeta | null,
+  email: string | null
+) {
   if (profile?.first_name || profile?.last_name) {
     return [profile.first_name, profile.last_name].filter(Boolean).join(" ");
   }
@@ -77,7 +82,7 @@ export default function SiteNav() {
 
       const session = data.session;
       setUserEmail(session?.user?.email ?? null);
-      setUserMeta(session?.user?.user_metadata ?? null);
+      setUserMeta((session?.user?.user_metadata ?? null) as UserMeta | null);
 
       if (session?.user?.id) {
         const { data: prof } = await supabase
@@ -96,7 +101,7 @@ export default function SiteNav() {
 
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
       setUserEmail(session?.user?.email ?? null);
-      setUserMeta(session?.user?.user_metadata ?? null);
+      setUserMeta((session?.user?.user_metadata ?? null) as UserMeta | null);
       setAuthReady(true);
     });
 
@@ -105,6 +110,23 @@ export default function SiteNav() {
       sub.subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (!menuOpen) return;
+      if (pillRef.current && !pillRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [menuOpen]);
+
+  async function logout() {
+    setMenuOpen(false);
+    await supabase.auth.signOut();
+    router.push("/");
+  }
 
   const isLoggedIn = !!userEmail;
   const displayName = pickDisplayName(profile, userMeta, userEmail);
@@ -146,12 +168,43 @@ export default function SiteNav() {
                 👤
               </Link>
             ) : (
-              <button
-                onClick={() => setMenuOpen((v) => !v)}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/10 font-semibold"
-              >
-                {initials}
-              </button>
+              <>
+                <button
+                  onClick={() => setMenuOpen((v) => !v)}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/10 font-semibold"
+                >
+                  {initials}
+                </button>
+
+                {menuOpen && (
+                  <div className="absolute right-0 mt-3 w-48 rounded-xl bg-black border border-white/10 shadow-lg">
+                    <Link
+                      href="/dashboard"
+                      className="block px-4 py-3 text-sm hover:bg-white/10"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      Dashboard
+                    </Link>
+
+                    {profile?.role === "admin" && (
+                      <Link
+                        href="/admin"
+                        className="block px-4 py-3 text-sm hover:bg-white/10"
+                        onClick={() => setMenuOpen(false)}
+                      >
+                        Admin
+                      </Link>
+                    )}
+
+                    <button
+                      onClick={logout}
+                      className="w-full text-left px-4 py-3 text-sm hover:bg-white/10"
+                    >
+                      Logout
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
