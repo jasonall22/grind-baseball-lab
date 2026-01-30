@@ -121,20 +121,13 @@ export default function SiteNav() {
 
   async function logout() {
     setMenuOpen(false);
-    setMobileOpen(false);
     await supabase.auth.signOut();
     router.push("/");
   }
 
   function goTo(href: string) {
     setMobileOpen(false);
-
-    if (href.startsWith("#")) {
-      router.push("/" + href);
-      return;
-    }
-
-    router.push(href);
+    router.push(href.startsWith("#") ? "/" + href : href);
   }
 
   const isLoggedIn = !!userEmail;
@@ -144,7 +137,7 @@ export default function SiteNav() {
   return (
     <>
       <header className="sticky top-0 z-50 bg-black text-white">
-        <div className="mx-auto max-w-7xl px-4 py-6">
+        <div className="mx-auto max-w-7xl px-4 py-3">
           {/* Logo */}
           <div className="flex items-center justify-center">
             <Link href="/">
@@ -154,20 +147,20 @@ export default function SiteNav() {
                 width={720}
                 height={280}
                 priority
-                className="h-[72px] sm:h-[92px] w-auto"
+                className="h-[68px] sm:h-[88px] w-auto"
               />
             </Link>
           </div>
 
-          {/* Nav Row */}
-          <div className="relative mt-5 flex items-center justify-center">
+          {/* NAV ROW */}
+          <div className="relative h-9 flex items-center justify-center">
             {/* Desktop links */}
-            <nav className="hidden gap-6 lg:flex">
+            <nav className="hidden gap-6 lg:flex items-center">
               {items.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className="text-[11px] tracking-[0.28em] text-white/80 hover:text-white"
+                  className="text-[11px] leading-none tracking-[0.28em] text-white/80 hover:text-white"
                 >
                   {item.label}
                 </Link>
@@ -177,21 +170,21 @@ export default function SiteNav() {
             {/* Hamburger (mobile) */}
             <button
               onClick={() => setMobileOpen(true)}
-              className="absolute left-0 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/10 lg:hidden"
+              className="absolute left-0 h-9 w-9 flex items-center justify-center rounded-full bg-white/10 lg:hidden"
               aria-label="Open menu"
             >
               ☰
             </button>
 
-            {/* User pill */}
+            {/* Initials */}
             <div
-              className="absolute right-0 top-1/2 -translate-y-1/2"
+              className="absolute right-0 h-9 w-9 flex items-center justify-center"
               ref={pillRef}
             >
               {!authReady ? null : !isLoggedIn ? (
                 <Link
                   href="/login"
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/10"
+                  className="h-9 w-9 flex items-center justify-center rounded-full bg-white/10"
                 >
                   👤
                 </Link>
@@ -199,13 +192,13 @@ export default function SiteNav() {
                 <>
                   <button
                     onClick={() => setMenuOpen((v) => !v)}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/10 font-semibold"
+                    className="h-9 w-9 flex items-center justify-center rounded-full bg-white/10 font-semibold text-xs"
                   >
                     {initials}
                   </button>
 
                   {menuOpen && (
-                    <div className="absolute right-0 mt-3 w-48 rounded-xl bg-black border border-white/10 shadow-lg">
+                    <div className="absolute right-0 top-full mt-3 w-56 rounded-xl bg-black border border-white/10 shadow-lg">
                       <Link
                         href="/dashboard"
                         className="block px-4 py-3 text-sm hover:bg-white/10"
@@ -220,7 +213,7 @@ export default function SiteNav() {
                           className="block px-4 py-3 text-sm hover:bg-white/10"
                           onClick={() => setMenuOpen(false)}
                         >
-                          Admin
+                          Admin Dashboard
                         </Link>
                       )}
 
@@ -243,10 +236,7 @@ export default function SiteNav() {
       {mobileOpen && (
         <div className="fixed inset-0 z-[60] bg-black text-white">
           <div className="p-6">
-            <button
-              onClick={() => setMobileOpen(false)}
-              className="mb-8 text-xl"
-            >
+            <button onClick={() => setMobileOpen(false)} className="mb-8 text-xl">
               ✕
             </button>
 
@@ -260,33 +250,6 @@ export default function SiteNav() {
                   {item.label}
                 </button>
               ))}
-
-              {isLoggedIn && (
-                <>
-                  <button
-                    onClick={() => goTo("/dashboard")}
-                    className="text-left text-xl"
-                  >
-                    Dashboard
-                  </button>
-
-                  {profile?.role === "admin" && (
-                    <button
-                      onClick={() => goTo("/admin")}
-                      className="text-left text-xl"
-                    >
-                      Admin
-                    </button>
-                  )}
-
-                  <button
-                    onClick={logout}
-                    className="text-left text-xl text-red-400"
-                  >
-                    Logout
-                  </button>
-                </>
-              )}
             </nav>
           </div>
         </div>
