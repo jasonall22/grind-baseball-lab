@@ -3,7 +3,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -27,10 +27,6 @@ type UserMeta = {
   name?: string;
 };
 
-function clean(v?: string | null) {
-  return (v ?? "").trim();
-}
-
 function pickDisplayName(
   profile: ProfileRow | null,
   meta: UserMeta | null,
@@ -51,7 +47,6 @@ function initialsFromName(name: string) {
 }
 
 export default function SiteNav() {
-  const pathname = usePathname();
   const router = useRouter();
 
   const items: NavItem[] = useMemo(
@@ -69,7 +64,9 @@ export default function SiteNav() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userMeta, setUserMeta] = useState<UserMeta | null>(null);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
+
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const pillRef = useRef<HTMLDivElement | null>(null);
 
@@ -124,8 +121,20 @@ export default function SiteNav() {
 
   async function logout() {
     setMenuOpen(false);
+    setMobileOpen(false);
     await supabase.auth.signOut();
     router.push("/");
+  }
+
+  function goTo(href: string) {
+    setMobileOpen(false);
+
+    if (href.startsWith("#")) {
+      router.push("/" + href);
+      return;
+    }
+
+    router.push(href);
   }
 
   const isLoggedIn = !!userEmail;
@@ -133,88 +142,155 @@ export default function SiteNav() {
   const initials = initialsFromName(displayName);
 
   return (
-    <header className="sticky top-0 z-50 bg-black text-white">
-      <div className="mx-auto max-w-7xl px-4 py-6">
-        {/* Logo */}
-        <div className="flex items-center justify-center">
-          <Link href="/">
-            <Image
-              src="/logo.png"
-              alt="The Grind Baseball Lab"
-              width={720}
-              height={280}
-              priority
-              className="h-[92px] sm:h-[112px] w-auto"
-            />
-          </Link>
-        </div>
-
-        {/* Nav row */}
-        <div className="relative mt-5 flex items-center justify-center gap-6">
-          {items.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="text-[11px] tracking-[0.28em] text-white/80 hover:text-white"
-            >
-              {item.label}
+    <>
+      <header className="sticky top-0 z-50 bg-black text-white">
+        <div className="mx-auto max-w-7xl px-4 py-6">
+          {/* Logo */}
+          <div className="flex items-center justify-center">
+            <Link href="/">
+              <Image
+                src="/logo.png"
+                alt="The Grind Baseball Lab"
+                width={720}
+                height={280}
+                priority
+                className="h-[72px] sm:h-[92px] w-auto"
+              />
             </Link>
-          ))}
+          </div>
 
-          {/* User pill */}
-          <div
-            className="absolute right-0 top-1/2 -translate-y-1/2"
-            ref={pillRef}
-          >
-            {!authReady ? null : !isLoggedIn ? (
-              <Link
-                href="/login"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/10"
-              >
-                👤
-              </Link>
-            ) : (
-              <>
-                <button
-                  onClick={() => setMenuOpen((v) => !v)}
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/10 font-semibold"
+          {/* Nav Row */}
+          <div className="relative mt-5 flex items-center justify-center">
+            {/* Desktop links */}
+            <nav className="hidden gap-6 lg:flex">
+              {items.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="text-[11px] tracking-[0.28em] text-white/80 hover:text-white"
                 >
-                  {initials}
-                </button>
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
 
-                {menuOpen && (
-                  <div className="absolute right-0 mt-3 w-48 rounded-xl bg-black border border-white/10 shadow-lg">
-                    <Link
-                      href="/dashboard"
-                      className="block px-4 py-3 text-sm hover:bg-white/10"
-                      onClick={() => setMenuOpen(false)}
-                    >
-                      Dashboard
-                    </Link>
+            {/* Hamburger (mobile) */}
+            <button
+              onClick={() => setMobileOpen(true)}
+              className="absolute left-0 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/10 lg:hidden"
+              aria-label="Open menu"
+            >
+              ☰
+            </button>
 
-                    {profile?.role === "admin" && (
+            {/* User pill */}
+            <div
+              className="absolute right-0 top-1/2 -translate-y-1/2"
+              ref={pillRef}
+            >
+              {!authReady ? null : !isLoggedIn ? (
+                <Link
+                  href="/login"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/10"
+                >
+                  👤
+                </Link>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setMenuOpen((v) => !v)}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/10 font-semibold"
+                  >
+                    {initials}
+                  </button>
+
+                  {menuOpen && (
+                    <div className="absolute right-0 mt-3 w-48 rounded-xl bg-black border border-white/10 shadow-lg">
                       <Link
-                        href="/admin"
+                        href="/dashboard"
                         className="block px-4 py-3 text-sm hover:bg-white/10"
                         onClick={() => setMenuOpen(false)}
                       >
-                        Admin
+                        Dashboard
                       </Link>
-                    )}
 
-                    <button
-                      onClick={logout}
-                      className="w-full text-left px-4 py-3 text-sm hover:bg-white/10"
-                    >
-                      Logout
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
+                      {profile?.role === "admin" && (
+                        <Link
+                          href="/admin"
+                          className="block px-4 py-3 text-sm hover:bg-white/10"
+                          onClick={() => setMenuOpen(false)}
+                        >
+                          Admin
+                        </Link>
+                      )}
+
+                      <button
+                        onClick={logout}
+                        className="w-full text-left px-4 py-3 text-sm hover:bg-white/10"
+                      >
+                        Logout
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         </div>
-      </div>
-    </header>
+      </header>
+
+      {/* Mobile Menu */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-[60] bg-black text-white">
+          <div className="p-6">
+            <button
+              onClick={() => setMobileOpen(false)}
+              className="mb-8 text-xl"
+            >
+              ✕
+            </button>
+
+            <nav className="flex flex-col gap-6">
+              {items.map((item) => (
+                <button
+                  key={item.href}
+                  onClick={() => goTo(item.href)}
+                  className="text-left text-2xl font-semibold"
+                >
+                  {item.label}
+                </button>
+              ))}
+
+              {isLoggedIn && (
+                <>
+                  <button
+                    onClick={() => goTo("/dashboard")}
+                    className="text-left text-xl"
+                  >
+                    Dashboard
+                  </button>
+
+                  {profile?.role === "admin" && (
+                    <button
+                      onClick={() => goTo("/admin")}
+                      className="text-left text-xl"
+                    >
+                      Admin
+                    </button>
+                  )}
+
+                  <button
+                    onClick={logout}
+                    className="text-left text-xl text-red-400"
+                  >
+                    Logout
+                  </button>
+                </>
+              )}
+            </nav>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
