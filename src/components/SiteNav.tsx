@@ -135,6 +135,7 @@ export default function SiteNav() {
   return (
     <header className="sticky top-0 z-50 bg-black text-white">
       <div className="mx-auto max-w-7xl px-4 py-6">
+        {/* Logo */}
         <div className="flex items-center justify-center">
           <Link href="/">
             <Image
@@ -148,7 +149,8 @@ export default function SiteNav() {
           </Link>
         </div>
 
-        <div className="relative mt-5 flex justify-center gap-6">
+        {/* Nav row */}
+        <div className="relative mt-5 flex items-center justify-center gap-6">
           {items.map((item) => (
             <Link
               key={item.href}
@@ -159,7 +161,11 @@ export default function SiteNav() {
             </Link>
           ))}
 
-          <div className="absolute right-0" ref={pillRef}>
+          {/* User pill */}
+          <div
+            className="absolute right-0 top-1/2 -translate-y-1/2"
+            ref={pillRef}
+          >
             {!authReady ? null : !isLoggedIn ? (
               <Link
                 href="/login"
