@@ -92,10 +92,6 @@ function getItemBookingUrl(item: PricingItem) {
   return item.cta_href?.trim() || DEFAULT_ITEM_BOOKING_URLS[item.name.trim()] || "";
 }
 
-function getItemBookingText(item: PricingItem) {
-  return item.cta_text?.trim() || (getItemBookingUrl(item) ? "Book" : "");
-}
-
 export default function PricingSection() {
   const fallback = useMemo(() => FALLBACK_ITEMS, []);
 
@@ -231,11 +227,6 @@ export default function PricingSection() {
                         <div className="inline-flex items-center rounded-full bg-black px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all duration-200 group-hover:-translate-y-[1px] group-hover:shadow-md">
                           {it.price_text}
                         </div>
-                        {getItemBookingText(it) ? (
-                          <div className="mt-2 text-xs font-semibold text-[#1FA2FF] opacity-80 transition-opacity duration-200 group-hover:opacity-100">
-                            {getItemBookingText(it)} -&gt;
-                          </div>
-                        ) : null}
                       </div>
                     </div>
                   </div>
