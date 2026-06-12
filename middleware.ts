@@ -5,6 +5,7 @@ import { createServerClient } from "@supabase/ssr";
 function isPublicPath(pathname: string) {
   if (
     pathname === "/" ||
+    pathname === "/book" ||
     pathname === "/login" ||
     pathname === "/signup" ||
     pathname === "/contact"
