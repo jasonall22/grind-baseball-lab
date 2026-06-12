@@ -71,6 +71,8 @@ const DEFAULT_ITEM_BOOKING_URLS: Record<string, string> = {
     "https://book.runswiftapp.com/facilities/the-grind-baseball-lab/rentals?rentalId=3732",
 };
 
+const SWIFT_BOOKING_HOST = "book.runswiftapp.com";
+
 function fmtDuration(mins: number | null) {
   if (!mins) return "";
   if (mins === 60) return "60 Minute";
@@ -90,6 +92,26 @@ function fmtUpdated(ts?: string | null) {
 
 function getItemBookingUrl(item: PricingItem) {
   return item.cta_href?.trim() || DEFAULT_ITEM_BOOKING_URLS[item.name.trim()] || "";
+}
+
+function getWrappedBookingHref(bookingUrl: string) {
+  if (!bookingUrl) return "";
+
+  try {
+    const url = new URL(bookingUrl);
+
+    if (url.hostname === SWIFT_BOOKING_HOST) {
+      return `/book?url=${encodeURIComponent(url.toString())}`;
+    }
+  } catch {
+    return bookingUrl;
+  }
+
+  return bookingUrl;
+}
+
+function opensInNewTab(href: string) {
+  return /^https?:\/\//i.test(href);
 }
 
 export default function PricingSection() {
@@ -154,6 +176,9 @@ export default function PricingSection() {
     return fmtUpdated(newest ?? null);
   }, [settings.updated_at, items]);
 
+  const settingsBookingHref = getWrappedBookingHref(settings.booking_url);
+  const settingsOpensInNewTab = opensInNewTab(settingsBookingHref);
+
   return (
     <section id="pricing" className="bg-white text-black">
       <div className="mx-auto max-w-6xl px-4 py-14">
@@ -182,68 +207,73 @@ export default function PricingSection() {
             <div className="overflow-hidden rounded-3xl border border-black/10 bg-white shadow-sm">
               {/* Rows */}
               <div className="divide-y divide-black/10">
-                {visibleItems.map((it) => (
-                  <div
-                    key={it.id}
-                    className="group relative px-5 py-5 sm:px-8 transition-all duration-200 hover:bg-black/[0.02]"
-                  >
-                    {/* left accent bar on hover */}
-                    <div className="pointer-events-none absolute left-0 top-0 h-full w-[3px] bg-transparent transition-colors duration-200 group-hover:bg-[#1FA2FF]" />
+                {visibleItems.map((it) => {
+                  const bookingHref = getWrappedBookingHref(getItemBookingUrl(it));
+                  const openInNewTab = opensInNewTab(bookingHref);
 
-                    {getItemBookingUrl(it) ? (
-                      <a
-                        href={getItemBookingUrl(it)}
-                        target="_blank"
-                        rel="noreferrer"
-                        aria-label={`Book ${it.name}`}
-                        className="absolute inset-0 z-10 cursor-pointer focus:outline-none focus:ring-4 focus:ring-[#1FA2FF]/20"
-                      />
-                    ) : null}
+                  return (
+                    <div
+                      key={it.id}
+                      className="group relative px-5 py-5 sm:px-8 transition-all duration-200 hover:bg-black/[0.02]"
+                    >
+                      {/* left accent bar on hover */}
+                      <div className="pointer-events-none absolute left-0 top-0 h-full w-[3px] bg-transparent transition-colors duration-200 group-hover:bg-[#1FA2FF]" />
 
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {it.duration_minutes ? (
-                            <span className="inline-flex items-center rounded-full border border-black/10 bg-white px-2.5 py-1 text-[11px] font-semibold text-black/70 shadow-sm">
-                              {fmtDuration(it.duration_minutes)}
-                            </span>
-                          ) : null}
+                      {bookingHref ? (
+                        <a
+                          href={bookingHref}
+                          target={openInNewTab ? "_blank" : undefined}
+                          rel={openInNewTab ? "noreferrer" : undefined}
+                          aria-label={`Book ${it.name}`}
+                          className="absolute inset-0 z-10 cursor-pointer focus:outline-none focus:ring-4 focus:ring-[#1FA2FF]/20"
+                        />
+                      ) : null}
 
-                          <div className="text-base sm:text-lg font-semibold text-black">
-                            {it.name}
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {it.duration_minutes ? (
+                              <span className="inline-flex items-center rounded-full border border-black/10 bg-white px-2.5 py-1 text-[11px] font-semibold text-black/70 shadow-sm">
+                                {fmtDuration(it.duration_minutes)}
+                              </span>
+                            ) : null}
+
+                            <div className="text-base sm:text-lg font-semibold text-black">
+                              {it.name}
+                            </div>
                           </div>
+
+                          {it.note ? (
+                            <div className="mt-2 text-sm text-black/60">{it.note}</div>
+                          ) : (
+                            <div className="mt-2 text-sm text-black/50">
+                              Fast booking • Instant confirmation
+                            </div>
+                          )}
                         </div>
 
-                        {it.note ? (
-                          <div className="mt-2 text-sm text-black/60">{it.note}</div>
-                        ) : (
-                          <div className="mt-2 text-sm text-black/50">
-                            Fast booking • Instant confirmation
+                        <div className="shrink-0 text-right">
+                          <div className="inline-flex items-center rounded-full bg-black px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all duration-200 group-hover:-translate-y-[1px] group-hover:shadow-md">
+                            {it.price_text}
                           </div>
-                        )}
-                      </div>
-
-                      <div className="shrink-0 text-right">
-                        <div className="inline-flex items-center rounded-full bg-black px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all duration-200 group-hover:-translate-y-[1px] group-hover:shadow-md">
-                          {it.price_text}
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Footer */}
               <div className="border-t border-black/10 bg-white px-5 py-7 sm:px-8">
                 <div className="flex flex-col items-center justify-center gap-3 text-center">
                   <div className="text-sm text-black/60">
-                    Click “{settings.button_text}” to open Swift booking.
+                    Click "{settings.button_text}" to book through Swift without leaving the site.
                   </div>
 
                   <a
-                    href={settings.booking_url}
-                    target="_blank"
-                    rel="noreferrer"
+                    href={settingsBookingHref || settings.booking_url}
+                    target={settingsOpensInNewTab ? "_blank" : undefined}
+                    rel={settingsOpensInNewTab ? "noreferrer" : undefined}
                     className="group inline-flex items-center justify-center gap-2 rounded-full bg-black px-9 py-3 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-[1px] hover:shadow-md focus:outline-none focus:ring-4 focus:ring-black/10"
                   >
                     <span>{settings.button_text}</span>
