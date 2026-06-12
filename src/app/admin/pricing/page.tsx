@@ -12,6 +12,8 @@ type PricingItem = {
   duration_minutes: number | null;
   price_text: string;
   note: string | null;
+  cta_text?: string | null;
+  cta_href?: string | null;
 };
 
 type PricingSettings = {
@@ -117,7 +119,7 @@ export default function AdminPricingPage() {
 
       const { data: rows } = await supabase
         .from("pricing_items")
-        .select("id, sort_order, is_active, name, duration_minutes, price_text, note")
+        .select("id, sort_order, is_active, name, duration_minutes, price_text, note, cta_text, cta_href")
         .order("sort_order", { ascending: true })
         .limit(200);
 
@@ -394,6 +396,15 @@ export default function AdminPricingPage() {
                       </div>
                       {it.note ? (
                         <div className="mt-2 text-sm text-black/60">{it.note}</div>
+                      ) : null}
+                      {it.cta_href?.trim() ? (
+                        <div className="mt-2 truncate text-sm text-black/60">
+                          Card link:{" "}
+                          <span className="font-semibold text-black">
+                            {it.cta_text?.trim() || "Book"}
+                          </span>{" "}
+                          ({it.cta_href})
+                        </div>
                       ) : null}
                     </div>
 

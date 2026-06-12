@@ -11,6 +11,8 @@ export default function NewPricingItemPage() {
   const [duration, setDuration] = useState<string>("30");
   const [priceText, setPriceText] = useState("$");
   const [note, setNote] = useState("");
+  const [ctaText, setCtaText] = useState("Book");
+  const [ctaHref, setCtaHref] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -31,6 +33,8 @@ export default function NewPricingItemPage() {
         duration_minutes: duration ? Number(duration) : null,
         price_text: priceText,
         note: note || null,
+        cta_text: ctaText.trim() || null,
+        cta_href: ctaHref.trim() || null,
         is_active: isActive,
         sort_order: nextSort,
       };
@@ -114,6 +118,30 @@ export default function NewPricingItemPage() {
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 placeholder="(optional)"
+                className="mt-2 w-full rounded-xl border border-black/10 px-4 py-3 text-sm outline-none focus:border-black/20"
+              />
+            </label>
+
+            <label className="block">
+              <div className="text-xs font-semibold tracking-wide text-black/60">
+                Card Button Text (optional)
+              </div>
+              <input
+                value={ctaText}
+                onChange={(e) => setCtaText(e.target.value)}
+                placeholder="Book"
+                className="mt-2 w-full rounded-xl border border-black/10 px-4 py-3 text-sm outline-none focus:border-black/20"
+              />
+            </label>
+
+            <label className="block">
+              <div className="text-xs font-semibold tracking-wide text-black/60">
+                Card Booking URL (optional)
+              </div>
+              <input
+                value={ctaHref}
+                onChange={(e) => setCtaHref(e.target.value)}
+                placeholder="https://book.runswiftapp.com/facilities/the-grind-baseball-lab/rentals?rentalId=3732"
                 className="mt-2 w-full rounded-xl border border-black/10 px-4 py-3 text-sm outline-none focus:border-black/20"
               />
             </label>

@@ -11,6 +11,8 @@ type PricingItem = {
   duration_minutes: number | null;
   price_text: string;
   note: string | null;
+  cta_text?: string | null;
+  cta_href?: string | null;
   updated_at?: string | null;
 };
 
@@ -64,6 +66,11 @@ const FALLBACK_ITEMS: PricingItem[] = [
   },
 ];
 
+const DEFAULT_ITEM_BOOKING_URLS: Record<string, string> = {
+  "30 Minute Batting Cage with Machine":
+    "https://book.runswiftapp.com/facilities/the-grind-baseball-lab/rentals?rentalId=3732",
+};
+
 function fmtDuration(mins: number | null) {
   if (!mins) return "";
   if (mins === 60) return "60 Minute";
@@ -79,6 +86,14 @@ function fmtUpdated(ts?: string | null) {
     month: "short",
     day: "numeric",
   }).format(d);
+}
+
+function getItemBookingUrl(item: PricingItem) {
+  return item.cta_href?.trim() || DEFAULT_ITEM_BOOKING_URLS[item.name.trim()] || "";
+}
+
+function getItemBookingText(item: PricingItem) {
+  return item.cta_text?.trim() || (getItemBookingUrl(item) ? "Book" : "");
 }
 
 export default function PricingSection() {
@@ -102,7 +117,7 @@ export default function PricingSection() {
 
       const { data: rows, error: rErr } = await supabase
         .from("pricing_items")
-        .select("id, sort_order, is_active, name, duration_minutes, price_text, note, updated_at")
+        .select("id, sort_order, is_active, name, duration_minutes, price_text, note, cta_text, cta_href, updated_at")
         .eq("is_active", true)
         .order("sort_order", { ascending: true })
         .limit(50);
@@ -179,6 +194,16 @@ export default function PricingSection() {
                     {/* left accent bar on hover */}
                     <div className="pointer-events-none absolute left-0 top-0 h-full w-[3px] bg-transparent transition-colors duration-200 group-hover:bg-[#1FA2FF]" />
 
+                    {getItemBookingUrl(it) ? (
+                      <a
+                        href={getItemBookingUrl(it)}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`Book ${it.name}`}
+                        className="absolute inset-0 z-10 cursor-pointer focus:outline-none focus:ring-4 focus:ring-[#1FA2FF]/20"
+                      />
+                    ) : null}
+
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
@@ -206,6 +231,11 @@ export default function PricingSection() {
                         <div className="inline-flex items-center rounded-full bg-black px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all duration-200 group-hover:-translate-y-[1px] group-hover:shadow-md">
                           {it.price_text}
                         </div>
+                        {getItemBookingText(it) ? (
+                          <div className="mt-2 text-xs font-semibold text-[#1FA2FF] opacity-80 transition-opacity duration-200 group-hover:opacity-100">
+                            {getItemBookingText(it)} -&gt;
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   </div>

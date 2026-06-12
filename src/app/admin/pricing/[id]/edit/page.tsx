@@ -12,6 +12,8 @@ type PricingItem = {
   duration_minutes: number | null;
   price_text: string;
   note: string | null;
+  cta_text?: string | null;
+  cta_href?: string | null;
 };
 
 export default function EditPricingItemPage() {
@@ -31,7 +33,7 @@ export default function EditPricingItemPage() {
 
       const { data, error } = await supabase
         .from("pricing_items")
-        .select("id, sort_order, is_active, name, duration_minutes, price_text, note")
+        .select("id, sort_order, is_active, name, duration_minutes, price_text, note, cta_text, cta_href")
         .eq("id", id)
         .maybeSingle();
 
@@ -66,6 +68,8 @@ export default function EditPricingItemPage() {
           duration_minutes: item.duration_minutes,
           price_text: item.price_text,
           note: item.note,
+          cta_text: item.cta_text?.trim() || null,
+          cta_href: item.cta_href?.trim() || null,
           is_active: item.is_active,
         })
         .eq("id", item.id);
@@ -170,6 +174,34 @@ export default function EditPricingItemPage() {
                 onChange={(e) =>
                   setItem((p) => (p ? { ...p, note: e.target.value || null } : p))
                 }
+                className="mt-2 w-full rounded-xl border border-black/10 px-4 py-3 text-sm outline-none focus:border-black/20"
+              />
+            </label>
+
+            <label className="block">
+              <div className="text-xs font-semibold tracking-wide text-black/60">
+                Card Button Text (optional)
+              </div>
+              <input
+                value={item.cta_text ?? ""}
+                onChange={(e) =>
+                  setItem((p) => (p ? { ...p, cta_text: e.target.value } : p))
+                }
+                placeholder="Book"
+                className="mt-2 w-full rounded-xl border border-black/10 px-4 py-3 text-sm outline-none focus:border-black/20"
+              />
+            </label>
+
+            <label className="block">
+              <div className="text-xs font-semibold tracking-wide text-black/60">
+                Card Booking URL (optional)
+              </div>
+              <input
+                value={item.cta_href ?? ""}
+                onChange={(e) =>
+                  setItem((p) => (p ? { ...p, cta_href: e.target.value } : p))
+                }
+                placeholder="https://book.runswiftapp.com/facilities/the-grind-baseball-lab/rentals?rentalId=3732"
                 className="mt-2 w-full rounded-xl border border-black/10 px-4 py-3 text-sm outline-none focus:border-black/20"
               />
             </label>
