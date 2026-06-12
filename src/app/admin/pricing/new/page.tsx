@@ -33,8 +33,8 @@ export default function NewPricingItemPage() {
         duration_minutes: duration ? Number(duration) : null,
         price_text: priceText,
         note: note || null,
-        cta_text: ctaText.trim() || null,
-        cta_href: ctaHref.trim() || null,
+        cta_text: ctaText.trim() || "Book",
+        cta_href: ctaHref.trim() || "",
         is_active: isActive,
         sort_order: nextSort,
       };

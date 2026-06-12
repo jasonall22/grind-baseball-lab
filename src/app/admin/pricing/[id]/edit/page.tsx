@@ -68,8 +68,8 @@ export default function EditPricingItemPage() {
           duration_minutes: item.duration_minutes,
           price_text: item.price_text,
           note: item.note,
-          cta_text: item.cta_text?.trim() || null,
-          cta_href: item.cta_href?.trim() || null,
+          cta_text: item.cta_text?.trim() || "Book",
+          cta_href: item.cta_href?.trim() || "",
           is_active: item.is_active,
         })
         .eq("id", item.id);
