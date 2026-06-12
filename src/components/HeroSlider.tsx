@@ -1,21 +1,13 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-
-type HeroSettingsRow = {
-  key: string;
-  height_desktop: number;
-  height_mobile: number;
-  text_align: "left" | "center";
-  overlay_color: string;
-  overlay_opacity: number;
-  text_color: string;
-  show_arrows: boolean;
-  show_dots: boolean;
-  auto_rotate: boolean;
-  interval_ms: number;
-};
+import {
+  DEFAULT_HERO_SETTINGS,
+  type HeroSettingsRow,
+  type InitialHeroData,
+} from "@/lib/heroTypes";
 
 type HeroSlideRow = {
   id: string;
@@ -36,20 +28,6 @@ type HeroSlideRow = {
   title_color?: string | null;
   body_color?: string | null;
   cta_text_color?: string | null;
-};
-
-const DEFAULT_SETTINGS: HeroSettingsRow = {
-  key: "default",
-  height_desktop: 520,
-  height_mobile: 440,
-  text_align: "center",
-  overlay_color: "#000000", // kept for compatibility, but not used when using gradient overlay
-  overlay_opacity: 0.45,     // used as fallback for gradient darkness
-  text_color: "#ffffff",
-  show_arrows: true,
-  show_dots: true,
-  auto_rotate: true,
-  interval_ms: 6000,
 };
 
 type ScreenKind = "mobile" | "tablet" | "desktop";
@@ -120,11 +98,10 @@ function buildGradient(darkness: number) {
 }
 
 /**
- * HeroSlider (Responsive + No "stuck" feeling)
- * - No fallback slide content
- * - No placeholder TEXT
- * - Prevents the "quick first hero" flash by waiting for the first slide image to preload
- * - While loading, it renders only the hero shell (same size) with the base gradient (no text)
+ * HeroSlider (Responsive + immediate first paint)
+ * - Uses server-provided initial slide data when available
+ * - Keeps the Supabase refresh after hydration so admin edits still appear
+ * - Does not block hero text on the first image preload
  *
  * Overlay behavior (requested):
  * ✅ Removed the overlay DIV.
@@ -133,17 +110,22 @@ function buildGradient(darkness: number) {
  *    - overlay_opacity = 0 => NO overlay
  *    - overlay_opacity = 1 => FULL overlay
  */
-export default function HeroSlider() {
-  const [settings, setSettings] = useState<HeroSettingsRow>(DEFAULT_SETTINGS);
-  const [slides, setSlides] = useState<HeroSlideRow[]>([]);
+export default function HeroSlider({ initialData }: { initialData?: InitialHeroData }) {
+  const [settings, setSettings] = useState<HeroSettingsRow>(() => ({
+    ...DEFAULT_HERO_SETTINGS,
+    ...(initialData?.settings ?? {}),
+  }));
+  const [slides, setSlides] = useState<HeroSlideRow[]>(() => initialData?.slides ?? []);
   const [idx, setIdx] = useState(0);
 
   const [screen, setScreen] = useState<ScreenKind>(() => getScreenKind());
 
-  // When false, we show only the shell (no text/dots/arrows), so nothing "flashes"
-  const [ready, setReady] = useState(false);
+  // When initial data exists, the hero can paint with content before hydration finishes.
+  const [ready, setReady] = useState(() => Boolean(initialData?.slides?.length));
+  const [loadedImageUrl, setLoadedImageUrl] = useState<string | null>(null);
 
   const timerRef = useRef<number | null>(null);
+  const hadInitialSlidesRef = useRef(Boolean(initialData?.slides?.length));
 
   // Track screen size
   useEffect(() => {
@@ -170,7 +152,9 @@ export default function HeroSlider() {
     let cancelled = false;
 
     async function load() {
-      setReady(false);
+      if (!hadInitialSlidesRef.current) {
+        setReady(false);
+      }
 
       const { data: s, error: sErr } = await supabase
         .from("hero_settings")
@@ -200,12 +184,12 @@ export default function HeroSlider() {
         return;
       }
 
-      // Preload the first slide image (fast timeout so it never "feels stuck")
-      const firstUrl = nextSlides[0]?.image_url ? String(nextSlides[0].image_url) : "";
-      await preloadImage(firstUrl, 1200);
-
-      if (cancelled) return;
+      // Show content as soon as data exists; image loading should not make the hero feel blank.
       setReady(true);
+
+      // Warm the first slide image, but do not block text/rendering on it.
+      const firstUrl = nextSlides[0]?.image_url ? String(nextSlides[0].image_url) : "";
+      void preloadImage(firstUrl, 1200);
 
       // Preload the rest in the background (doesn't block rendering)
       const rest = nextSlides
@@ -236,6 +220,8 @@ export default function HeroSlider() {
 
   const safeIdx = Math.max(0, Math.min(idx, Math.max(0, slides.length - 1)));
   const slide = hasSlides ? slides[safeIdx] : null;
+  const activeImageUrl = slide?.image_url ? String(slide.image_url) : "";
+  const activeImageLoaded = Boolean(activeImageUrl && loadedImageUrl === activeImageUrl);
 
   // ✅ This is the "darkness" for the gradient overlay.
   const darkness =
@@ -250,10 +236,10 @@ export default function HeroSlider() {
     const shellBg =
       "linear-gradient(135deg, #071b2e 0%, #051524 50%, #071b2e 100%)";
 
-    if (ready && slide?.image_url) {
+    if (ready && activeImageUrl) {
       const gradient = buildGradient(darkness);
       return {
-        backgroundImage: `${gradient}, url(${slide.image_url})`,
+        backgroundImage: `${gradient}, url(${activeImageUrl})`,
         backgroundSize: "cover",
         backgroundPosition: "center",
       } as React.CSSProperties;
@@ -265,7 +251,26 @@ export default function HeroSlider() {
       backgroundSize: "cover",
       backgroundPosition: "center",
     } as React.CSSProperties;
-  }, [ready, slide?.image_url, darkness]);
+  }, [ready, activeImageUrl, darkness]);
+
+  useEffect(() => {
+    if (!activeImageUrl) {
+      setLoadedImageUrl(null);
+      return;
+    }
+
+    let alive = true;
+    setLoadedImageUrl((current) => (current === activeImageUrl ? current : null));
+
+    preloadImage(activeImageUrl, 4000).then(() => {
+      if (!alive) return;
+      setLoadedImageUrl(activeImageUrl);
+    });
+
+    return () => {
+      alive = false;
+    };
+  }, [activeImageUrl]);
 
   function prev() {
     setIdx((v) => clampIdx(v - 1));
@@ -328,6 +333,12 @@ export default function HeroSlider() {
   const titleColor = safeColor(slide?.title_color) ?? settings.text_color;
   const bodyColor = safeColor(slide?.body_color); // if undefined, keep existing class color
   const ctaTextColor = safeColor(slide?.cta_text_color); // if undefined, keep black
+  const hasHeroCopy = Boolean(
+    (slide?.headline && slide.headline.trim()) ||
+      (slide?.title && slide.title.trim()) ||
+      (slide?.body && slide.body.trim())
+  );
+  const showBrandFallback = ready && hasSlides && !activeImageLoaded && !hasHeroCopy;
 
   return (
     <section className="bg-white">
@@ -344,15 +355,30 @@ export default function HeroSlider() {
           {ready && hasSlides ? (
             <div className={"relative z-10 flex h-full w-full flex-col justify-center " + wrapPadding}>
               <div className={`mx-auto flex w-full ${maxTextWidth} flex-col ${textAlignClass}`}>
+                {showBrandFallback ? (
+                  <div className="mx-auto mb-7 flex w-full max-w-md justify-center">
+                    <Image
+                      src="/logo.png"
+                      alt="The Grind Baseball Lab"
+                      width={720}
+                      height={280}
+                      priority
+                      className="h-auto w-full max-w-[320px] drop-shadow-[0_8px_24px_rgba(0,0,0,0.5)] sm:max-w-[420px]"
+                    />
+                  </div>
+                ) : null}
+
                 {slide?.headline ? (
                   <div className={`${headlineCls} uppercase`} style={{ color: headlineColor }}>
                     {slide.headline}
                   </div>
                 ) : null}
 
-                <h1 className={`mt-3 sm:mt-4 font-semibold ${titleCls}`} style={{ color: titleColor }}>
-                  {slide?.title}
-                </h1>
+                {slide?.title ? (
+                  <h1 className={`mt-3 sm:mt-4 font-semibold ${titleCls}`} style={{ color: titleColor }}>
+                    {slide.title}
+                  </h1>
+                ) : null}
 
                 {slide?.body ? (
                   <p

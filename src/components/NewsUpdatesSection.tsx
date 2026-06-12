@@ -33,7 +33,7 @@ export default function NewsUpdatesSection() {
   const touchStartX = useRef<number | null>(null);
   const touchDeltaX = useRef<number>(0);
 
-  // Load rows from Supabase (admin-editable) + preload first image so we don't flash a "default" look
+  // Load rows from Supabase (admin-editable). Images warm in the background.
   useEffect(() => {
     let alive = true;
 
@@ -76,7 +76,9 @@ export default function NewsUpdatesSection() {
         return;
       }
 
-      // Preload all images (so slide changes won't flash)
+      setReady(true);
+
+      // Preload images in the background so slide changes feel smoother.
       const urls = mapped
         .map((x) => (x?.right_image_url ? String(x.right_image_url) : ""))
         .filter(Boolean);
@@ -85,26 +87,6 @@ export default function NewsUpdatesSection() {
         const img = new window.Image();
         img.src = url;
       }
-
-      // Wait for the FIRST slide image (if any) before rendering the section content
-      const firstUrl = mapped[0]?.right_image_url ? String(mapped[0].right_image_url) : "";
-      if (!firstUrl) {
-        setReady(true);
-        return;
-      }
-
-      const firstImg = new window.Image();
-      firstImg.src = firstUrl;
-
-      firstImg.onload = () => {
-        if (!alive) return;
-        setReady(true);
-      };
-      firstImg.onerror = () => {
-        if (!alive) return;
-        // If it fails, still render (we'll show the gradient background)
-        setReady(true);
-      };
     }
 
     void load();
