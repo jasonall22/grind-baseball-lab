@@ -3,6 +3,10 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Book Online | The Grind Baseball Lab",
   description: "Book cage time, lessons, camps, and training at The Grind Baseball Lab.",
+  robots: {
+    index: false,
+    follow: false,
+  },
 };
 
 const DEFAULT_SWIFT_URL =

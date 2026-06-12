@@ -1,3 +1,14 @@
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Contact The Grind Baseball Lab in Venice, FL",
+  description:
+    "Contact The Grind Baseball Lab for indoor baseball cages, hitting lessons, camps, memberships, and baseball coaching in Venice, FL near Englewood, North Port, and Sarasota.",
+  alternates: {
+    canonical: "/contact",
+  },
+};
+
 export default function ContactPage() {
   const addressLine1 = "613 Cypress Ave";
   const addressLine2 = "Venice, FL 34285";
