@@ -2802,27 +2802,12 @@ function EditorModal({
                       Optional
                     </span>
                   </div>
-                  <div className="grid gap-2 sm:grid-cols-[48px_minmax(0,1fr)] sm:items-center">
-                    <div className="relative">
-                      <select
-                        value={customerDraft.phoneCountry}
-                        onChange={(event) => patch({ phoneCountry: event.target.value })}
-                        className="min-h-12 w-full appearance-none rounded-lg border border-black/10 bg-white pl-2 pr-6 text-lg outline-none focus:border-black/30"
-                      >
-                        <option value="US">🇺🇸</option>
-                        <option value="CA">🇨🇦</option>
-                      </select>
-                      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-black/45">
-                        ▾
-                      </span>
-                    </div>
-                    <input
-                      value={customerDraft.phone}
-                      onChange={(event) => patch({ phone: event.target.value })}
-                      placeholder="123-456-7890"
-                      className="min-h-12 rounded-lg border border-black/10 px-4 outline-none focus:border-black/30"
-                    />
-                  </div>
+                  <input
+                    value={customerDraft.phone}
+                    onChange={(event) => patch({ phone: event.target.value })}
+                    placeholder="123-456-7890"
+                    className="min-h-12 rounded-lg border border-black/10 px-4 outline-none focus:border-black/30"
+                  />
                 </div>
               </CustomerSection>
 
