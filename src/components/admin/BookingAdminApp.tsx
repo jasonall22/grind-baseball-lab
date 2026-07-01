@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   type BookingAdminView,
@@ -198,6 +198,15 @@ const navItems: { key: BookingAdminView; label: string; icon: IconName }[] = [
   { key: "reports", label: "Reports", icon: "bar" },
   { key: "settings", label: "Settings", icon: "gear" },
 ];
+
+const WAIVER_BUCKET_PRIMARY =
+  (process.env.NEXT_PUBLIC_BOOKING_WAIVER_BUCKET &&
+    process.env.NEXT_PUBLIC_BOOKING_WAIVER_BUCKET.trim()) ||
+  "booking-waivers";
+const WAIVER_BUCKET_CANDIDATES = Array.from(
+  new Set([WAIVER_BUCKET_PRIMARY, "booking-waivers", "booking-waiver", "waivers"].filter(Boolean))
+);
+const MAX_WAIVER_FILE_BYTES = 2 * 1024 * 1024;
 
 const settingsNavGroups: {
   title: string;
@@ -400,6 +409,7 @@ type IconName =
   | "edit"
   | "trash"
   | "download"
+  | "upload"
   | "search"
   | "chevron"
   | "x"
@@ -428,6 +438,7 @@ const iconPaths: Record<IconName, string[]> = {
   edit: ["M12 20h9", "m16.5 3.5 4 4L7 21H3v-4Z"],
   trash: ["M3 6h18", "M8 6V4h8v2", "m19 6-1 15H6L5 6", "M10 11v6M14 11v6"],
   download: ["M12 3v12", "m7 10 5 5 5-5", "M5 21h14"],
+  upload: ["M12 21V9", "m7 14 5-5 5 5", "M5 3h14"],
   search: ["M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z", "m21 21-4.3-4.3"],
   chevron: ["m9 18 6-6-6-6"],
   x: ["M18 6 6 18", "M6 6l12 12"],
@@ -456,6 +467,22 @@ function normalizeTime(value: string | null | undefined) {
   return (value ?? "09:00").slice(0, 5);
 }
 
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string" && error.trim()) return error;
+  return fallback;
+}
+
+function slugifyFileNameStem(fileName: string) {
+  const stem = fileName.replace(/\.[^.]+$/, "").toLowerCase();
+  const slug = stem
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+
+  return slug || "waiver";
+}
+
 function stateToStorage(next: AppState) {
   if (typeof window !== "undefined") {
     window.localStorage.setItem(storageKey, JSON.stringify(next));
@@ -467,6 +494,49 @@ function resourceLookup(resources: BookingResourceRow[]) {
     idsByName: Object.fromEntries(resources.map((resource) => [resource.name, resource.id])),
     namesById: new Map(resources.map((resource) => [resource.id, resource.name])),
   };
+}
+
+async function uploadWaiverPdf(file: File) {
+  if (!hasSupabaseEnv) {
+    throw new Error("Supabase is not configured for file uploads.");
+  }
+
+  const path = `waivers/${Date.now()}-${slugifyFileNameStem(file.name)}.pdf`;
+  let lastError: unknown = null;
+
+  for (const bucket of WAIVER_BUCKET_CANDIDATES) {
+    const upload = await supabase.storage.from(bucket).upload(path, file, {
+      upsert: true,
+      contentType: "application/pdf",
+      cacheControl: "3600",
+    });
+
+    if (!upload.error) {
+      const publicUrl = supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl || "";
+
+      if (!publicUrl) {
+        throw new Error(
+          `Upload succeeded but public URL was empty. Make the "${bucket}" bucket Public in Supabase Storage.`
+        );
+      }
+
+      return {
+        publicUrl,
+        fileName: file.name,
+      };
+    }
+
+    lastError = upload.error;
+  }
+
+  const message = getErrorMessage(lastError, "Upload failed");
+  if (message.toLowerCase().includes("bucket") && message.toLowerCase().includes("not found")) {
+    throw new Error(
+      `Bucket not found. Create a Storage bucket named "${WAIVER_BUCKET_PRIMARY}" and set it to Public.`
+    );
+  }
+
+  throw new Error(message);
 }
 
 async function upsertFacilitySettings(
@@ -1780,10 +1850,45 @@ function SettingsView({
 }) {
   const [draft, setDraft] = useState(state);
   const isBasics = section === "basics";
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isUploadingWaiver, setIsUploadingWaiver] = useState(false);
+  const [waiverUploadError, setWaiverUploadError] = useState("");
 
   useEffect(() => {
     setDraft(state);
   }, [state]);
+
+  async function handleWaiverFile(file: File) {
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      setWaiverUploadError("File must be a PDF.");
+      return;
+    }
+
+    if (file.size > MAX_WAIVER_FILE_BYTES) {
+      setWaiverUploadError("File must be 2MB or smaller.");
+      return;
+    }
+
+    setIsUploadingWaiver(true);
+    setWaiverUploadError("");
+
+    try {
+      const uploaded = await uploadWaiverPdf(file);
+      setDraft((current) => ({
+        ...current,
+        policies: {
+          ...current.policies,
+          waiverDocumentUrl: uploaded.publicUrl,
+          waiverDocumentName: uploaded.fileName,
+        },
+      }));
+      showToast("Waiver PDF uploaded. Click Save to publish it.");
+    } catch (error) {
+      setWaiverUploadError(getErrorMessage(error, "Upload failed."));
+    } finally {
+      setIsUploadingWaiver(false);
+    }
+  }
 
   return (
     <section className="min-h-screen bg-white">
@@ -1972,51 +2077,76 @@ function SettingsView({
                       </p>
                     </div>
                     <div className="grid gap-4">
-                      <label className="inline-flex items-center gap-3 text-sm font-semibold">
-                        <input
-                          type="checkbox"
+                      <div className="flex flex-wrap items-center gap-4">
+                        <span className="text-sm font-semibold text-black/55">Off</span>
+                        <ToggleSwitch
                           checked={draft.policies.waiverEnabled}
-                          onChange={(event) =>
+                          onChange={(checked) =>
                             setDraft({
                               ...draft,
                               policies: {
                                 ...draft.policies,
-                                waiverEnabled: event.target.checked,
+                                waiverEnabled: checked,
                               },
                             })
                           }
-                          className="h-5 w-5 accent-[#4866b0]"
+                          label="Toggle liability waiver"
                         />
-                        <span>{draft.policies.waiverEnabled ? "On" : "Off"}</span>
-                      </label>
-                      <TextField
-                        label="Waiver document URL"
-                        value={draft.policies.waiverDocumentUrl}
-                        onChange={(value) =>
-                          setDraft({
-                            ...draft,
-                            policies: {
-                              ...draft.policies,
-                              waiverDocumentUrl: value,
-                            },
-                          })
-                        }
+                        <span className="text-sm font-semibold text-black/75">On</span>
+                      </div>
+
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="application/pdf,.pdf"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) {
+                            void handleWaiverFile(file);
+                          }
+                          event.currentTarget.value = "";
+                        }}
+                        className="hidden"
                       />
-                      <TextField
-                        label="Waiver document name"
-                        value={draft.policies.waiverDocumentName}
-                        onChange={(value) =>
-                          setDraft({
-                            ...draft,
-                            policies: {
-                              ...draft.policies,
-                              waiverDocumentName: value,
-                            },
-                          })
-                        }
-                      />
+
+                      <div className="grid gap-3 lg:grid-cols-[36px_minmax(0,1fr)] lg:items-start">
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={isUploadingWaiver}
+                          className="grid h-9 w-9 place-items-center rounded-full bg-black/5 text-black/70 transition hover:bg-black/10 disabled:cursor-not-allowed disabled:opacity-50"
+                          title="Upload waiver PDF"
+                          aria-label="Upload waiver PDF"
+                        >
+                          <Icon name="upload" className="h-4 w-4" />
+                        </button>
+                        <div className="min-w-0">
+                          {draft.policies.waiverDocumentUrl ? (
+                            <a
+                              href={draft.policies.waiverDocumentUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="break-all text-sm font-medium text-[#3558a8] underline"
+                            >
+                              {draft.policies.waiverDocumentName || "Liability waiver.pdf"}
+                            </a>
+                          ) : (
+                            <div className="text-sm text-black/55">No PDF attached yet.</div>
+                          )}
+                          <div className="mt-1 text-xs text-black/45">
+                            File must be a PDF with max upload size of 2MB.
+                          </div>
+                          {isUploadingWaiver ? (
+                            <div className="mt-2 text-sm font-medium text-black/60">Uploading waiver PDF...</div>
+                          ) : null}
+                          {waiverUploadError ? (
+                            <div className="mt-2 text-sm text-red-600">{waiverUploadError}</div>
+                          ) : null}
+                        </div>
+                      </div>
+
                       <label className="grid gap-1.5">
-                        <span className="text-sm font-semibold text-black/70">Waiver intro</span>
+                        <span className="text-sm font-semibold text-black/70">Waiver confirmation text</span>
                         <textarea
                           value={draft.policies.waiverIntro}
                           onChange={(event) =>
@@ -2048,16 +2178,6 @@ function SettingsView({
                         />
                         Allow staff to collect waiver signatures in person
                       </label>
-                      {draft.policies.waiverDocumentUrl ? (
-                        <a
-                          href={draft.policies.waiverDocumentUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-sm font-semibold text-[#4866b0] underline"
-                        >
-                          Open current waiver in new tab
-                        </a>
-                      ) : null}
                     </div>
                   </div>
                 </>
@@ -2130,6 +2250,37 @@ function TextField({
         className="min-h-10 rounded-lg border border-black/10 px-3 outline-none focus:border-black/30"
       />
     </label>
+  );
+}
+
+function ToggleSwitch({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className={[
+        "relative inline-flex h-6 w-10 items-center rounded-full transition",
+        checked ? "bg-[#8ea5c6]" : "bg-black/12",
+      ].join(" ")}
+    >
+      <span
+        className={[
+          "inline-block h-5 w-5 rounded-full bg-white shadow-sm transition",
+          checked ? "translate-x-[18px]" : "translate-x-[2px]",
+        ].join(" ")}
+      />
+    </button>
   );
 }
 
