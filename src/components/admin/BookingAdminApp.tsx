@@ -2077,8 +2077,8 @@ function SettingsView({
                       </p>
                     </div>
                     <div className="grid gap-4">
-                      <div className="flex flex-wrap items-center gap-4">
-                        <span className="text-sm font-semibold text-black/55">Off</span>
+                      <div className="flex flex-wrap items-center gap-6">
+                        <span className="text-[15px] font-medium text-black">Off</span>
                         <ToggleSwitch
                           checked={draft.policies.waiverEnabled}
                           onChange={(checked) =>
@@ -2092,7 +2092,7 @@ function SettingsView({
                           }
                           label="Toggle liability waiver"
                         />
-                        <span className="text-sm font-semibold text-black/75">On</span>
+                        <span className="text-[15px] font-medium text-black">On</span>
                       </div>
 
                       <input
@@ -2270,14 +2270,16 @@ function ToggleSwitch({
       aria-label={label}
       onClick={() => onChange(!checked)}
       className={[
-        "relative inline-flex h-6 w-10 items-center rounded-full transition",
-        checked ? "bg-[#8ea5c6]" : "bg-black/12",
+        "relative inline-flex h-7 w-14 items-center rounded-full border border-black/5 px-[3px] transition-colors duration-200",
+        checked ? "bg-[#afc0d8]" : "bg-[#d9dee6]",
       ].join(" ")}
     >
       <span
         className={[
-          "inline-block h-5 w-5 rounded-full bg-white shadow-sm transition",
-          checked ? "translate-x-[18px]" : "translate-x-[2px]",
+          "inline-block h-6 w-6 rounded-full shadow-sm transition-transform duration-200",
+          checked
+            ? "translate-x-7 bg-[#5f7ea6]"
+            : "translate-x-0 bg-white",
         ].join(" ")}
       />
     </button>
