@@ -2304,6 +2304,7 @@ function FamilyMemberModal({
   const [gender, setGender] = useState("Unspecified");
   const [birthDate, setBirthDate] = useState("");
   const [showBirthCalendar, setShowBirthCalendar] = useState(false);
+  const [showBirthMonthYearPicker, setShowBirthMonthYearPicker] = useState(false);
   const [visibleBirthMonth, setVisibleBirthMonth] = useState(() => startOfMonth(new Date()));
   const [photoPreview, setPhotoPreview] = useState("");
   const photoInputRef = useRef<HTMLInputElement | null>(null);
@@ -2312,6 +2313,10 @@ function FamilyMemberModal({
   const canSave = firstName.trim().length > 0 || lastName.trim().length > 0;
   const selectedBirthDate = parseUsDateInput(birthDate);
   const birthCalendarDays = useMemo(() => buildCalendarDays(visibleBirthMonth), [visibleBirthMonth]);
+  const birthYearOptions = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    return Array.from({ length: currentYear - 1899 }, (_, index) => currentYear - index);
+  }, []);
 
   async function handlePhotoFile(file: File) {
     if (!file.type.startsWith("image/")) return;
@@ -2340,12 +2345,14 @@ function FamilyMemberModal({
 
   function toggleBirthCalendar() {
     setVisibleBirthMonth(startOfMonth(selectedBirthDate ?? new Date()));
+    setShowBirthMonthYearPicker(false);
     setShowBirthCalendar((current) => !current);
   }
 
   function chooseBirthDate(date: Date) {
     setBirthDate(formatDateToUs(date));
     setVisibleBirthMonth(startOfMonth(date));
+    setShowBirthMonthYearPicker(false);
     setShowBirthCalendar(false);
   }
 
@@ -2474,12 +2481,26 @@ function FamilyMemberModal({
                     className="absolute bottom-[calc(100%+8px)] left-0 z-20 w-[284px] max-w-[calc(100vw-72px)] rounded-xl border border-black/10 bg-white p-4 shadow-2xl"
                   >
                     <div className="mb-4 flex items-center justify-between">
-                      <div className="text-[15px] font-medium text-black">
-                        {visibleBirthMonth.toLocaleDateString("en-US", {
-                          month: "long",
-                          year: "numeric",
-                        })}
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowBirthMonthYearPicker((current) => !current)}
+                        className="flex items-center gap-2 text-left text-[15px] font-medium text-black"
+                        aria-label="Choose month and year"
+                      >
+                        <span>
+                          {visibleBirthMonth.toLocaleDateString("en-US", {
+                            month: "long",
+                            year: "numeric",
+                          })}
+                        </span>
+                        <Icon
+                          name="chevron"
+                          className={[
+                            "h-4 w-4 text-black/50 transition-transform",
+                            showBirthMonthYearPicker ? "rotate-180" : "rotate-0",
+                          ].join(" ")}
+                        />
+                      </button>
                       <div className="flex items-center gap-2 text-black/55">
                         <button
                           type="button"
@@ -2499,6 +2520,49 @@ function FamilyMemberModal({
                         </button>
                       </div>
                     </div>
+
+                    {showBirthMonthYearPicker ? (
+                      <div className="mb-4 grid grid-cols-[1fr_106px] gap-2">
+                        <select
+                          value={visibleBirthMonth.getMonth()}
+                          onChange={(event) =>
+                            setVisibleBirthMonth(
+                              new Date(
+                                visibleBirthMonth.getFullYear(),
+                                Number(event.target.value),
+                                1,
+                              ),
+                            )
+                          }
+                          className="min-h-9 rounded-md border border-black/15 bg-white px-3 text-[13px] text-black outline-none"
+                        >
+                          {Array.from({ length: 12 }, (_, index) => (
+                            <option key={index} value={index}>
+                              {new Date(2026, index, 1).toLocaleDateString("en-US", { month: "long" })}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          value={visibleBirthMonth.getFullYear()}
+                          onChange={(event) =>
+                            setVisibleBirthMonth(
+                              new Date(
+                                Number(event.target.value),
+                                visibleBirthMonth.getMonth(),
+                                1,
+                              ),
+                            )
+                          }
+                          className="min-h-9 rounded-md border border-black/15 bg-white px-3 text-[13px] text-black outline-none"
+                        >
+                          {birthYearOptions.map((year) => (
+                            <option key={year} value={year}>
+                              {year}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : null}
 
                     <div className="grid grid-cols-7 gap-y-2 text-center text-[12px] text-black/55">
                       {["S", "M", "T", "W", "T", "F", "S"].map((day) => (
