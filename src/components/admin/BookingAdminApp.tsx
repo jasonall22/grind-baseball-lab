@@ -2172,10 +2172,54 @@ function formatUsPhoneInput(value: string) {
   return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
 }
 
-function usDateToIso(value: string) {
+function parseUsDateInput(value: string) {
   const matched = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (!matched) return "";
-  return `${matched[3]}-${matched[1]}-${matched[2]}`;
+  if (!matched) return null;
+
+  const year = Number(matched[3]);
+  const monthIndex = Number(matched[1]) - 1;
+  const day = Number(matched[2]);
+  const date = new Date(year, monthIndex, day);
+
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getFullYear() !== year ||
+    date.getMonth() !== monthIndex ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
+}
+
+function formatDateToUs(date: Date) {
+  return `${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}/${date.getFullYear()}`;
+}
+
+function startOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function addMonths(date: Date, amount: number) {
+  return new Date(date.getFullYear(), date.getMonth() + amount, 1);
+}
+
+function buildCalendarDays(monthDate: Date) {
+  const firstOfMonth = startOfMonth(monthDate);
+  const start = new Date(firstOfMonth);
+  start.setDate(1 - firstOfMonth.getDay());
+
+  return Array.from({ length: 35 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return {
+      key: `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`,
+      date,
+      label: date.getDate(),
+      isCurrentMonth: date.getMonth() === monthDate.getMonth(),
+    };
+  });
 }
 
 function customerJoinedLabel(value: string) {
@@ -2259,11 +2303,15 @@ function FamilyMemberModal({
   const [relationship, setRelationship] = useState("Unspecified");
   const [gender, setGender] = useState("Unspecified");
   const [birthDate, setBirthDate] = useState("");
+  const [showBirthCalendar, setShowBirthCalendar] = useState(false);
+  const [visibleBirthMonth, setVisibleBirthMonth] = useState(() => startOfMonth(new Date()));
   const [photoPreview, setPhotoPreview] = useState("");
   const photoInputRef = useRef<HTMLInputElement | null>(null);
-  const birthDatePickerRef = useRef<HTMLInputElement | null>(null);
+  const birthCalendarRef = useRef<HTMLDivElement | null>(null);
 
   const canSave = firstName.trim().length > 0 || lastName.trim().length > 0;
+  const selectedBirthDate = parseUsDateInput(birthDate);
+  const birthCalendarDays = useMemo(() => buildCalendarDays(visibleBirthMonth), [visibleBirthMonth]);
 
   async function handlePhotoFile(file: File) {
     if (!file.type.startsWith("image/")) return;
@@ -2278,16 +2326,27 @@ function FamilyMemberModal({
     setPhotoPreview(preview);
   }
 
-  function openBirthDatePicker() {
-    const input = birthDatePickerRef.current;
-    if (!input) return;
+  useEffect(() => {
+    if (!showBirthCalendar) return;
 
-    if (typeof input.showPicker === "function") {
-      input.showPicker();
-      return;
+    function handlePointerDown(event: MouseEvent) {
+      if (birthCalendarRef.current?.contains(event.target as Node)) return;
+      setShowBirthCalendar(false);
     }
 
-    input.click();
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [showBirthCalendar]);
+
+  function toggleBirthCalendar() {
+    setVisibleBirthMonth(startOfMonth(selectedBirthDate ?? new Date()));
+    setShowBirthCalendar((current) => !current);
+  }
+
+  function chooseBirthDate(date: Date) {
+    setBirthDate(formatDateToUs(date));
+    setVisibleBirthMonth(startOfMonth(date));
+    setShowBirthCalendar(false);
   }
 
   return (
@@ -2392,7 +2451,7 @@ function FamilyMemberModal({
 
             <label className="grid gap-2">
               <span className="text-sm font-medium text-black/85">Date of Birth</span>
-              <div className="relative">
+              <div ref={birthCalendarRef} className="relative">
                 <input
                   value={birthDate}
                   onChange={(event) => setBirthDate(formatUsDateInput(event.target.value))}
@@ -2401,23 +2460,76 @@ function FamilyMemberModal({
                   maxLength={10}
                   className="min-h-11 w-full rounded-md border border-black/15 px-4 pr-11 text-[15px] outline-none"
                 />
-                <input
-                  ref={birthDatePickerRef}
-                  type="date"
-                  tabIndex={-1}
-                  value={usDateToIso(birthDate)}
-                  onChange={(event) => setBirthDate(formatUsDateInput(event.target.value))}
-                  className="absolute right-0 top-0 h-full w-11 cursor-pointer opacity-0"
-                  aria-label="Pick birth date"
-                />
                 <button
                   type="button"
-                  onClick={openBirthDatePicker}
+                  onClick={toggleBirthCalendar}
                   className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-black/45"
                   aria-label="Open date picker"
                 >
                   <Icon name="calendar" className="h-4 w-4" />
                 </button>
+
+                {showBirthCalendar ? (
+                  <div className="absolute left-0 top-[calc(100%+4px)] z-20 w-[334px] rounded-xl border border-black/10 bg-white p-5 shadow-2xl">
+                    <div className="mb-5 flex items-center justify-between">
+                      <div className="text-[16px] font-medium text-black">
+                        {visibleBirthMonth.toLocaleDateString("en-US", {
+                          month: "long",
+                          year: "numeric",
+                        })}
+                      </div>
+                      <div className="flex items-center gap-2 text-black/55">
+                        <button
+                          type="button"
+                          onClick={() => setVisibleBirthMonth((current) => addMonths(current, -1))}
+                          className="grid h-8 w-8 place-items-center rounded-full hover:bg-black/[0.04]"
+                          aria-label="Previous month"
+                        >
+                          <Icon name="chevron" className="h-4 w-4 rotate-90" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setVisibleBirthMonth((current) => addMonths(current, 1))}
+                          className="grid h-8 w-8 place-items-center rounded-full hover:bg-black/[0.04]"
+                          aria-label="Next month"
+                        >
+                          <Icon name="chevron" className="h-4 w-4 -rotate-90" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-7 gap-y-3 text-center text-[13px] text-black/55">
+                      {["S", "M", "T", "W", "T", "F", "S"].map((day) => (
+                        <div key={day}>{day}</div>
+                      ))}
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-7 gap-y-3 text-center">
+                      {birthCalendarDays.map((day) => {
+                        const isSelected =
+                          !!selectedBirthDate &&
+                          day.date.getFullYear() === selectedBirthDate.getFullYear() &&
+                          day.date.getMonth() === selectedBirthDate.getMonth() &&
+                          day.date.getDate() === selectedBirthDate.getDate();
+
+                        return (
+                          <button
+                            key={day.key}
+                            type="button"
+                            onClick={() => chooseBirthDate(day.date)}
+                            className={[
+                              "mx-auto grid h-10 w-10 place-items-center rounded-full text-[15px]",
+                              day.isCurrentMonth ? "text-black/75" : "text-black/25",
+                              isSelected ? "border border-black/35 text-black" : "hover:bg-black/[0.04]",
+                            ].join(" ")}
+                          >
+                            {day.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </label>
           </div>
