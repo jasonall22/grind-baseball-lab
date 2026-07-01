@@ -23,6 +23,12 @@ export default function AdminPage() {
   const defaultCards: CardDef[] = useMemo(
     () => [
       {
+        id: "bookings",
+        href: "/admin/bookings",
+        title: "Bookings",
+        desc: "Manage Swift-style services, calendar, customers, and availability.",
+      },
+      {
         id: "hero",
         href: "/admin/hero",
         title: "Hero Slider",

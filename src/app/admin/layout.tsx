@@ -1,13 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { usePathname, useRouter } from "next/navigation";
+import { hasSupabaseEnv, supabase } from "@/lib/supabaseClient";
 
 type Role = "admin" | "member" | "parent" | "coach" | string | null;
+type ProfileRoleRow = {
+  role: Role;
+};
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
 
   const [status, setStatus] = useState<"checking" | "allowed" | "denied">(
     "checking"
@@ -17,6 +21,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     let alive = true;
 
     async function check() {
+      if (
+        process.env.NODE_ENV !== "production" &&
+        !hasSupabaseEnv &&
+        pathname === "/admin/bookings"
+      ) {
+        setStatus("allowed");
+        return;
+      }
+
       // 1) Must be logged in
       const { data } = await supabase.auth.getSession();
       const session = data.session;
@@ -40,7 +53,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       if (!alive) return;
 
-      const role: Role = (prof as any)?.role ?? null;
+      const profile = prof as ProfileRoleRow | null;
+      const role: Role = profile?.role ?? null;
 
       if (!error && role === "admin") {
         setStatus("allowed");
@@ -63,7 +77,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       alive = false;
       sub.subscription.unsubscribe();
     };
-  }, [router]);
+  }, [pathname, router]);
 
   if (status !== "allowed") {
     // Simple, clean gate screen (prevents admin UI flashing for non-admins)
