@@ -199,9 +199,15 @@ type ModalState =
 
 type CustomerImportField =
   | "name"
+  | "firstName"
+  | "lastName"
   | "email"
   | "phone"
   | "address"
+  | "city"
+  | "state"
+  | "zip"
+  | "birthDate"
   | "birthYear"
   | "birthMonth"
   | "birthDay"
@@ -867,18 +873,59 @@ function parseCsv(text: string) {
 
 const customerImportHeaderAliases: Record<CustomerImportField, string[]> = {
   name: ["name", "fullname", "customername", "parentname", "full name"],
+  firstName: ["firstname", "first name", "parentfirstname"],
+  lastName: ["lastname", "last name", "parentlastname"],
   email: ["email", "emailaddress", "email address"],
   phone: ["phone", "phonenumber", "phone number", "mobile", "mobilephone"],
   address: ["address", "streetaddress", "location"],
+  city: ["city"],
+  state: ["state", "province", "region"],
+  zip: ["zip", "zipcode", "zip code", "postalcode", "postal code"],
+  birthDate: ["birthdate", "birth date", "dob", "dateofbirth", "date of birth"],
   birthYear: ["birthyear", "year", "dobyear", "birth year"],
   birthMonth: ["birthmonth", "month", "dobmonth", "birth month"],
   birthDay: ["birthday", "day", "dobday", "birth day"],
   gender: ["gender", "sex"],
   emergencyContactName: ["emergencycontactname", "emergency name", "guardianname", "parentcontactname"],
   emergencyContactEmail: ["emergencycontactemail", "emergency email", "guardianemail", "parentcontactemail"],
-  emergencyContactPhone: ["emergencycontactphone", "emergency phone", "guardianphone", "parentcontactphone"],
+  emergencyContactPhone: [
+    "emergencycontactphone",
+    "emergency contact phone",
+    "emergencycontactnumber",
+    "emergency contact number",
+    "emergency phone",
+    "guardianphone",
+    "parentcontactphone",
+  ],
   notes: ["notes", "note", "customernotes"],
 };
+
+function parseBirthDateParts(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return { birthYear: "", birthMonth: "", birthDay: "" };
+  }
+
+  const matched = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (matched) {
+    return {
+      birthYear: matched[1],
+      birthMonth: matched[2].padStart(2, "0"),
+      birthDay: matched[3].padStart(2, "0"),
+    };
+  }
+
+  const date = new Date(trimmed);
+  if (!Number.isNaN(date.getTime())) {
+    return {
+      birthYear: String(date.getFullYear()),
+      birthMonth: String(date.getMonth() + 1).padStart(2, "0"),
+      birthDay: String(date.getDate()).padStart(2, "0"),
+    };
+  }
+
+  return { birthYear: "", birthMonth: "", birthDay: "" };
+}
 
 function suggestCustomerImportMapping(headers: string[]) {
   const mapping: Partial<Record<CustomerImportField, string>> = {};
@@ -913,13 +960,23 @@ function buildImportedCustomers(
         return header ? (row[header] ?? "").trim() : "";
       };
 
-      const name = readValue("name");
+      const explicitName = readValue("name");
+      const firstName = readValue("firstName");
+      const lastName = readValue("lastName");
+      const name = explicitName || joinName(firstName, lastName);
       const email = readValue("email");
       const phone = readValue("phone");
-      const address = readValue("address");
-      const birthYear = readValue("birthYear");
-      const birthMonth = readValue("birthMonth");
-      const birthDay = readValue("birthDay");
+      const streetAddress = readValue("address");
+      const city = readValue("city");
+      const state = readValue("state");
+      const zip = readValue("zip");
+      const cityState = [city, state].filter(Boolean).join(", ");
+      const locationLine = [cityState, zip].filter(Boolean).join(" ");
+      const address = [streetAddress, locationLine].filter(Boolean).join(", ").trim();
+      const parsedBirthDate = parseBirthDateParts(readValue("birthDate"));
+      const birthYear = readValue("birthYear") || parsedBirthDate.birthYear;
+      const birthMonth = readValue("birthMonth") || parsedBirthDate.birthMonth;
+      const birthDay = readValue("birthDay") || parsedBirthDate.birthDay;
       const gender = readValue("gender");
       const emergencyContactName = readValue("emergencyContactName");
       const emergencyContactEmail = readValue("emergencyContactEmail");
@@ -2702,9 +2759,15 @@ function CustomerSection({
 
 const customerImportFieldLabels: Record<CustomerImportField, string> = {
   name: "Name",
+  firstName: "First Name",
+  lastName: "Last Name",
   email: "Email",
   phone: "Phone",
   address: "Address",
+  city: "City",
+  state: "State",
+  zip: "Zip",
+  birthDate: "Birth Date",
   birthYear: "Birth Year",
   birthMonth: "Birth Month",
   birthDay: "Birth Day",
@@ -2740,20 +2803,76 @@ function CustomerImportModal({
 
   function downloadSampleFile() {
     const rows = [
-      ["Name", "Email", "Phone", "Address", "Birth Year", "Birth Month", "Birth Day", "Gender", "Emergency Contact Name", "Emergency Contact Email", "Emergency Contact Phone", "Notes"],
       [
-        "Mason Reed",
+        "Email",
+        "First Name",
+        "Last Name",
+        "Phone",
+        "Address",
+        "City",
+        "State",
+        "Zip",
+        "Birth Date",
+        "Gender",
+        "Notes",
+        "Emergency Contact Name",
+        "Emergency Contact Number",
+        "Emergency Contact Email",
+        "Dependent 1 First Name",
+        "Dependent 1 Last Name",
+        "Dependent 1 Birth Date",
+        "Dependent 1 Gender",
+        "Dependent 1 Relationship",
+        "Dependent 2 First Name",
+        "Dependent 2 Last Name",
+        "Dependent 2 Birth Date",
+        "Dependent 2 Gender",
+        "Dependent 2 Relationship",
+        "Dependent 3 First Name",
+        "Dependent 3 Last Name",
+        "Dependent 3 Birth Date",
+        "Dependent 3 Gender",
+        "Dependent 3 Relationship",
+        "Dependent 4 First Name",
+        "Dependent 4 Last Name",
+        "Dependent 4 Birth Date",
+        "Dependent 4 Gender",
+        "Dependent 4 Relationship",
+      ],
+      [
         "mason.reed@example.com",
+        "Mason",
+        "Reed",
         "941-555-0181",
-        "613 Cypress Ave, Venice FL",
-        "2010",
-        "07",
-        "28",
+        "613 Cypress Ave",
+        "Venice",
+        "FL",
+        "34285",
+        "2010-07-28",
         "Male",
-        "Allison Reed",
-        "allison@example.com",
-        "941-555-0101",
         "Varsity middle infielder",
+        "Allison Reed",
+        "941-555-0101",
+        "allison@example.com",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
       ],
     ];
     const csv = rows.map((row) => row.map((cell) => `"${cell.replaceAll('"', '""')}"`).join(",")).join("\n");
@@ -2761,7 +2880,7 @@ function CustomerImportModal({
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "customer-import-sample.csv";
+    link.download = "customers-sample.csv";
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -2798,7 +2917,7 @@ function CustomerImportModal({
   }
 
   function canProceedToReview() {
-    return Boolean(mapping.name || (mapping.email && mapping.phone));
+    return Boolean(mapping.name || (mapping.firstName && mapping.lastName) || (mapping.email && mapping.phone));
   }
 
   return (
