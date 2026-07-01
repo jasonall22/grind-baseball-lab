@@ -2172,6 +2172,12 @@ function formatUsPhoneInput(value: string) {
   return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
 }
 
+function usDateToIso(value: string) {
+  const matched = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!matched) return "";
+  return `${matched[3]}-${matched[1]}-${matched[2]}`;
+}
+
 function customerJoinedLabel(value: string) {
   if (!value) return "";
 
@@ -2255,6 +2261,7 @@ function FamilyMemberModal({
   const [birthDate, setBirthDate] = useState("");
   const [photoPreview, setPhotoPreview] = useState("");
   const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const birthDatePickerRef = useRef<HTMLInputElement | null>(null);
 
   const canSave = firstName.trim().length > 0 || lastName.trim().length > 0;
 
@@ -2269,6 +2276,18 @@ function FamilyMemberModal({
     });
 
     setPhotoPreview(preview);
+  }
+
+  function openBirthDatePicker() {
+    const input = birthDatePickerRef.current;
+    if (!input) return;
+
+    if (typeof input.showPicker === "function") {
+      input.showPicker();
+      return;
+    }
+
+    input.click();
   }
 
   return (
@@ -2382,9 +2401,23 @@ function FamilyMemberModal({
                   maxLength={10}
                   className="min-h-11 w-full rounded-md border border-black/15 px-4 pr-11 text-[15px] outline-none"
                 />
-                <div className="absolute inset-y-0 right-3 flex items-center text-black/45">
+                <input
+                  ref={birthDatePickerRef}
+                  type="date"
+                  tabIndex={-1}
+                  value={usDateToIso(birthDate)}
+                  onChange={(event) => setBirthDate(formatUsDateInput(event.target.value))}
+                  className="absolute right-0 top-0 h-full w-11 cursor-pointer opacity-0"
+                  aria-label="Pick birth date"
+                />
+                <button
+                  type="button"
+                  onClick={openBirthDatePicker}
+                  className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-black/45"
+                  aria-label="Open date picker"
+                >
                   <Icon name="calendar" className="h-4 w-4" />
-                </div>
+                </button>
               </div>
             </label>
           </div>
