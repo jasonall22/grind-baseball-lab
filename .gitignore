@@ -34,6 +34,10 @@ dev-server*.log
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example
+!supabase/.env.supabase.example
+
+# supabase local CLI state
+supabase/.temp/
 
 # vercel
 .vercel
