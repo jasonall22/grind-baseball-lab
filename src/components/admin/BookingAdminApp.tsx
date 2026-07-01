@@ -63,6 +63,8 @@ type Product = {
 
 type FacilitySettings = AppState["facility"];
 
+type BookingPolicies = AppState["policies"];
+
 type ModalSaveChange =
   | { type: "service"; item: Service }
   | { type: "booking"; item: Booking }
@@ -82,6 +84,11 @@ type BookingSettingsRow = {
   public_url: string;
   timezone: string;
   address: string | null;
+  waiver_enabled: boolean | null;
+  waiver_document_url: string | null;
+  waiver_document_name: string | null;
+  waiver_intro: string | null;
+  waiver_allow_in_person: boolean | null;
 };
 
 type BookingServiceRow = {
@@ -152,6 +159,13 @@ type AppState = {
     timezone: string;
     address: string;
   };
+  policies: {
+    waiverEnabled: boolean;
+    waiverDocumentUrl: string;
+    waiverDocumentName: string;
+    waiverIntro: string;
+    waiverAllowInPerson: boolean;
+  };
   resources: string[];
   services: Service[];
   customers: Customer[];
@@ -189,6 +203,14 @@ const defaultState: AppState = {
     publicUrl: "https://www.grindbaseballlab.com/book",
     timezone: "America/New_York",
     address: "Venice, FL",
+  },
+  policies: {
+    waiverEnabled: false,
+    waiverDocumentUrl: "",
+    waiverDocumentName: "Liability Waiver",
+    waiverIntro:
+      "By clicking Agree & Continue, you confirm that the customer has had the opportunity to review this waiver and has agreed to its terms with full consent.",
+    waiverAllowInPerson: true,
   },
   resources: ["Cage 1", "Cage 2", "Pitching Lane", "HitTrax"],
   services: [
@@ -379,13 +401,21 @@ function resourceLookup(resources: BookingResourceRow[]) {
   };
 }
 
-async function upsertFacilitySettings(facility: FacilitySettings) {
+async function upsertFacilitySettings(
+  facility: FacilitySettings,
+  policies: BookingPolicies
+) {
   const { error } = await supabase.from("booking_settings").upsert({
     key: "default",
     facility_name: facility.name,
     public_url: facility.publicUrl,
     timezone: facility.timezone,
     address: facility.address,
+    waiver_enabled: policies.waiverEnabled,
+    waiver_document_url: policies.waiverDocumentUrl || null,
+    waiver_document_name: policies.waiverDocumentName || null,
+    waiver_intro: policies.waiverIntro,
+    waiver_allow_in_person: policies.waiverAllowInPerson,
   });
 
   if (error) throw error;
@@ -669,6 +699,21 @@ export default function BookingAdminApp({
           timezone: settings?.timezone ?? defaultState.facility.timezone,
           address: settings?.address ?? defaultState.facility.address,
         },
+        policies: {
+          waiverEnabled:
+            settings?.waiver_enabled ?? defaultState.policies.waiverEnabled,
+          waiverDocumentUrl:
+            settings?.waiver_document_url ??
+            defaultState.policies.waiverDocumentUrl,
+          waiverDocumentName:
+            settings?.waiver_document_name ??
+            defaultState.policies.waiverDocumentName,
+          waiverIntro:
+            settings?.waiver_intro ?? defaultState.policies.waiverIntro,
+          waiverAllowInPerson:
+            settings?.waiver_allow_in_person ??
+            defaultState.policies.waiverAllowInPerson,
+        },
         resources: resources.map((resource) => resource.name),
         services: serviceRows.map((service) => ({
           id: service.id,
@@ -755,7 +800,7 @@ export default function BookingAdminApp({
     setState(next);
 
     try {
-      await upsertFacilitySettings(next.facility);
+      await upsertFacilitySettings(next.facility, next.policies);
       const resources = await upsertResources(next.resources);
       setResourceIdsByName(resourceLookup(resources).idsByName);
       showToast("Settings saved.");
@@ -1691,6 +1736,96 @@ function SettingsView({
           </div>
         </div>
       </div>
+
+      <div className="mt-5 rounded-lg border border-black/10 bg-white p-5 shadow-sm">
+        <div className="font-semibold">Policies</div>
+        <div className="mt-5 grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+          <div>
+            <div className="font-semibold">Liability Waiver</div>
+            <p className="mt-2 text-sm leading-relaxed text-black/60">
+              Display and require customers to agree to your liability waiver before they are allowed to make a booking.
+            </p>
+          </div>
+          <div className="grid gap-4">
+            <label className="inline-flex items-center gap-3 text-sm font-semibold">
+              <input
+                type="checkbox"
+                checked={draft.policies.waiverEnabled}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    policies: {
+                      ...draft.policies,
+                      waiverEnabled: event.target.checked,
+                    },
+                  })
+                }
+                className="h-5 w-5 accent-black"
+              />
+              Require waiver before booking
+            </label>
+            <TextField
+              label="Waiver document URL"
+              value={draft.policies.waiverDocumentUrl}
+              onChange={(value) =>
+                setDraft({
+                  ...draft,
+                  policies: {
+                    ...draft.policies,
+                    waiverDocumentUrl: value,
+                  },
+                })
+              }
+            />
+            <TextField
+              label="Waiver document name"
+              value={draft.policies.waiverDocumentName}
+              onChange={(value) =>
+                setDraft({
+                  ...draft,
+                  policies: {
+                    ...draft.policies,
+                    waiverDocumentName: value,
+                  },
+                })
+              }
+            />
+            <label className="grid gap-1.5">
+              <span className="text-sm font-semibold text-black/70">Waiver intro</span>
+              <textarea
+                value={draft.policies.waiverIntro}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    policies: {
+                      ...draft.policies,
+                      waiverIntro: event.target.value,
+                    },
+                  })
+                }
+                className="min-h-28 rounded-lg border border-black/10 px-3 py-2 outline-none focus:border-black/30"
+              />
+            </label>
+            <label className="inline-flex items-center gap-3 text-sm font-semibold">
+              <input
+                type="checkbox"
+                checked={draft.policies.waiverAllowInPerson}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    policies: {
+                      ...draft.policies,
+                      waiverAllowInPerson: event.target.checked,
+                    },
+                  })
+                }
+                className="h-5 w-5 accent-black"
+              />
+              Allow staff to collect waiver signatures in person
+            </label>
+          </div>
+        </div>
+      </div>
     </section>
   );
 }
@@ -1894,6 +2029,7 @@ function EditorModal({
     service ?? booking ?? customer ?? campaign ?? product!
   );
   const [openCustomerSections, setOpenCustomerSections] = useState<string[]>([]);
+  const [showWaiverDialog, setShowWaiverDialog] = useState(false);
 
   const title = `${modal.id ? "Edit" : "New"} ${modal.type}`;
   const customerDraft = draft as Customer;
@@ -2041,7 +2177,8 @@ function EditorModal({
                   </span>
                   <button
                     type="button"
-                    onClick={() => patch({ waiverAgreed: true })}
+                    onClick={() => setShowWaiverDialog(true)}
+                    disabled={!state.policies.waiverEnabled}
                     className="rounded-lg border border-black/10 px-3 py-2 text-sm font-semibold hover:bg-black/[0.03]"
                   >
                     Agree to Waiver
@@ -2135,6 +2272,84 @@ function EditorModal({
             className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white disabled:bg-black/15 disabled:text-black/35"
           >
             Save
+          </button>
+        </div>
+      </div>
+
+      {modal.type === "customer" && showWaiverDialog ? (
+        <WaiverDialog
+          title={`Agree to our liability waiver`}
+          intro={state.policies.waiverIntro}
+          documentName={state.policies.waiverDocumentName}
+          documentUrl={state.policies.waiverDocumentUrl}
+          onClose={() => setShowWaiverDialog(false)}
+          onAgree={() => {
+            patch({ waiverAgreed: true });
+            setShowWaiverDialog(false);
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function WaiverDialog({
+  title,
+  intro,
+  documentName,
+  documentUrl,
+  onClose,
+  onAgree,
+}: {
+  title: string;
+  intro: string;
+  documentName: string;
+  documentUrl: string;
+  onClose: () => void;
+  onAgree: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/45 p-4">
+      <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-white shadow-2xl">
+        <div className="flex items-start justify-between border-b border-black/10 px-6 py-5">
+          <div>
+            <h3 className="text-2xl font-medium">{title}</h3>
+            <p className="mt-4 max-w-2xl text-sm leading-relaxed text-black/75">{intro}</p>
+            {documentUrl ? (
+              <a
+                href={documentUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-4 inline-flex text-sm font-semibold underline"
+              >
+                Open waiver in new tab
+              </a>
+            ) : null}
+          </div>
+          <RowAction icon="x" label="Close" onClick={onClose} />
+        </div>
+
+        <div className="min-h-[420px] flex-1 overflow-hidden border-b border-black/10 bg-black/[0.02]">
+          {documentUrl ? (
+            <iframe
+              src={documentUrl}
+              title={documentName || "Liability waiver"}
+              className="h-full min-h-[420px] w-full"
+            />
+          ) : (
+            <div className="flex h-full min-h-[420px] items-center justify-center px-8 text-center text-sm text-black/55">
+              Add a waiver document URL in Settings &gt; Policies to preview it here.
+            </div>
+          )}
+        </div>
+
+        <div className="px-4 py-4">
+          <button
+            type="button"
+            onClick={onAgree}
+            className="w-full rounded-lg bg-[#221e1f] px-4 py-4 text-base font-semibold text-white"
+          >
+            Agree & Continue
           </button>
         </div>
       </div>
