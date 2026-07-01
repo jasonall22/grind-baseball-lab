@@ -2707,36 +2707,49 @@ function WaiverDialog({
   onClose: () => void;
   onAgree: () => void;
 }) {
+  const previewUrl = documentUrl
+    ? documentUrl.includes("#")
+      ? documentUrl
+      : `${documentUrl}#toolbar=0&navpanes=0&scrollbar=1`
+    : "";
+
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/45 p-4">
-      <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-white shadow-2xl">
-        <div className="flex items-start justify-between border-b border-black/10 px-6 py-5">
-          <div>
-            <h3 className="text-2xl font-medium">{title}</h3>
-            <p className="mt-4 max-w-2xl text-sm leading-relaxed text-black/75">{intro}</p>
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4">
+      <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-[660px] flex-col overflow-hidden rounded-lg bg-white shadow-[0_24px_70px_rgba(0,0,0,0.28)]">
+        <div className="flex items-start justify-between border-b border-black/10 px-8 py-7">
+          <div className="pr-6">
+            <h3 className="text-[26px] font-medium leading-none">{title}</h3>
+            <p className="mt-6 max-w-[520px] text-[15px] leading-8 text-black/80">{intro}</p>
             {documentUrl ? (
               <a
                 href={documentUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-4 inline-flex text-sm font-semibold underline"
+                className="mt-5 inline-flex text-[15px] font-medium text-black/75 underline underline-offset-2"
               >
                 Open waiver in new tab
               </a>
             ) : null}
           </div>
-          <RowAction icon="x" label="Close" onClick={onClose} />
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-black/10 text-black/55 transition hover:bg-black/[0.03] hover:text-black"
+          >
+            <Icon name="x" className="h-4 w-4" />
+          </button>
         </div>
 
-        <div className="min-h-[420px] flex-1 overflow-hidden border-b border-black/10 bg-black/[0.02]">
-          {documentUrl ? (
+        <div className="min-h-[500px] flex-1 overflow-hidden border-b border-black/10 bg-white">
+          {previewUrl ? (
             <iframe
-              src={documentUrl}
+              src={previewUrl}
               title={documentName || "Liability waiver"}
-              className="h-full min-h-[420px] w-full"
+              className="h-full min-h-[500px] w-full"
             />
           ) : (
-            <div className="flex h-full min-h-[420px] items-center justify-center px-8 text-center text-sm text-black/55">
+            <div className="flex h-full min-h-[500px] items-center justify-center px-8 text-center text-sm text-black/55">
               Add a waiver document URL in Settings &gt; Booking &gt; Policies to preview it here.
             </div>
           )}
@@ -2746,7 +2759,7 @@ function WaiverDialog({
           <button
             type="button"
             onClick={onAgree}
-            className="w-full rounded-lg bg-[#221e1f] px-4 py-4 text-base font-semibold text-white"
+            className="w-full rounded-md bg-[#221e1f] px-4 py-4 text-[16px] font-semibold text-white shadow-sm"
           >
             Agree & Continue
           </button>
