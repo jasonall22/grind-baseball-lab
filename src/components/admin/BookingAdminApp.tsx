@@ -2253,8 +2253,23 @@ function FamilyMemberModal({
   const [relationship, setRelationship] = useState("Unspecified");
   const [gender, setGender] = useState("Unspecified");
   const [birthDate, setBirthDate] = useState("");
+  const [photoPreview, setPhotoPreview] = useState("");
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
 
   const canSave = firstName.trim().length > 0 || lastName.trim().length > 0;
+
+  async function handlePhotoFile(file: File) {
+    if (!file.type.startsWith("image/")) return;
+
+    const reader = new FileReader();
+    const preview = await new Promise<string>((resolve, reject) => {
+      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+
+    setPhotoPreview(preview);
+  }
 
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/45 p-4">
@@ -2273,14 +2288,37 @@ function FamilyMemberModal({
 
         <div className="px-6 py-5">
           <div className="flex flex-col items-center pb-4">
-            <div className="relative grid h-[74px] w-[74px] place-items-center rounded-full border border-black/10 bg-black/[0.06] text-black/55">
-              <Icon name="user" className="h-9 w-9" />
-              <span className="absolute bottom-0 right-0 grid h-6 w-6 place-items-center rounded-full border border-white bg-white text-black/55 shadow-sm">
-                <Icon name="camera" className="h-3.5 w-3.5" />
-              </span>
-            </div>
-            <button type="button" className="mt-2 text-[14px] text-black/45">
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void handlePhotoFile(file);
+                event.currentTarget.value = "";
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => photoInputRef.current?.click()}
+              className="group flex flex-col items-center"
+            >
+              <div
+                className={[
+                  "relative grid h-[112px] w-[112px] place-items-center overflow-hidden rounded-full border border-black/10 bg-black/[0.05] text-black/50 transition",
+                  photoPreview ? "bg-cover bg-center" : "",
+                ].join(" ")}
+                style={photoPreview ? { backgroundImage: `url(${photoPreview})` } : undefined}
+              >
+                {!photoPreview ? <Icon name="user" className="h-12 w-12" /> : null}
+                <span className="absolute bottom-1 right-1 grid h-8 w-8 place-items-center rounded-full border border-black/10 bg-white text-black/55 shadow-sm">
+                  <Icon name="camera" className="h-4 w-4" />
+                </span>
+              </div>
+              <span className="mt-3 text-[14px] text-black/45 group-hover:text-black/65">
               Add photo
+              </span>
             </button>
           </div>
 
