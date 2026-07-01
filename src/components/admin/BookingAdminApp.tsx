@@ -30,7 +30,10 @@ type Customer = {
   player: string;
   email: string;
   phone: string;
+  age: number | "";
+  memberships: string[];
   notes: string;
+  createdAt: string;
 };
 
 type Booking = {
@@ -100,7 +103,10 @@ type BookingCustomerRow = {
   player_name: string;
   email: string | null;
   phone: string | null;
+  age: number | null;
+  memberships: string[] | null;
   notes: string | null;
+  created_at: string;
 };
 
 type BookingBookingRow = {
@@ -218,7 +224,10 @@ const defaultState: AppState = {
       player: "Mason Reed",
       email: "mason.reed@example.com",
       phone: "(407) 555-0148",
+      age: "",
+      memberships: [],
       notes: "Varsity middle infielder",
+      createdAt: "2026-07-01",
     },
     {
       id: "cust-jackson",
@@ -226,7 +235,10 @@ const defaultState: AppState = {
       player: "Jackson Johnson",
       email: "avery.johnson@example.com",
       phone: "(407) 555-0192",
+      age: "",
+      memberships: ["Pitching package"],
       notes: "Pitching package",
+      createdAt: "2026-07-01",
     },
   ],
   bookings: [
@@ -294,6 +306,7 @@ type IconName =
   | "edit"
   | "trash"
   | "download"
+  | "search"
   | "x";
 
 const iconPaths: Record<IconName, string[]> = {
@@ -319,6 +332,7 @@ const iconPaths: Record<IconName, string[]> = {
   edit: ["M12 20h9", "m16.5 3.5 4 4L7 21H3v-4Z"],
   trash: ["M3 6h18", "M8 6V4h8v2", "m19 6-1 15H6L5 6", "M10 11v6M14 11v6"],
   download: ["M12 3v12", "m7 10 5 5 5-5", "M5 21h14"],
+  search: ["M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z", "m21 21-4.3-4.3"],
   x: ["M18 6 6 18", "M6 6l12 12"],
 };
 
@@ -453,6 +467,8 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
       player_name: item.player,
       email: item.email,
       phone: item.phone,
+      age: item.age === "" ? null : item.age,
+      memberships: item.memberships,
       notes: item.notes,
     });
     if (error) throw error;
@@ -497,6 +513,30 @@ function timeLabel(value: string) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function dateLabel(value: string) {
+  if (!value) return "";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleDateString("en-US", {
+    month: "numeric",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function membershipText(memberships: string[]) {
+  return memberships.join(", ");
+}
+
+function parseMemberships(value: string) {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function pillClass(status: string) {
@@ -618,7 +658,10 @@ export default function BookingAdminApp() {
           player: customer.player_name,
           email: customer.email ?? "",
           phone: customer.phone ?? "",
+          age: customer.age ?? "",
+          memberships: customer.memberships ?? [],
           notes: customer.notes ?? "",
+          createdAt: customer.created_at,
         })),
         bookings: bookingRows.map((booking) => ({
           id: booking.id,
@@ -878,6 +921,7 @@ export default function BookingAdminApp() {
               bookings={state.bookings}
               search={customerSearch}
               onSearch={setCustomerSearch}
+              onImport={() => showToast("Customer import is ready for the next pass.")}
               onNew={() => setModal({ type: "customer" })}
               onEdit={(id) => setModal({ type: "customer", id })}
               onDelete={(id) => void deleteCustomer(id)}
@@ -1289,6 +1333,7 @@ function CustomersView({
   bookings,
   search,
   onSearch,
+  onImport,
   onNew,
   onEdit,
   onDelete,
@@ -1297,49 +1342,160 @@ function CustomersView({
   bookings: Booking[];
   search: string;
   onSearch: (value: string) => void;
+  onImport: () => void;
   onNew: () => void;
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
+  const [selected, setSelected] = useState<string[]>([]);
   const filtered = customers.filter((customer) =>
     [customer.name, customer.player, customer.email, customer.phone]
       .join(" ")
       .toLowerCase()
       .includes(search.toLowerCase())
   );
+  const bookingCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    bookings.forEach((booking) => {
+      counts.set(booking.customerId, (counts.get(booking.customerId) ?? 0) + 1);
+    });
+    return counts;
+  }, [bookings]);
+  const allVisibleSelected = filtered.length > 0 && filtered.every((customer) => selected.includes(customer.id));
+
+  function toggleAll() {
+    if (allVisibleSelected) {
+      setSelected((current) => current.filter((id) => !filtered.some((customer) => customer.id === id)));
+      return;
+    }
+
+    setSelected((current) => Array.from(new Set([...current, ...filtered.map((customer) => customer.id)])));
+  }
+
+  function toggleCustomer(id: string) {
+    setSelected((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+  }
 
   return (
     <section className="min-h-screen px-6 py-8">
-      <PageHeader title="Customers" subtitle="Parents, players, and booking history.">
-        <input
-          type="search"
-          value={search}
-          onChange={(event) => onSearch(event.target.value)}
-          placeholder="Search customers"
-          className="min-h-10 rounded-lg border border-black/10 px-3 text-sm"
-        />
+      <PageHeader title="Customers" subtitle="Customers includes anyone that has made a booking at your facility in the past.">
+        <button
+          type="button"
+          onClick={onImport}
+          className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-black/10 bg-white px-4 py-2 text-sm font-semibold"
+        >
+          <Icon name="download" className="h-4 w-4" />
+          Import
+        </button>
         <PrimaryButton icon="plus" onClick={onNew}>
-          New customer
+          New
         </PrimaryButton>
       </PageHeader>
 
-      <DataTable headers={["Customer", "Player", "Email", "Phone", "Bookings", ""]}>
-        {filtered.map((customer) => (
-          <tr key={customer.id}>
-            <Td><strong>{customer.name}</strong></Td>
-            <Td>{customer.player}</Td>
-            <Td>{customer.email}</Td>
-            <Td>{customer.phone}</Td>
-            <Td>{bookings.filter((booking) => booking.customerId === customer.id).length}</Td>
-            <Td align="right">
-              <div className="flex justify-end gap-2">
-                <RowAction icon="edit" label="Edit customer" onClick={() => onEdit(customer.id)} />
-                <RowAction icon="trash" label="Delete customer" onClick={() => onDelete(customer.id)} />
-              </div>
-            </Td>
-          </tr>
-        ))}
-      </DataTable>
+      <div className="mb-4 max-w-xl">
+        <label className="relative block">
+          <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-black/45" />
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => onSearch(event.target.value)}
+            placeholder="Search customers by name, email, or phone"
+            className="min-h-11 w-full rounded-lg border border-black/10 pl-10 pr-3 text-sm outline-none focus:border-black/30"
+          />
+        </label>
+      </div>
+
+      <div className="overflow-hidden rounded-lg border border-black/10 bg-white shadow-sm">
+        <div className="h-16 border-b border-black/10 bg-white" />
+        <div className="flex min-h-12 items-center gap-5 border-b border-black/10 px-4 text-sm font-semibold text-black/60">
+          <button type="button" className="inline-flex items-center gap-2 hover:text-black">
+            <Icon name="bar" className="h-4 w-4" />
+            Columns
+          </button>
+          <button type="button" className="inline-flex items-center gap-2 hover:text-black">
+            <Icon name="gear" className="h-4 w-4" />
+            Filters
+          </button>
+          {selected.length ? <span className="ml-auto text-black">{selected.length} selected</span> : null}
+        </div>
+
+        <div className="overflow-auto">
+          <table className="w-full min-w-[980px] border-collapse text-sm">
+            <thead className="bg-black/[0.03]">
+              <tr>
+                <th className="w-12 border-b border-black/10 px-4 py-3 text-left">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={toggleAll}
+                    aria-label="Select all customers"
+                    className="h-5 w-5 accent-black"
+                  />
+                </th>
+                <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Name</th>
+                <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Created At ↓</th>
+                <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Email</th>
+                <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Phone Number</th>
+                <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Age</th>
+                <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Memberships</th>
+                <th className="w-24 border-b border-black/10 px-4 py-3 text-right font-semibold" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-black/10">
+              {filtered.map((customer) => {
+                const isSelected = selected.includes(customer.id);
+                const bookingCount = bookingCounts.get(customer.id) ?? 0;
+
+                return (
+                  <tr key={customer.id} className="hover:bg-black/[0.02]">
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleCustomer(customer.id)}
+                        aria-label={`Select ${customer.name}`}
+                        className="h-5 w-5 accent-black"
+                      />
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => onEdit(customer.id)}
+                        title={`${bookingCount} bookings`}
+                        className="inline-flex items-center gap-3 text-left font-semibold hover:underline"
+                      >
+                        <span className="grid h-8 w-8 place-items-center rounded-full bg-black/20 text-white">
+                          <Icon name="user" className="h-5 w-5" />
+                        </span>
+                        {customer.name || customer.player || "Customer"}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3">{dateLabel(customer.createdAt)}</td>
+                    <td className="px-4 py-3">{customer.email}</td>
+                    <td className="px-4 py-3">{customer.phone}</td>
+                    <td className="px-4 py-3">{customer.age}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1.5">
+                        {customer.memberships.map((membership) => (
+                          <span key={membership} className="rounded-full bg-black/[0.06] px-2.5 py-1 text-xs font-semibold">
+                            {membership}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex justify-end gap-2">
+                        <RowAction icon="edit" label="Edit customer" onClick={() => onEdit(customer.id)} />
+                        <RowAction icon="trash" label="Delete customer" onClick={() => onDelete(customer.id)} />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </section>
   );
 }
@@ -1648,7 +1804,10 @@ function EditorModal({
           player: "",
           email: "",
           phone: "",
+          age: "",
+          memberships: [],
           notes: "",
+          createdAt: new Date().toISOString(),
         }
       : null;
 
@@ -1765,6 +1924,17 @@ function EditorModal({
               <TextField label="Player name" value={(draft as Customer).player} onChange={(value) => patch({ player: value })} />
               <TextField label="Email" type="email" value={(draft as Customer).email} onChange={(value) => patch({ email: value })} />
               <TextField label="Phone" value={(draft as Customer).phone} onChange={(value) => patch({ phone: value })} />
+              <TextField
+                label="Age"
+                type="number"
+                value={(draft as Customer).age}
+                onChange={(value) => patch({ age: value ? Number(value) : "" })}
+              />
+              <TextField
+                label="Memberships"
+                value={membershipText((draft as Customer).memberships)}
+                onChange={(value) => patch({ memberships: parseMemberships(value) })}
+              />
               <label className="grid gap-1.5 sm:col-span-2">
                 <span className="text-sm font-semibold text-black/70">Notes</span>
                 <textarea
