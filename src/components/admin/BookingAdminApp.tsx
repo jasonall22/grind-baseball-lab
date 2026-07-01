@@ -219,6 +219,7 @@ type CustomerImportField =
 
 type ParsedCsvFile = {
   fileName: string;
+  fileSize: number;
   headers: string[];
   rows: Record<string, string>[];
 };
@@ -464,6 +465,8 @@ type IconName =
   | "trash"
   | "download"
   | "upload"
+  | "file"
+  | "table"
   | "search"
   | "chevron"
   | "x"
@@ -493,6 +496,8 @@ const iconPaths: Record<IconName, string[]> = {
   trash: ["M3 6h18", "M8 6V4h8v2", "m19 6-1 15H6L5 6", "M10 11v6M14 11v6"],
   download: ["M12 3v12", "m7 10 5 5 5-5", "M5 21h14"],
   upload: ["M12 21V9", "m7 14 5-5 5 5", "M5 3h14"],
+  file: ["M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z", "M14 2v6h6"],
+  table: ["M4 6h16", "M4 12h16", "M4 18h16", "M8 4v16", "M16 4v16"],
   search: ["M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z", "m21 21-4.3-4.3"],
   chevron: ["m9 18 6-6-6-6"],
   x: ["M18 6 6 18", "M6 6l12 12"],
@@ -812,6 +817,12 @@ function joinName(first: string, last: string) {
 
 function normalizeCsvHeader(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 102.4) / 10} KB`;
+  return `${Math.round(bytes / 104857.6) / 10} MB`;
 }
 
 function parseCsv(text: string) {
@@ -2903,6 +2914,7 @@ function CustomerImportModal({
       );
       const nextParsed: ParsedCsvFile = {
         fileName: file.name,
+        fileSize: file.size,
         headers: parsed.headers,
         rows,
       };
@@ -2910,10 +2922,17 @@ function CustomerImportModal({
       setParsedFile(nextParsed);
       setMapping(suggestCustomerImportMapping(parsed.headers));
       setError("");
-      setStep(2);
+      setStep(1);
     } catch (importError) {
       setError(getErrorMessage(importError, "Could not read that CSV file."));
     }
+  }
+
+  function clearFile() {
+    setParsedFile(null);
+    setMapping({});
+    setError("");
+    setStep(1);
   }
 
   function canProceedToReview() {
@@ -2989,33 +3008,86 @@ function CustomerImportModal({
               }}
             />
 
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              onDragOver={(event) => {
-                event.preventDefault();
-                setIsDragging(true);
-              }}
-              onDragLeave={() => setIsDragging(false)}
-              onDrop={(event) => {
-                event.preventDefault();
-                setIsDragging(false);
-                const file = event.dataTransfer.files?.[0];
-                if (file) void acceptFile(file);
-              }}
-              className={[
-                "mt-5 flex min-h-[132px] w-full flex-col items-center justify-center rounded-xl border border-dashed px-6 text-center transition",
-                isDragging ? "border-black/35 bg-black/[0.03]" : "border-black/15 hover:bg-black/[0.02]",
-              ].join(" ")}
-            >
-              <span className="grid h-10 w-10 place-items-center rounded-full bg-black/[0.05] text-black/65">
-                <Icon name="upload" className="h-5 w-5" />
-              </span>
-              <div className="mt-5 text-base">
-                <strong>Click to upload</strong> or drag and drop
+            {parsedFile ? (
+              <div className="mt-6 rounded-2xl border border-black/12 p-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-4">
+                    <div className="grid h-12 w-12 place-items-center rounded-xl border border-black/10 text-black/55">
+                      <Icon name="file" className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <div className="text-[16px] font-medium text-black">{parsedFile.fileName}</div>
+                      <div className="mt-1 text-sm text-black/45">{formatFileSize(parsedFile.fileSize)}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 text-black/55">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="transition hover:text-black"
+                      aria-label="Replace file"
+                      title="Replace file"
+                    >
+                      <Icon name="upload" className="h-5 w-5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearFile}
+                      className="transition hover:text-black"
+                      aria-label="Remove file"
+                      title="Remove file"
+                    >
+                      <Icon name="trash" className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-black/10 px-6 py-5">
+                    <div className="flex items-center gap-3 text-black/55">
+                      <Icon name="table" className="h-5 w-5" />
+                      <span className="text-sm">Columns found</span>
+                    </div>
+                    <div className="mt-5 text-[20px] font-semibold text-black">{parsedFile.headers.length}</div>
+                  </div>
+                  <div className="rounded-2xl border border-black/10 px-6 py-5">
+                    <div className="flex items-center gap-3 text-black/55">
+                      <Icon name="table" className="h-5 w-5" />
+                      <span className="text-sm">Rows found</span>
+                    </div>
+                    <div className="mt-5 text-[20px] font-semibold text-black">{parsedFile.rows.length}</div>
+                  </div>
+                </div>
               </div>
-              <div className="mt-1 text-sm text-black/45">.CSV file</div>
-            </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setIsDragging(false);
+                  const file = event.dataTransfer.files?.[0];
+                  if (file) void acceptFile(file);
+                }}
+                className={[
+                  "mt-5 flex min-h-[132px] w-full flex-col items-center justify-center rounded-xl border border-dashed px-6 text-center transition",
+                  isDragging ? "border-black/35 bg-black/[0.03]" : "border-black/15 hover:bg-black/[0.02]",
+                ].join(" ")}
+              >
+                <span className="grid h-10 w-10 place-items-center rounded-full bg-black/[0.05] text-black/65">
+                  <Icon name="upload" className="h-5 w-5" />
+                </span>
+                <div className="mt-5 text-base">
+                  <strong>Click to upload</strong> or drag and drop
+                </div>
+                <div className="mt-1 text-sm text-black/45">.CSV file</div>
+              </button>
+            )}
 
             {error ? <div className="mt-4 text-sm text-red-600">{error}</div> : null}
           </div>
