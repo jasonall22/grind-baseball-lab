@@ -18,6 +18,7 @@ function isBookingAdminPath(pathname: string) {
     pathname === "/admin/calendar" ||
     pathname === "/admin/availability" ||
     pathname === "/admin/customers" ||
+    pathname.startsWith("/admin/customers/") ||
     pathname === "/admin/marketing" ||
     pathname === "/admin/retail" ||
     pathname === "/admin/reports" ||

@@ -1052,8 +1052,10 @@ function loadInitialState() {
 
 export default function BookingAdminApp({
   view = "home",
+  selectedCustomerId,
 }: {
   view?: BookingAdminView;
+  selectedCustomerId?: string;
 }) {
   const [state, setState] = useState<AppState>(loadInitialState);
   const [activeDate, setActiveDate] = useState("2026-07-01");
@@ -1398,6 +1400,8 @@ export default function BookingAdminApp({
     () => new Map(state.customers.map((customer) => [customer.id, customer])),
     [state.customers]
   );
+  const selectedCustomer =
+    selectedCustomerId ? state.customers.find((customer) => customer.id === selectedCustomerId) ?? null : null;
 
   const servicesById = useMemo(
     () => new Map(state.services.map((service) => [service.id, service])),
@@ -1518,17 +1522,24 @@ export default function BookingAdminApp({
             />
           ) : null}
           {view === "customers" ? (
-            <CustomersView
-              customers={state.customers}
-              bookings={state.bookings}
-              loading={isRemoteLoading}
-              search={customerSearch}
-              onSearch={setCustomerSearch}
-              onImport={() => setShowCustomerImport(true)}
-              onNew={() => setModal({ type: "customer" })}
-              onEdit={(id) => setModal({ type: "customer", id })}
-              onDelete={(id) => void deleteCustomer(id)}
-            />
+            selectedCustomerId ? (
+              <CustomerDetailView
+                customer={selectedCustomer}
+                onEdit={(id) => setModal({ type: "customer", id })}
+              />
+            ) : (
+              <CustomersView
+                customers={state.customers}
+                bookings={state.bookings}
+                loading={isRemoteLoading}
+                search={customerSearch}
+                onSearch={setCustomerSearch}
+                onImport={() => setShowCustomerImport(true)}
+                onNew={() => setModal({ type: "customer" })}
+                onEdit={(id) => setModal({ type: "customer", id })}
+                onDelete={(id) => void deleteCustomer(id)}
+              />
+            )
           ) : null}
           {view === "marketing" ? (
             <SimpleTableView
@@ -2080,9 +2091,8 @@ function CustomersView({
                       />
                     </td>
                     <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => onEdit(customer.id)}
+                      <Link
+                        href={`/admin/customers/${customer.id}`}
                         title={`${bookingCount} bookings`}
                         className="inline-flex items-center gap-3 text-left font-semibold hover:underline"
                       >
@@ -2090,7 +2100,7 @@ function CustomersView({
                           <Icon name="user" className="h-5 w-5" />
                         </span>
                         {customer.name || customer.player || "Customer"}
-                      </button>
+                      </Link>
                     </td>
                     <td className="px-4 py-3">{dateLabel(customer.createdAt)}</td>
                     <td className="px-4 py-3">{customer.email}</td>
@@ -2123,6 +2133,307 @@ function CustomersView({
               ) : null}
             </tbody>
           </table>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function customerInitials(customer: Customer) {
+  const source = customer.name || customer.player || "";
+  const parts = source.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "CU";
+  return parts
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+function customerBirthDate(customer: Customer) {
+  if (!customer.birthYear || !customer.birthMonth || !customer.birthDay) return "";
+  return `${customer.birthMonth.padStart(2, "0")}/${customer.birthDay.padStart(2, "0")}/${customer.birthYear}`;
+}
+
+function customerJoinedLabel(value: string) {
+  if (!value) return "";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function DetailPanel({
+  title,
+  action,
+  children,
+}: {
+  title: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="overflow-hidden rounded-xl border border-black/10 bg-white">
+      <div className="flex min-h-12 items-center justify-between border-b border-black/10 bg-black/[0.02] px-4">
+        <h3 className="text-[15px] font-medium text-black/85">{title}</h3>
+        {action}
+      </div>
+      <div>{children}</div>
+    </section>
+  );
+}
+
+function ProfileField({
+  label,
+  value,
+  rightLabel,
+  trailing,
+}: {
+  label: string;
+  value: string;
+  rightLabel?: string;
+  trailing?: React.ReactNode;
+}) {
+  return (
+    <label className="grid gap-2">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-black/85">{label}</span>
+        {rightLabel ? <span className="text-sm text-black/45">{rightLabel}</span> : null}
+      </div>
+      <div className="relative">
+        <input
+          defaultValue={value}
+          className="min-h-11 w-full rounded-md border border-black/15 px-4 text-[15px] outline-none"
+        />
+        {trailing ? <div className="absolute inset-y-0 right-3 flex items-center gap-2 text-black/45">{trailing}</div> : null}
+      </div>
+    </label>
+  );
+}
+
+function CustomerDetailView({
+  customer,
+  onEdit,
+}: {
+  customer: Customer | null;
+  onEdit: (id: string) => void;
+}) {
+  if (!customer) {
+    return (
+      <section className="min-h-screen px-6 py-8">
+        <div className="rounded-xl border border-black/10 bg-white p-8 text-sm text-black/55">
+          Customer not found.
+        </div>
+      </section>
+    );
+  }
+
+  const { first, last } = splitName(customer.name);
+  const joinedLabel = customerJoinedLabel(customer.createdAt);
+  const initials = customerInitials(customer);
+  const birthDate = customerBirthDate(customer);
+  const age = calculateAge(customer.birthYear, customer.birthMonth, customer.birthDay);
+
+  return (
+    <section className="min-h-screen px-6 py-8">
+      <div className="flex flex-wrap items-center gap-2 text-[15px] text-black/55">
+        <Link href="/admin/customers" className="font-medium text-black/75 hover:text-black">
+          Customers
+        </Link>
+        <span>/</span>
+        <span className="font-medium text-black">{customer.name || "Customer"}</span>
+      </div>
+
+      <div className="mt-4 flex flex-col gap-5 border-b border-black/10 pb-6 xl:flex-row xl:items-start xl:justify-between">
+        <div className="flex items-start gap-4">
+          <div className="grid h-[58px] w-[58px] place-items-center rounded-full border border-black/12 bg-black/[0.04] text-[18px] font-medium text-black/65">
+            {initials}
+          </div>
+          <div>
+            <h1 className="text-[27px] font-medium text-black">{customer.name || "Customer"}</h1>
+            <div className="mt-2 flex flex-wrap items-center gap-x-6 gap-y-2 text-[15px] text-black/55">
+              <span className="inline-flex items-center gap-2">
+                <Icon name="message" className="h-4 w-4" />
+                {customer.email || "No email"}
+              </span>
+              <span className="inline-flex items-center gap-2">
+                <Icon name="clock" className="h-4 w-4" />
+                {customer.phone || "No phone"}
+              </span>
+              <span className="inline-flex items-center gap-2">
+                <Icon name="calendar" className="h-4 w-4" />
+                {joinedLabel ? `Joined ${joinedLabel}` : "Recently joined"}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-3">
+          <button type="button" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-black/12 bg-white px-5 text-[15px] font-medium">
+            <Icon name="message" className="h-4 w-4" />
+            Email
+          </button>
+          <button type="button" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-black/12 bg-white px-5 text-[15px] font-medium">
+            <Icon name="plus" className="h-4 w-4" />
+            Add note
+          </button>
+          <button type="button" className="grid h-11 w-11 place-items-center rounded-xl border border-black/12 bg-white text-xl leading-none">
+            ...
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-5 inline-flex flex-wrap gap-1 rounded-xl bg-black/[0.05] p-1 text-[15px]">
+        {["Profile", "Billing", "Memberships", "Packages", "Activity", "Invoices", "Credits"].map((tab, index) => (
+          <button
+            key={tab}
+            type="button"
+            className={[
+              "rounded-lg px-4 py-2 font-medium",
+              index === 0 ? "bg-white text-black shadow-sm" : "text-black/55",
+            ].join(" ")}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-7 grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,1fr)]">
+        <DetailPanel title="About">
+          <div className="grid gap-6 p-6">
+            <div className="grid gap-5 md:grid-cols-[94px_minmax(0,1fr)]">
+              <div className="grid h-20 w-20 place-items-center rounded-full bg-black/[0.18] text-white">
+                <Icon name="user" className="h-10 w-10" />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <ProfileField label="Name" value={first} />
+                <ProfileField label="" value={last} />
+              </div>
+            </div>
+
+            <ProfileField
+              label="Date of Birth"
+              value={birthDate}
+              rightLabel={age === "" ? undefined : `Age: ${age}`}
+              trailing={<Icon name="calendar" className="h-4 w-4" />}
+            />
+
+            <label className="grid gap-2">
+              <span className="text-sm font-medium text-black/85">Gender</span>
+              <select defaultValue={customer.gender || ""} className="min-h-11 rounded-md border border-black/15 px-4 text-[15px] outline-none">
+                <option value="">Select gender</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Non-binary">Non-binary</option>
+              </select>
+            </label>
+
+            <div className="overflow-hidden rounded-md border border-black/10">
+              <div className="flex min-h-11 items-center justify-between bg-black/[0.02] px-4 text-[15px] text-black/55">
+                <span>Contact Information</span>
+                <Icon name="chevron" className="h-4 w-4 -rotate-90" />
+              </div>
+              <div className="grid gap-5 p-4">
+                <ProfileField
+                  label="Email"
+                  value={customer.email}
+                  trailing={
+                    <>
+                      <Icon name="edit" className="h-4 w-4" />
+                      <Icon name="copy" className="h-4 w-4" />
+                    </>
+                  }
+                />
+
+                <label className="grid gap-2">
+                  <span className="text-sm font-medium text-black/85">Phone</span>
+                  <div className="grid grid-cols-[38px_minmax(0,1fr)] gap-2">
+                    <div className="grid min-h-11 place-items-center rounded-md border border-black/15 text-lg">🇺🇸</div>
+                    <input
+                      defaultValue={customer.phone}
+                      className="min-h-11 rounded-md border border-black/15 px-4 text-[15px] outline-none"
+                    />
+                  </div>
+                </label>
+
+                <ProfileField label="Address" value={customer.address} />
+              </div>
+            </div>
+          </div>
+        </DetailPanel>
+
+        <div className="grid gap-6">
+          <DetailPanel title="Emergency Contact">
+            {customer.emergencyContactName ? (
+              <div className="flex items-center justify-between gap-4 p-4">
+                <div>
+                  <div className="text-[15px] font-medium text-black">{customer.emergencyContactName}</div>
+                  <div className="mt-1 text-[15px] text-black/55">
+                    {[customer.emergencyContactEmail, customer.emergencyContactPhone].filter(Boolean).join(" · ")}
+                  </div>
+                </div>
+                <div className="flex gap-3 text-black/45">
+                  <button type="button" onClick={() => onEdit(customer.id)}><Icon name="edit" className="h-4 w-4" /></button>
+                  <button type="button"><Icon name="trash" className="h-4 w-4" /></button>
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 text-sm text-black/45">No emergency contact yet.</div>
+            )}
+          </DetailPanel>
+
+          <DetailPanel title="Custom Fields" action={<button type="button" className="text-2xl leading-none text-black/45">+</button>}>
+            <div className="flex items-center justify-between gap-4 p-4 text-[15px]">
+              <div className="flex items-center gap-3 text-black/65">
+                <Icon name="send" className="h-4 w-4" />
+                <span>Referral</span>
+              </div>
+              <div className="ml-auto text-black/85">{customer.notes ? "From notes" : "-"}</div>
+              <div className="flex gap-3 text-black/45">
+                <button type="button"><Icon name="edit" className="h-4 w-4" /></button>
+                <button type="button" className="text-xl leading-none">...</button>
+              </div>
+            </div>
+          </DetailPanel>
+
+          <DetailPanel title="Family Members" action={<button type="button" className="text-2xl leading-none text-black/45">+</button>}>
+            <div className="p-4 text-sm text-black/45">No family members yet.</div>
+          </DetailPanel>
+
+          <DetailPanel title="Preferences">
+            <div className="grid gap-5 p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-[15px] font-medium text-black">Liability Waiver</div>
+                  <div className="mt-1 text-[15px] text-black/55">
+                    {customer.waiverAgreed ? "Agreed" : "Not yet agreed"}
+                  </div>
+                </div>
+                <span className={`rounded-full px-3 py-1 text-sm font-semibold ${customer.waiverAgreed ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+                  {customer.waiverAgreed ? "Agreed" : "Pending"}
+                </span>
+              </div>
+
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-[15px] font-medium text-black">Email marketing</div>
+                  <div className="mt-1 text-[15px] text-black/55">Opted in to receive marketing emails</div>
+                </div>
+                <button type="button" className="relative h-7 w-12 rounded-full bg-black">
+                  <span className="absolute right-0.5 top-0.5 h-6 w-6 rounded-full bg-white" />
+                </button>
+              </div>
+            </div>
+          </DetailPanel>
+
+          <DetailPanel title="Notes" action={<button type="button" className="text-2xl leading-none text-black/45">+</button>}>
+            <div className="p-8 text-center text-[15px] text-black/45">
+              {customer.notes ? customer.notes : "No notes yet. Click + to add the first note."}
+            </div>
+          </DetailPanel>
         </div>
       </div>
     </section>
