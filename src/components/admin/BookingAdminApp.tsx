@@ -468,6 +468,7 @@ type IconName =
   | "file"
   | "table"
   | "check"
+  | "camera"
   | "search"
   | "chevron"
   | "x"
@@ -500,6 +501,7 @@ const iconPaths: Record<IconName, string[]> = {
   file: ["M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z", "M14 2v6h6"],
   table: ["M4 6h16", "M4 12h16", "M4 18h16", "M8 4v16", "M16 4v16"],
   check: ["M5 12.5 10 17l9-10"],
+  camera: ["M4 7h3l1.4-2h7.2L17 7h3v12H4Z", "M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"],
   search: ["M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z", "m21 21-4.3-4.3"],
   chevron: ["m9 18 6-6-6-6"],
   x: ["M18 6 6 18", "M6 6l12 12"],
@@ -2214,6 +2216,151 @@ function ProfileField({
   );
 }
 
+type FamilyMember = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  relationship: string;
+  gender: string;
+  birthDate: string;
+};
+
+function FamilyMemberModal({
+  onClose,
+  onSave,
+}: {
+  onClose: () => void;
+  onSave: (member: FamilyMember) => void;
+}) {
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [relationship, setRelationship] = useState("Unspecified");
+  const [gender, setGender] = useState("Unspecified");
+  const [birthDate, setBirthDate] = useState("");
+
+  const canSave = firstName.trim().length > 0 || lastName.trim().length > 0;
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/45 p-4">
+      <div className="w-full max-w-[604px] overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-black/10 px-6 py-5">
+          <h3 className="text-[18px] font-medium text-black">Add Member</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-8 w-8 place-items-center rounded-lg text-black/45 hover:bg-black/[0.03]"
+            aria-label="Close"
+          >
+            <Icon name="x" className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="px-6 py-5">
+          <div className="flex flex-col items-center pb-4">
+            <div className="relative grid h-[74px] w-[74px] place-items-center rounded-full border border-black/10 bg-black/[0.06] text-black/55">
+              <Icon name="user" className="h-9 w-9" />
+              <span className="absolute bottom-0 right-0 grid h-6 w-6 place-items-center rounded-full border border-white bg-white text-black/55 shadow-sm">
+                <Icon name="camera" className="h-3.5 w-3.5" />
+              </span>
+            </div>
+            <button type="button" className="mt-2 text-[14px] text-black/45">
+              Add photo
+            </button>
+          </div>
+
+          <div className="grid gap-5">
+            <label className="grid gap-2">
+              <span className="text-sm font-medium text-black/85">First Name</span>
+              <input
+                value={firstName}
+                onChange={(event) => setFirstName(event.target.value)}
+                className="min-h-11 rounded-md border border-black/15 px-4 text-[15px] outline-none"
+              />
+            </label>
+
+            <label className="grid gap-2">
+              <span className="text-sm font-medium text-black/85">Last Name</span>
+              <input
+                value={lastName}
+                onChange={(event) => setLastName(event.target.value)}
+                className="min-h-11 rounded-md border border-black/15 px-4 text-[15px] outline-none"
+              />
+            </label>
+
+            <label className="grid gap-2">
+              <span className="text-sm font-medium text-black/85">Relationship</span>
+              <select
+                value={relationship}
+                onChange={(event) => setRelationship(event.target.value)}
+                className="min-h-11 rounded-md border border-black/15 px-4 text-[15px] outline-none"
+              >
+                {["Unspecified", "Child", "Parent", "Sibling", "Spouse", "Guardian", "Relative"].map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="grid gap-2">
+              <span className="text-sm font-medium text-black/85">Gender</span>
+              <select
+                value={gender}
+                onChange={(event) => setGender(event.target.value)}
+                className="min-h-11 rounded-md border border-black/15 px-4 text-[15px] outline-none"
+              >
+                {["Unspecified", "Male", "Female", "Non-binary"].map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="grid gap-2">
+              <span className="text-sm font-medium text-black/85">Date of Birth</span>
+              <div className="relative">
+                <input
+                  value={birthDate}
+                  onChange={(event) => setBirthDate(event.target.value)}
+                  placeholder="MM/DD/YYYY"
+                  className="min-h-11 w-full rounded-md border border-black/15 px-4 pr-11 text-[15px] outline-none"
+                />
+                <div className="absolute inset-y-0 right-3 flex items-center text-black/45">
+                  <Icon name="calendar" className="h-4 w-4" />
+                </div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-4 border-t border-black/10 px-6 py-4">
+          <button type="button" onClick={onClose} className="text-[15px] font-medium text-black/65">
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={!canSave}
+            onClick={() =>
+              onSave({
+                id: makeId("family"),
+                firstName: firstName.trim(),
+                lastName: lastName.trim(),
+                relationship,
+                gender,
+                birthDate,
+              })
+            }
+            className="rounded-md bg-black px-5 py-2.5 text-[15px] font-medium text-white disabled:bg-black/10 disabled:text-black/30"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CustomerDetailView({
   customer,
   onEdit,
@@ -2221,6 +2368,9 @@ function CustomerDetailView({
   customer: Customer | null;
   onEdit: (id: string) => void;
 }) {
+  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
+  const [showFamilyModal, setShowFamilyModal] = useState(false);
+
   if (!customer) {
     return (
       <section className="min-h-screen px-6 py-8">
@@ -2408,8 +2558,52 @@ function CustomerDetailView({
             </div>
           </DetailPanel>
 
-          <DetailPanel title="Family Members" action={<button type="button" className="text-2xl leading-none text-black/45">+</button>}>
-            <div className="p-4 text-sm text-black/45">No family members yet.</div>
+          <DetailPanel
+            title="Family Members"
+            action={
+              <button
+                type="button"
+                onClick={() => setShowFamilyModal(true)}
+                className="text-2xl leading-none text-black/45"
+              >
+                +
+              </button>
+            }
+          >
+            {familyMembers.length ? (
+              <div className="divide-y divide-black/10">
+                {familyMembers.map((member) => (
+                  <div key={member.id} className="flex items-center justify-between gap-4 p-4">
+                    <div className="flex items-center gap-4">
+                      <div className="grid h-11 w-11 place-items-center rounded-full border border-black/10 bg-black/[0.04] text-sm font-medium text-black/60">
+                        {`${member.firstName[0] ?? ""}${member.lastName[0] ?? ""}`.toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="text-[15px] font-medium text-black">
+                          {[member.firstName, member.lastName].filter(Boolean).join(" ")}
+                        </div>
+                        <div className="mt-1 text-[15px] text-black/55">
+                          {[member.gender !== "Unspecified" ? member.gender : "", member.relationship !== "Unspecified" ? member.relationship : ""]
+                            .filter(Boolean)
+                            .join(" · ") || "Member"}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-3 text-black/45">
+                      <button type="button"><Icon name="edit" className="h-4 w-4" /></button>
+                      <button
+                        type="button"
+                        onClick={() => setFamilyMembers((current) => current.filter((item) => item.id !== member.id))}
+                      >
+                        <Icon name="trash" className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-4 text-sm text-black/45">No family members yet.</div>
+            )}
           </DetailPanel>
 
           <DetailPanel title="Preferences">
@@ -2445,6 +2639,16 @@ function CustomerDetailView({
           </DetailPanel>
         </div>
       </div>
+
+      {showFamilyModal ? (
+        <FamilyMemberModal
+          onClose={() => setShowFamilyModal(false)}
+          onSave={(member) => {
+            setFamilyMembers((current) => [...current, member]);
+            setShowFamilyModal(false);
+          }}
+        />
+      ) : null}
     </section>
   );
 }
