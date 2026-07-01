@@ -197,6 +197,26 @@ type ModalState =
   | { type: "product"; id?: string }
   | null;
 
+type CustomerImportField =
+  | "name"
+  | "email"
+  | "phone"
+  | "address"
+  | "birthYear"
+  | "birthMonth"
+  | "birthDay"
+  | "gender"
+  | "emergencyContactName"
+  | "emergencyContactEmail"
+  | "emergencyContactPhone"
+  | "notes";
+
+type ParsedCsvFile = {
+  fileName: string;
+  headers: string[];
+  rows: Record<string, string>[];
+};
+
 const storageKey = "grind_booking_admin_v1";
 const lastAppRouteKey = "grind_booking_admin_last_app_route";
 type SettingsSection = "basics" | "policies";
@@ -784,6 +804,159 @@ function joinName(first: string, last: string) {
   return [first.trim(), last.trim()].filter(Boolean).join(" ");
 }
 
+function normalizeCsvHeader(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function parseCsv(text: string) {
+  const rows: string[][] = [];
+  let currentRow: string[] = [];
+  let currentCell = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const nextChar = text[index + 1];
+
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        currentCell += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === "," && !inQuotes) {
+      currentRow.push(currentCell.trim());
+      currentCell = "";
+      continue;
+    }
+
+    if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (char === "\r" && nextChar === "\n") {
+        index += 1;
+      }
+      currentRow.push(currentCell.trim());
+      rows.push(currentRow);
+      currentRow = [];
+      currentCell = "";
+      continue;
+    }
+
+    currentCell += char;
+  }
+
+  if (currentCell.length || currentRow.length) {
+    currentRow.push(currentCell.trim());
+    rows.push(currentRow);
+  }
+
+  const normalizedRows = rows
+    .map((row) => row.map((cell) => cell.replace(/^\uFEFF/, "").trim()))
+    .filter((row) => row.some((cell) => cell !== ""));
+
+  const headers = normalizedRows[0] ?? [];
+  const dataRows = normalizedRows.slice(1).map((row) =>
+    Object.fromEntries(headers.map((header, index) => [header, row[index] ?? ""]))
+  );
+
+  return { headers, rows: dataRows };
+}
+
+const customerImportHeaderAliases: Record<CustomerImportField, string[]> = {
+  name: ["name", "fullname", "customername", "parentname", "full name"],
+  email: ["email", "emailaddress", "email address"],
+  phone: ["phone", "phonenumber", "phone number", "mobile", "mobilephone"],
+  address: ["address", "streetaddress", "location"],
+  birthYear: ["birthyear", "year", "dobyear", "birth year"],
+  birthMonth: ["birthmonth", "month", "dobmonth", "birth month"],
+  birthDay: ["birthday", "day", "dobday", "birth day"],
+  gender: ["gender", "sex"],
+  emergencyContactName: ["emergencycontactname", "emergency name", "guardianname", "parentcontactname"],
+  emergencyContactEmail: ["emergencycontactemail", "emergency email", "guardianemail", "parentcontactemail"],
+  emergencyContactPhone: ["emergencycontactphone", "emergency phone", "guardianphone", "parentcontactphone"],
+  notes: ["notes", "note", "customernotes"],
+};
+
+function suggestCustomerImportMapping(headers: string[]) {
+  const mapping: Partial<Record<CustomerImportField, string>> = {};
+  const unusedHeaders = new Set(headers);
+
+  for (const [field, aliases] of Object.entries(customerImportHeaderAliases) as Array<
+    [CustomerImportField, string[]]
+  >) {
+    const match = headers.find((header) => {
+      if (!unusedHeaders.has(header)) return false;
+      const normalized = normalizeCsvHeader(header);
+      return aliases.some((alias) => normalizeCsvHeader(alias) === normalized);
+    });
+
+    if (match) {
+      mapping[field] = match;
+      unusedHeaders.delete(match);
+    }
+  }
+
+  return mapping;
+}
+
+function buildImportedCustomers(
+  rows: Record<string, string>[],
+  mapping: Partial<Record<CustomerImportField, string>>
+) {
+  return rows
+    .map((row) => {
+      const readValue = (field: CustomerImportField) => {
+        const header = mapping[field];
+        return header ? (row[header] ?? "").trim() : "";
+      };
+
+      const name = readValue("name");
+      const email = readValue("email");
+      const phone = readValue("phone");
+      const address = readValue("address");
+      const birthYear = readValue("birthYear");
+      const birthMonth = readValue("birthMonth");
+      const birthDay = readValue("birthDay");
+      const gender = readValue("gender");
+      const emergencyContactName = readValue("emergencyContactName");
+      const emergencyContactEmail = readValue("emergencyContactEmail");
+      const emergencyContactPhone = readValue("emergencyContactPhone");
+      const notes = readValue("notes");
+
+      if (!name && !email && !phone) {
+        return null;
+      }
+
+      const customer: Customer = {
+        id: makeId("customer"),
+        name,
+        player: "",
+        email,
+        address,
+        phone,
+        phoneCountry: "US",
+        birthYear,
+        birthMonth,
+        birthDay,
+        gender,
+        age: calculateAge(birthYear, birthMonth, birthDay),
+        memberships: [],
+        waiverAgreed: false,
+        emergencyContactName,
+        emergencyContactEmail,
+        emergencyContactPhone,
+        notes,
+        createdAt: new Date().toISOString().slice(0, 10),
+      };
+
+      return customer;
+    })
+    .filter((customer): customer is Customer => customer !== null);
+}
+
 function pillClass(status: string) {
   const value = status.toLowerCase();
   if (value.includes("active") || value.includes("confirm") || value.includes("paid")) {
@@ -821,6 +994,7 @@ export default function BookingAdminApp({
   const [isRemoteLoading, setIsRemoteLoading] = useState(hasSupabaseEnv);
   const [resourceIdsByName, setResourceIdsByName] = useState<Record<string, string>>({});
   const [backToAppHref, setBackToAppHref] = useState(bookingAdminRouteByView.home);
+  const [showCustomerImport, setShowCustomerImport] = useState(false);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -1099,6 +1273,57 @@ export default function BookingAdminApp({
     showToast(bookingDelete.error || customerDelete.error ? "Customer could not be deleted." : "Customer deleted.");
   }
 
+  async function importCustomers(customersToImport: Customer[]) {
+    if (!customersToImport.length) {
+      showToast("No customers found to import.");
+      return;
+    }
+
+    if (dataSource === "local") {
+      const next = { ...state, customers: [...customersToImport, ...state.customers] };
+      saveLocal(next, `${customersToImport.length} customer${customersToImport.length === 1 ? "" : "s"} imported.`);
+      setShowCustomerImport(false);
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from("booking_customers").upsert(
+        customersToImport.map((item) => ({
+          id: item.id,
+          parent_name: item.name,
+          player_name: item.player,
+          email: item.email,
+          address: item.address || null,
+          phone: item.phone,
+          phone_country: item.phoneCountry || "US",
+          birth_year: item.birthYear ? Number(item.birthYear) : null,
+          birth_month: item.birthMonth ? Number(item.birthMonth) : null,
+          birth_day: item.birthDay ? Number(item.birthDay) : null,
+          gender: item.gender || null,
+          age:
+            calculateAge(item.birthYear, item.birthMonth, item.birthDay) === ""
+              ? item.age === "" ? null : item.age
+              : calculateAge(item.birthYear, item.birthMonth, item.birthDay),
+          memberships: item.memberships,
+          waiver_agreed: item.waiverAgreed,
+          emergency_contact_name: item.emergencyContactName,
+          emergency_contact_email: item.emergencyContactEmail || null,
+          emergency_contact_phone: item.emergencyContactPhone,
+          notes: item.notes,
+        }))
+      );
+
+      if (error) throw error;
+
+      await loadFromSupabase();
+      setShowCustomerImport(false);
+      showToast(`${customersToImport.length} customer${customersToImport.length === 1 ? "" : "s"} imported.`);
+    } catch (error) {
+      console.error(error);
+      showToast("Customer import failed.");
+    }
+  }
+
   const customersById = useMemo(
     () => new Map(state.customers.map((customer) => [customer.id, customer])),
     [state.customers]
@@ -1229,7 +1454,7 @@ export default function BookingAdminApp({
               loading={isRemoteLoading}
               search={customerSearch}
               onSearch={setCustomerSearch}
-              onImport={() => showToast("Customer import is ready for the next pass.")}
+              onImport={() => setShowCustomerImport(true)}
               onNew={() => setModal({ type: "customer" })}
               onEdit={(id) => setModal({ type: "customer", id })}
               onDelete={(id) => void deleteCustomer(id)}
@@ -1290,6 +1515,13 @@ export default function BookingAdminApp({
           activeDate={activeDate}
           onClose={() => setModal(null)}
           onSave={(next, message, change) => void saveModalChange(next, message, change)}
+        />
+      ) : null}
+
+      {showCustomerImport ? (
+        <CustomerImportModal
+          onClose={() => setShowCustomerImport(false)}
+          onImport={(customersToImport) => void importCustomers(customersToImport)}
         />
       ) : null}
 
@@ -2464,6 +2696,316 @@ function CustomerSection({
         <Icon name="chevron" className={`h-4 w-4 transition ${open ? "rotate-90" : ""}`} />
       </button>
       {open ? <div className="grid gap-4 pb-4 sm:grid-cols-2">{children}</div> : null}
+    </div>
+  );
+}
+
+const customerImportFieldLabels: Record<CustomerImportField, string> = {
+  name: "Name",
+  email: "Email",
+  phone: "Phone",
+  address: "Address",
+  birthYear: "Birth Year",
+  birthMonth: "Birth Month",
+  birthDay: "Birth Day",
+  gender: "Gender",
+  emergencyContactName: "Emergency Contact Name",
+  emergencyContactEmail: "Emergency Contact Email",
+  emergencyContactPhone: "Emergency Contact Phone",
+  notes: "Notes",
+};
+
+const customerImportFieldOptions = Object.entries(customerImportFieldLabels) as Array<
+  [CustomerImportField, string]
+>;
+
+function CustomerImportModal({
+  onClose,
+  onImport,
+}: {
+  onClose: () => void;
+  onImport: (customers: Customer[]) => void;
+}) {
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [parsedFile, setParsedFile] = useState<ParsedCsvFile | null>(null);
+  const [mapping, setMapping] = useState<Partial<Record<CustomerImportField, string>>>({});
+  const [error, setError] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const previewCustomers = useMemo(() => {
+    if (!parsedFile) return [];
+    return buildImportedCustomers(parsedFile.rows, mapping);
+  }, [parsedFile, mapping]);
+
+  function downloadSampleFile() {
+    const rows = [
+      ["Name", "Email", "Phone", "Address", "Birth Year", "Birth Month", "Birth Day", "Gender", "Emergency Contact Name", "Emergency Contact Email", "Emergency Contact Phone", "Notes"],
+      [
+        "Mason Reed",
+        "mason.reed@example.com",
+        "941-555-0181",
+        "613 Cypress Ave, Venice FL",
+        "2010",
+        "07",
+        "28",
+        "Male",
+        "Allison Reed",
+        "allison@example.com",
+        "941-555-0101",
+        "Varsity middle infielder",
+      ],
+    ];
+    const csv = rows.map((row) => row.map((cell) => `"${cell.replaceAll('"', '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "customer-import-sample.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function acceptFile(file: File) {
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      setError("Please upload a CSV file.");
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      const parsed = parseCsv(text);
+      if (!parsed.headers.length) {
+        throw new Error("The CSV file is empty.");
+      }
+
+      const rows = parsed.rows.filter((row) =>
+        Object.values(row).some((value) => value.trim() !== "")
+      );
+      const nextParsed: ParsedCsvFile = {
+        fileName: file.name,
+        headers: parsed.headers,
+        rows,
+      };
+
+      setParsedFile(nextParsed);
+      setMapping(suggestCustomerImportMapping(parsed.headers));
+      setError("");
+      setStep(2);
+    } catch (importError) {
+      setError(getErrorMessage(importError, "Could not read that CSV file."));
+    }
+  }
+
+  function canProceedToReview() {
+    return Boolean(mapping.name || (mapping.email && mapping.phone));
+  }
+
+  return (
+    <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/45 p-4">
+      <div className="w-full max-w-[540px] overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-black/10 px-6 py-5">
+          <div>
+            <h3 className="text-[18px] font-semibold">Import Your Customers</h3>
+            <div className="mt-3 flex items-center gap-3 text-sm">
+              {[
+                [1, "Upload file"],
+                [2, "Map columns"],
+                [3, "Review import"],
+              ].map(([index, label]) => (
+                <div key={label as string} className="flex items-center gap-2">
+                  <span
+                    className={[
+                      "grid h-6 w-6 place-items-center rounded-md text-xs font-bold",
+                      step === index
+                        ? "bg-[#221e1f] text-white"
+                        : step > (index as number)
+                          ? "bg-black/10 text-black/70"
+                          : "bg-black/[0.05] text-black/35",
+                    ].join(" ")}
+                  >
+                    {index}
+                  </span>
+                  <span className={step >= (index as number) ? "text-black/80" : "text-black/30"}>
+                    {label}
+                  </span>
+                  {index !== 3 ? <span className="text-black/25">{">"}</span> : null}
+                </div>
+              ))}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-9 w-9 place-items-center rounded-lg border border-black/10 text-black/55 hover:bg-black/[0.03]"
+            aria-label="Close"
+          >
+            <Icon name="x" className="h-4 w-4" />
+          </button>
+        </div>
+
+        {step === 1 ? (
+          <div className="px-6 py-5">
+            <p className="max-w-md text-[15px] leading-7 text-black/70">
+              Upload a CSV spreadsheet of your customers to quickly add them into your account.
+            </p>
+            <button
+              type="button"
+              onClick={downloadSampleFile}
+              className="mt-5 inline-flex items-center gap-2 text-[15px] font-medium text-black/75 hover:text-black"
+            >
+              <Icon name="download" className="h-4 w-4" />
+              Download a sample file
+            </button>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void acceptFile(file);
+                event.currentTarget.value = "";
+              }}
+            />
+
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={(event) => {
+                event.preventDefault();
+                setIsDragging(false);
+                const file = event.dataTransfer.files?.[0];
+                if (file) void acceptFile(file);
+              }}
+              className={[
+                "mt-5 flex min-h-[132px] w-full flex-col items-center justify-center rounded-xl border border-dashed px-6 text-center transition",
+                isDragging ? "border-black/35 bg-black/[0.03]" : "border-black/15 hover:bg-black/[0.02]",
+              ].join(" ")}
+            >
+              <span className="grid h-10 w-10 place-items-center rounded-full bg-black/[0.05] text-black/65">
+                <Icon name="upload" className="h-5 w-5" />
+              </span>
+              <div className="mt-5 text-base">
+                <strong>Click to upload</strong> or drag and drop
+              </div>
+              <div className="mt-1 text-sm text-black/45">.CSV file</div>
+            </button>
+
+            {error ? <div className="mt-4 text-sm text-red-600">{error}</div> : null}
+          </div>
+        ) : null}
+
+        {step === 2 && parsedFile ? (
+          <div className="px-6 py-5">
+            <div className="mb-4 text-sm text-black/60">
+              File: <span className="font-medium text-black">{parsedFile.fileName}</span>
+            </div>
+            <p className="mb-4 text-sm text-black/55">
+              Map your CSV headers to customer fields. Name is recommended, or use both Email and Phone.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {customerImportFieldOptions.map(([field, label]) => (
+                <label key={field} className="grid gap-1.5">
+                  <span className="text-sm font-semibold text-black/70">{label}</span>
+                  <select
+                    value={mapping[field] ?? ""}
+                    onChange={(event) =>
+                      setMapping((current) => ({ ...current, [field]: event.target.value || undefined }))
+                    }
+                    className="min-h-11 rounded-lg border border-black/10 px-3 outline-none focus:border-black/30"
+                  >
+                    <option value="">Do not import</option>
+                    {parsedFile.headers.map((header) => (
+                      <option key={header} value={header}>
+                        {header}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+            {error ? <div className="mt-4 text-sm text-red-600">{error}</div> : null}
+          </div>
+        ) : null}
+
+        {step === 3 && parsedFile ? (
+          <div className="px-6 py-5">
+            <div className="text-[15px] text-black/70">
+              Ready to import <strong className="text-black">{previewCustomers.length}</strong> customer
+              {previewCustomers.length === 1 ? "" : "s"} from <strong className="text-black">{parsedFile.fileName}</strong>.
+            </div>
+            <div className="mt-5 rounded-lg border border-black/10">
+              <div className="border-b border-black/10 px-4 py-3 text-sm font-semibold">Preview</div>
+              <div className="divide-y divide-black/10">
+                {previewCustomers.slice(0, 5).map((customer) => (
+                  <div key={customer.id} className="grid gap-1 px-4 py-3 text-sm">
+                    <strong>{customer.name || "Unnamed customer"}</strong>
+                    <div className="text-black/60">
+                      {[customer.email, customer.phone].filter(Boolean).join(" | ") || "No contact info"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {!previewCustomers.length ? (
+              <div className="mt-4 text-sm text-red-600">No importable rows were found with the current mapping.</div>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className="flex items-center justify-between border-t border-black/10 bg-black/[0.02] px-6 py-4">
+          <button type="button" className="text-sm font-medium text-black/55 hover:text-black">
+            Need help with your import?
+          </button>
+          <div className="flex gap-2">
+            {step > 1 ? (
+              <button
+                type="button"
+                onClick={() => setStep((current) => (current === 3 ? 2 : 1))}
+                className="rounded-lg border border-black/10 px-4 py-2 text-sm font-semibold"
+              >
+                Back
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                if (step === 1) {
+                  if (!parsedFile) {
+                    setError("Upload a CSV file to continue.");
+                    return;
+                  }
+                  setStep(2);
+                  return;
+                }
+
+                if (step === 2) {
+                  if (!canProceedToReview()) {
+                    setError("Map at least a Name column, or both Email and Phone.");
+                    return;
+                  }
+                  setError("");
+                  setStep(3);
+                  return;
+                }
+
+                onImport(previewCustomers);
+              }}
+              disabled={(step === 1 && !parsedFile) || (step === 3 && !previewCustomers.length)}
+              className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white disabled:bg-black/10 disabled:text-black/30"
+            >
+              {step === 3 ? "Import" : "Next"}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
