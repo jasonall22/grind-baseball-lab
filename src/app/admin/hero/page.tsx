@@ -215,9 +215,11 @@ export default function AdminHeroPage() {
         .from("profiles")
         .select("id, role, first_name, last_name, full_name")
         .eq("id", user.id)
-        .maybeSingle<ProfileRow>();
+        .maybeSingle();
 
-      if (!prof.data || prof.data.role !== "admin") {
+      const profile = prof.data as ProfileRow | null;
+
+      if (!profile || profile.role !== "admin") {
         router.replace("/dashboard");
         return;
       }

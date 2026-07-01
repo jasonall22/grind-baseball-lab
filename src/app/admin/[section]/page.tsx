@@ -1,8 +1,7 @@
 import { notFound } from "next/navigation";
 
-import BookingAdminApp, {
-  bookingAdminViewFromSection,
-} from "@/components/admin/BookingAdminApp";
+import BookingAdminApp from "@/components/admin/BookingAdminApp";
+import { bookingAdminViewFromSection } from "@/components/admin/bookingAdminRoutes";
 
 export default async function AdminBookingSectionPage({
   params,

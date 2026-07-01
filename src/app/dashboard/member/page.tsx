@@ -36,11 +36,13 @@ export default function MemberDashboardPage() {
         .from('profiles')
         .select('id, role')
         .eq('id', user.id)
-        .single<Profile>();
+        .single();
+
+      const typedProfile = profile as Profile | null;
 
       if (
-        !profile ||
-        (profile.role !== 'grind_member' && profile.role !== 'admin')
+        !typedProfile ||
+        (typedProfile.role !== 'grind_member' && typedProfile.role !== 'admin')
       ) {
         router.replace('/');
         return;

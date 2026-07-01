@@ -2,6 +2,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
+type ServerSupabaseClient = ReturnType<typeof createServerClient>;
+
 function isPublicPath(pathname: string) {
   if (
     pathname === "/" ||
@@ -32,7 +34,7 @@ function isPublicPath(pathname: string) {
 }
 
 async function getUserRole(
-  supabase: any,
+  supabase: ServerSupabaseClient,
   userId: string
 ): Promise<"member" | "grind_member" | "admin"> {
   const { data } = await supabase
@@ -50,23 +52,35 @@ async function getUserRole(
 
 export async function middleware(req: NextRequest) {
   const pathname = req.nextUrl.pathname;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (isPublicPath(pathname)) {
+    return NextResponse.next();
+  }
+
+  if (!supabaseUrl || !supabaseAnonKey) {
     return NextResponse.next();
   }
 
   const res = NextResponse.next();
 
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || "",
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
+    supabaseUrl,
+    supabaseAnonKey,
     {
       cookies: {
         getAll() {
           return req.cookies.getAll();
         },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }: any) => {
+        setAll(
+          cookiesToSet: Array<{
+            name: string;
+            value: string;
+            options?: Parameters<typeof res.cookies.set>[2];
+          }>
+        ) {
+          cookiesToSet.forEach(({ name, value, options }) => {
             res.cookies.set(name, value, options);
           });
         },
