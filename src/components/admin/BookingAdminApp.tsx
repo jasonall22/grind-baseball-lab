@@ -2308,9 +2308,18 @@ function CustomerDetailView({
               <div className="grid h-20 w-20 place-items-center rounded-full bg-black/[0.18] text-white">
                 <Icon name="user" className="h-10 w-10" />
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <ProfileField label="Name" value={first} />
-                <ProfileField label="" value={last} />
+              <div className="grid gap-2">
+                <span className="text-sm font-medium text-black/85">Name</span>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <input
+                    defaultValue={first}
+                    className="min-h-11 w-full rounded-md border border-black/15 px-4 text-[15px] outline-none"
+                  />
+                  <input
+                    defaultValue={last}
+                    className="min-h-11 w-full rounded-md border border-black/15 px-4 text-[15px] outline-none"
+                  />
+                </div>
               </div>
             </div>
 
