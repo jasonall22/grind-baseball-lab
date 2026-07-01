@@ -818,6 +818,7 @@ export default function BookingAdminApp({
   const [toast, setToast] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
   const [dataSource, setDataSource] = useState<"local" | "supabase">("local");
+  const [isRemoteLoading, setIsRemoteLoading] = useState(hasSupabaseEnv);
   const [resourceIdsByName, setResourceIdsByName] = useState<Record<string, string>>({});
   const [backToAppHref, setBackToAppHref] = useState(bookingAdminRouteByView.home);
 
@@ -829,6 +830,7 @@ export default function BookingAdminApp({
   const loadFromSupabase = useCallback(async () => {
     if (!hasSupabaseEnv) {
       setDataSource("local");
+      setIsRemoteLoading(false);
       return;
     }
 
@@ -985,6 +987,8 @@ export default function BookingAdminApp({
       console.error(error);
       setDataSource("local");
       showToast("Could not load Supabase data. Using local draft data.");
+    } finally {
+      setIsRemoteLoading(false);
     }
   }, [showToast]);
 
@@ -1222,6 +1226,7 @@ export default function BookingAdminApp({
             <CustomersView
               customers={state.customers}
               bookings={state.bookings}
+              loading={isRemoteLoading}
               search={customerSearch}
               onSearch={setCustomerSearch}
               onImport={() => showToast("Customer import is ready for the next pass.")}
@@ -1637,6 +1642,7 @@ function AvailabilityView({
 function CustomersView({
   customers,
   bookings,
+  loading,
   search,
   onSearch,
   onImport,
@@ -1646,6 +1652,7 @@ function CustomersView({
 }: {
   customers: Customer[];
   bookings: Booking[];
+  loading: boolean;
   search: string;
   onSearch: (value: string) => void;
   onImport: () => void;
@@ -1748,7 +1755,14 @@ function CustomersView({
               </tr>
             </thead>
             <tbody className="divide-y divide-black/10">
-              {filtered.map((customer) => {
+              {loading ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-10 text-center text-sm text-black/55">
+                    Loading customers...
+                  </td>
+                </tr>
+              ) : null}
+              {!loading ? filtered.map((customer) => {
                 const isSelected = selected.includes(customer.id);
                 const bookingCount = bookingCounts.get(customer.id) ?? 0;
 
@@ -1797,7 +1811,14 @@ function CustomersView({
                     </td>
                   </tr>
                 );
-              })}
+              }) : null}
+              {!loading && !filtered.length ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-10 text-center text-sm text-black/55">
+                    No customers yet.
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>
