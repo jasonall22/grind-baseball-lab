@@ -184,6 +184,7 @@ type ModalState =
   | null;
 
 const storageKey = "grind_booking_admin_v1";
+type SettingsSection = "basics" | "policies";
 
 const navItems: { key: BookingAdminView; label: string; icon: IconName }[] = [
   { key: "home", label: "Home", icon: "home" },
@@ -195,6 +196,70 @@ const navItems: { key: BookingAdminView; label: string; icon: IconName }[] = [
   { key: "retail", label: "Retail", icon: "bag" },
   { key: "reports", label: "Reports", icon: "bar" },
   { key: "settings", label: "Settings", icon: "gear" },
+];
+
+const settingsNavGroups: {
+  title: string;
+  items: Array<{
+    label: string;
+    icon: IconName;
+    href?: string;
+    section?: SettingsSection;
+  }>;
+}[] = [
+  {
+    title: "Facility",
+    items: [
+      {
+        label: "Basics",
+        icon: "gear",
+        href: bookingAdminRouteByView["settings-basics"],
+        section: "basics",
+      },
+      { label: "Rooms", icon: "home" },
+      { label: "Equipment", icon: "bag" },
+      { label: "Schedules", icon: "calendar" },
+    ],
+  },
+  {
+    title: "Payments",
+    items: [
+      { label: "Checkout", icon: "copy" },
+      { label: "Taxes & Fees", icon: "bar" },
+    ],
+  },
+  {
+    title: "Booking",
+    items: [
+      { label: "Booking Page", icon: "link" },
+      {
+        label: "Policies",
+        icon: "copy",
+        href: bookingAdminRouteByView["settings-policies"],
+        section: "policies",
+      },
+      { label: "Registration", icon: "user" },
+      { label: "Custom Fields", icon: "edit" },
+    ],
+  },
+  {
+    title: "People",
+    items: [
+      { label: "Profile", icon: "user" },
+      { label: "Staff", icon: "user" },
+      { label: "Roles & Permissions", icon: "gear" },
+    ],
+  },
+  {
+    title: "Platform",
+    items: [
+      { label: "Plan & Billing", icon: "bar" },
+      { label: "Payouts", icon: "bag" },
+      { label: "Integrations", icon: "link" },
+      { label: "Automations", icon: "send" },
+      { label: "Senders", icon: "message" },
+    ],
+  },
 ];
 
 const defaultState: AppState = {
@@ -336,7 +401,8 @@ type IconName =
   | "download"
   | "search"
   | "chevron"
-  | "x";
+  | "x"
+  | "arrow-left";
 
 const iconPaths: Record<IconName, string[]> = {
   home: ["m3 11 9-8 9 8", "M5 10v10h14V10", "M10 20v-6h4v6"],
@@ -364,6 +430,7 @@ const iconPaths: Record<IconName, string[]> = {
   search: ["M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z", "m21 21-4.3-4.3"],
   chevron: ["m9 18 6-6-6-6"],
   x: ["M18 6 6 18", "M6 6l12 12"],
+  "arrow-left": ["m12 19-7-7 7-7", "M19 12H5"],
 };
 
 function Icon({ name, className = "h-5 w-5" }: { name: IconName; className?: string }) {
@@ -899,6 +966,7 @@ export default function BookingAdminApp({
   );
 
   const dayBookings = state.bookings.filter((booking) => booking.date === activeDate);
+  const activeMainView = view.startsWith("settings") ? "settings" : view;
 
   return (
     <div className="min-h-screen bg-white text-black">
@@ -922,7 +990,7 @@ export default function BookingAdminApp({
                 title={item.label}
                 className={[
                   "flex h-10 shrink-0 items-center gap-3 rounded-lg px-3 text-left text-lg transition md:w-full",
-                  view === item.key ? "bg-[#eeeeee] font-bold" : "hover:bg-black/5",
+                  activeMainView === item.key ? "bg-[#eeeeee] font-bold" : "hover:bg-black/5",
                 ].join(" ")}
               >
                 <Icon name={item.icon} />
@@ -1036,9 +1104,11 @@ export default function BookingAdminApp({
           {view === "reports" ? (
             <ReportsView bookings={state.bookings} services={state.services} onExport={() => exportReport(state, showToast)} />
           ) : null}
-          {view === "settings" ? (
+          {view === "settings" || view === "settings-basics" || view === "settings-policies" ? (
             <SettingsView
+              section={view === "settings-policies" ? "policies" : "basics"}
               state={state}
+              showToast={showToast}
               onSave={(next) => void saveSettings(next)}
             />
           ) : null}
@@ -1671,158 +1741,307 @@ function MetricPanel({ title, rows }: { title: string; rows: [string, React.Reac
 }
 
 function SettingsView({
+  section,
   state,
+  showToast,
   onSave,
 }: {
+  section: SettingsSection;
   state: AppState;
+  showToast: (message: string) => void;
   onSave: (next: AppState) => void;
 }) {
   const [draft, setDraft] = useState(state);
+  const isBasics = section === "basics";
+
+  useEffect(() => {
+    setDraft(state);
+  }, [state]);
 
   return (
-    <section className="min-h-screen px-6 py-8">
-      <PageHeader title="Settings" subtitle="Facility profile and public booking page.">
-        <PrimaryButton icon="gear" onClick={() => onSave(draft)}>
-          Save settings
-        </PrimaryButton>
-      </PageHeader>
-      <div className="grid gap-5 lg:grid-cols-[420px_minmax(0,1fr)]">
-        <div className="rounded-lg border border-black/10 bg-white p-5 shadow-sm">
-          <div className="font-semibold">Facility</div>
-          <div className="mt-4 grid gap-4">
-            <TextField label="Facility name" value={draft.facility.name} onChange={(value) => setDraft({ ...draft, facility: { ...draft.facility, name: value } })} />
-            <TextField label="Public page link" value={draft.facility.publicUrl} onChange={(value) => setDraft({ ...draft, facility: { ...draft.facility, publicUrl: value } })} />
-            <TextField label="Timezone" value={draft.facility.timezone} onChange={(value) => setDraft({ ...draft, facility: { ...draft.facility, timezone: value } })} />
-            <TextField label="Address" value={draft.facility.address} onChange={(value) => setDraft({ ...draft, facility: { ...draft.facility, address: value } })} />
-          </div>
-        </div>
-        <div className="rounded-lg border border-black/10 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between gap-3">
-            <div className="font-semibold">Resources</div>
-            <button
-              type="button"
-              onClick={() => setDraft({ ...draft, resources: [...draft.resources, `Resource ${draft.resources.length + 1}`] })}
-              className="inline-flex items-center gap-2 rounded-lg border border-black/10 px-3 py-2 text-sm font-semibold"
-            >
-              <Icon name="plus" className="h-4 w-4" />
-              Add
-            </button>
-          </div>
-          <div className="mt-4 grid gap-3">
-            {draft.resources.map((resource, index) => (
-              <div key={index} className="flex gap-2">
-                <input
-                  value={resource}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      resources: draft.resources.map((item, itemIndex) => (itemIndex === index ? event.target.value : item)),
-                    })
-                  }
-                  className="min-h-10 flex-1 rounded-lg border border-black/10 px-3"
-                />
-                <RowAction
-                  icon="trash"
-                  label="Delete resource"
-                  onClick={() =>
-                    setDraft({
-                      ...draft,
-                      resources: draft.resources.filter((_, itemIndex) => itemIndex !== index),
-                    })
-                  }
-                />
+    <section className="min-h-screen bg-white">
+      <div className="grid min-h-screen lg:grid-cols-[220px_minmax(0,1fr)]">
+        <aside className="border-b border-black/10 bg-[#f7f7f7] px-4 py-5 lg:border-b-0 lg:border-r">
+          <Link
+            href={bookingAdminRouteByView.home}
+            className="inline-flex items-center gap-2 text-sm font-semibold text-black/70 transition hover:text-black"
+          >
+            <Icon name="arrow-left" className="h-4 w-4" />
+            Back to app
+          </Link>
+
+          <div className="mt-6 space-y-6">
+            {settingsNavGroups.map((group) => (
+              <div key={group.title}>
+                <div className="mb-2 text-sm font-medium text-black/45">{group.title}</div>
+                <div className="space-y-1">
+                  {group.items.map((item) => {
+                    const isActive = item.section === section;
+                    const className = [
+                      "flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-[15px] transition",
+                      isActive ? "bg-[#e9e9e9] font-semibold" : "text-black/75 hover:bg-black/5",
+                    ].join(" ");
+
+                    if (item.href) {
+                      return (
+                        <Link key={item.label} href={item.href} className={className}>
+                          <Icon name={item.icon} className="h-4 w-4" />
+                          <span>{item.label}</span>
+                        </Link>
+                      );
+                    }
+
+                    return (
+                      <button
+                        key={item.label}
+                        type="button"
+                        onClick={() => showToast(`${item.label} is next in the Settings build-out.`)}
+                        className={className}
+                      >
+                        <Icon name={item.icon} className="h-4 w-4" />
+                        <span>{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             ))}
           </div>
-        </div>
-      </div>
+        </aside>
 
-      <div className="mt-5 rounded-lg border border-black/10 bg-white p-5 shadow-sm">
-        <div className="font-semibold">Policies</div>
-        <div className="mt-5 grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
-          <div>
-            <div className="font-semibold">Liability Waiver</div>
-            <p className="mt-2 text-sm leading-relaxed text-black/60">
-              Display and require customers to agree to your liability waiver before they are allowed to make a booking.
-            </p>
-          </div>
-          <div className="grid gap-4">
-            <label className="inline-flex items-center gap-3 text-sm font-semibold">
-              <input
-                type="checkbox"
-                checked={draft.policies.waiverEnabled}
-                onChange={(event) =>
-                  setDraft({
-                    ...draft,
-                    policies: {
-                      ...draft.policies,
-                      waiverEnabled: event.target.checked,
-                    },
-                  })
-                }
-                className="h-5 w-5 accent-black"
-              />
-              Require waiver before booking
-            </label>
-            <TextField
-              label="Waiver document URL"
-              value={draft.policies.waiverDocumentUrl}
-              onChange={(value) =>
-                setDraft({
-                  ...draft,
-                  policies: {
-                    ...draft.policies,
-                    waiverDocumentUrl: value,
-                  },
-                })
+        <div className="px-6 py-8 lg:px-10">
+          <div className="mx-auto max-w-6xl">
+            <PageHeader
+              title={isBasics ? "Basics" : "Policies"}
+              subtitle={
+                isBasics
+                  ? "Manage your facility settings."
+                  : "Configure booking policies and rules for your facility."
               }
             />
-            <TextField
-              label="Waiver document name"
-              value={draft.policies.waiverDocumentName}
-              onChange={(value) =>
-                setDraft({
-                  ...draft,
-                  policies: {
-                    ...draft.policies,
-                    waiverDocumentName: value,
-                  },
-                })
-              }
-            />
-            <label className="grid gap-1.5">
-              <span className="text-sm font-semibold text-black/70">Waiver intro</span>
-              <textarea
-                value={draft.policies.waiverIntro}
-                onChange={(event) =>
-                  setDraft({
-                    ...draft,
-                    policies: {
-                      ...draft.policies,
-                      waiverIntro: event.target.value,
-                    },
-                  })
-                }
-                className="min-h-28 rounded-lg border border-black/10 px-3 py-2 outline-none focus:border-black/30"
-              />
-            </label>
-            <label className="inline-flex items-center gap-3 text-sm font-semibold">
-              <input
-                type="checkbox"
-                checked={draft.policies.waiverAllowInPerson}
-                onChange={(event) =>
-                  setDraft({
-                    ...draft,
-                    policies: {
-                      ...draft.policies,
-                      waiverAllowInPerson: event.target.checked,
-                    },
-                  })
-                }
-                className="h-5 w-5 accent-black"
-              />
-              Allow staff to collect waiver signatures in person
-            </label>
+
+            <div className="overflow-hidden rounded-lg border border-black/10 bg-white shadow-sm">
+              <div className="border-t-4 border-t-[#4866b0]" />
+
+              {isBasics ? (
+                <>
+                  <div className="border-b border-black/10 px-5 py-4 text-[18px] font-semibold">Facility Details</div>
+                  <div className="divide-y divide-black/10">
+                    <div className="grid gap-6 px-5 py-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+                      <div>
+                        <div className="text-[18px] font-semibold">Basics</div>
+                        <p className="mt-2 text-sm leading-relaxed text-black/65">
+                          Set the facility name, booking page URL, and operating timezone.
+                        </p>
+                      </div>
+                      <div className="grid gap-4">
+                        <TextField
+                          label="Facility name"
+                          value={draft.facility.name}
+                          onChange={(value) =>
+                            setDraft({ ...draft, facility: { ...draft.facility, name: value } })
+                          }
+                        />
+                        <TextField
+                          label="Facility booking page"
+                          value={draft.facility.publicUrl}
+                          onChange={(value) =>
+                            setDraft({ ...draft, facility: { ...draft.facility, publicUrl: value } })
+                          }
+                        />
+                        <TextField
+                          label="Timezone"
+                          value={draft.facility.timezone}
+                          onChange={(value) =>
+                            setDraft({ ...draft, facility: { ...draft.facility, timezone: value } })
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid gap-6 px-5 py-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+                      <div>
+                        <div className="text-[18px] font-semibold">Contact Info</div>
+                        <p className="mt-2 text-sm leading-relaxed text-black/65">
+                          Add the facility location details used across your booking flow.
+                        </p>
+                      </div>
+                      <div className="grid gap-4">
+                        <TextField
+                          label="Address"
+                          value={draft.facility.address}
+                          onChange={(value) =>
+                            setDraft({ ...draft, facility: { ...draft.facility, address: value } })
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid gap-6 px-5 py-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+                      <div>
+                        <div className="text-[18px] font-semibold">Rooms & Equipment</div>
+                        <p className="mt-2 text-sm leading-relaxed text-black/65">
+                          Manage the spaces that appear on your calendar and booking pages.
+                        </p>
+                      </div>
+                      <div>
+                        <div className="mb-4 flex items-center justify-between gap-3">
+                          <div className="text-sm font-semibold text-black/70">Resources</div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDraft({
+                                ...draft,
+                                resources: [...draft.resources, `Resource ${draft.resources.length + 1}`],
+                              })
+                            }
+                            className="inline-flex items-center gap-2 rounded-lg border border-black/10 px-3 py-2 text-sm font-semibold"
+                          >
+                            <Icon name="plus" className="h-4 w-4" />
+                            Add
+                          </button>
+                        </div>
+                        <div className="grid gap-3">
+                          {draft.resources.map((resource, index) => (
+                            <div key={`${resource}-${index}`} className="flex gap-2">
+                              <input
+                                value={resource}
+                                onChange={(event) =>
+                                  setDraft({
+                                    ...draft,
+                                    resources: draft.resources.map((item, itemIndex) =>
+                                      itemIndex === index ? event.target.value : item
+                                    ),
+                                  })
+                                }
+                                className="min-h-10 flex-1 rounded-lg border border-black/10 px-3 outline-none focus:border-black/30"
+                              />
+                              <RowAction
+                                icon="trash"
+                                label="Delete resource"
+                                onClick={() =>
+                                  setDraft({
+                                    ...draft,
+                                    resources: draft.resources.filter((_, itemIndex) => itemIndex !== index),
+                                  })
+                                }
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="border-b border-black/10 px-5 py-4 text-[18px] font-semibold">Booking Policies</div>
+                  <div className="grid gap-6 px-5 py-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+                    <div>
+                      <div className="text-[18px] font-semibold">Liability Waiver</div>
+                      <p className="mt-2 text-sm leading-relaxed text-black/65">
+                        Display and require customers to agree to your liability waiver before they are
+                        allowed to make any booking.
+                      </p>
+                    </div>
+                    <div className="grid gap-4">
+                      <label className="inline-flex items-center gap-3 text-sm font-semibold">
+                        <input
+                          type="checkbox"
+                          checked={draft.policies.waiverEnabled}
+                          onChange={(event) =>
+                            setDraft({
+                              ...draft,
+                              policies: {
+                                ...draft.policies,
+                                waiverEnabled: event.target.checked,
+                              },
+                            })
+                          }
+                          className="h-5 w-5 accent-[#4866b0]"
+                        />
+                        <span>{draft.policies.waiverEnabled ? "On" : "Off"}</span>
+                      </label>
+                      <TextField
+                        label="Waiver document URL"
+                        value={draft.policies.waiverDocumentUrl}
+                        onChange={(value) =>
+                          setDraft({
+                            ...draft,
+                            policies: {
+                              ...draft.policies,
+                              waiverDocumentUrl: value,
+                            },
+                          })
+                        }
+                      />
+                      <TextField
+                        label="Waiver document name"
+                        value={draft.policies.waiverDocumentName}
+                        onChange={(value) =>
+                          setDraft({
+                            ...draft,
+                            policies: {
+                              ...draft.policies,
+                              waiverDocumentName: value,
+                            },
+                          })
+                        }
+                      />
+                      <label className="grid gap-1.5">
+                        <span className="text-sm font-semibold text-black/70">Waiver intro</span>
+                        <textarea
+                          value={draft.policies.waiverIntro}
+                          onChange={(event) =>
+                            setDraft({
+                              ...draft,
+                              policies: {
+                                ...draft.policies,
+                                waiverIntro: event.target.value,
+                              },
+                            })
+                          }
+                          className="min-h-28 rounded-lg border border-black/10 px-3 py-2 outline-none focus:border-black/30"
+                        />
+                      </label>
+                      <label className="inline-flex items-center gap-3 text-sm font-semibold">
+                        <input
+                          type="checkbox"
+                          checked={draft.policies.waiverAllowInPerson}
+                          onChange={(event) =>
+                            setDraft({
+                              ...draft,
+                              policies: {
+                                ...draft.policies,
+                                waiverAllowInPerson: event.target.checked,
+                              },
+                            })
+                          }
+                          className="h-5 w-5 accent-[#4866b0]"
+                        />
+                        Allow staff to collect waiver signatures in person
+                      </label>
+                      {draft.policies.waiverDocumentUrl ? (
+                        <a
+                          href={draft.policies.waiverDocumentUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-sm font-semibold text-[#4866b0] underline"
+                        >
+                          Open current waiver in new tab
+                        </a>
+                      ) : null}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <div className="flex justify-end border-t border-black/10 px-5 py-4">
+                <PrimaryButton icon="gear" onClick={() => onSave(draft)}>
+                  Save
+                </PrimaryButton>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -2338,7 +2557,7 @@ function WaiverDialog({
             />
           ) : (
             <div className="flex h-full min-h-[420px] items-center justify-center px-8 text-center text-sm text-black/55">
-              Add a waiver document URL in Settings &gt; Policies to preview it here.
+              Add a waiver document URL in Settings &gt; Booking &gt; Policies to preview it here.
             </div>
           )}
         </div>

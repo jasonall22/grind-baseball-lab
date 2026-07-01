@@ -7,7 +7,9 @@ export type BookingAdminView =
   | "marketing"
   | "retail"
   | "reports"
-  | "settings";
+  | "settings"
+  | "settings-basics"
+  | "settings-policies";
 
 export const bookingAdminRouteByView: Record<BookingAdminView, string> = {
   home: "/admin/home",
@@ -19,6 +21,8 @@ export const bookingAdminRouteByView: Record<BookingAdminView, string> = {
   retail: "/admin/retail",
   reports: "/admin/reports",
   settings: "/admin/settings",
+  "settings-basics": "/admin/settings/basics",
+  "settings-policies": "/admin/settings/policies",
 };
 
 export function bookingAdminViewFromSection(
@@ -34,6 +38,8 @@ export function bookingAdminViewFromSection(
     case "retail":
     case "reports":
     case "settings":
+    case "settings-basics":
+    case "settings-policies":
       return section;
     default:
       return null;
