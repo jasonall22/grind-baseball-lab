@@ -2530,7 +2530,7 @@ function EditorModal({
   const [draft, setDraft] = useState<Service | Booking | Customer | Campaign | Product>(
     service ?? booking ?? customer ?? campaign ?? product!
   );
-  const [openCustomerSections, setOpenCustomerSections] = useState<string[]>(["personal"]);
+  const [openCustomerSections, setOpenCustomerSections] = useState<string[]>([]);
   const [showWaiverDialog, setShowWaiverDialog] = useState(false);
 
   const title = `${modal.id ? "Edit" : "New"} ${modal.type}`;
