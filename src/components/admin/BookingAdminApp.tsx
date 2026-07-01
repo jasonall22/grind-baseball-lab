@@ -2638,6 +2638,21 @@ function CustomerDetailView({
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
   const [showFamilyModal, setShowFamilyModal] = useState(false);
   const [profilePhone, setProfilePhone] = useState(customer?.phone ?? "");
+  const [profilePhotoPreview, setProfilePhotoPreview] = useState("");
+  const profilePhotoInputRef = useRef<HTMLInputElement | null>(null);
+
+  async function handleProfilePhotoFile(file: File) {
+    if (!file.type.startsWith("image/")) return;
+
+    const reader = new FileReader();
+    const preview = await new Promise<string>((resolve, reject) => {
+      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+
+    setProfilePhotoPreview(preview);
+  }
 
   if (!customer) {
     return (
@@ -2722,9 +2737,40 @@ function CustomerDetailView({
       <div className="mt-7 grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,1fr)]">
         <DetailPanel title="About">
           <div className="grid gap-6 p-6">
-            <div className="grid gap-5 md:grid-cols-[94px_minmax(0,1fr)]">
-              <div className="grid h-20 w-20 place-items-center rounded-full bg-black/[0.18] text-white">
-                <Icon name="user" className="h-10 w-10" />
+            <div className="grid gap-5 md:grid-cols-[128px_minmax(0,1fr)]">
+              <div className="flex flex-col items-center">
+                <input
+                  ref={profilePhotoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void handleProfilePhotoFile(file);
+                    event.currentTarget.value = "";
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => profilePhotoInputRef.current?.click()}
+                  className="group flex flex-col items-center"
+                >
+                  <div
+                    className={[
+                      "relative grid h-[112px] w-[112px] place-items-center overflow-hidden rounded-full border border-black/10 bg-black/[0.05] text-black/50 transition",
+                      profilePhotoPreview ? "bg-cover bg-center" : "",
+                    ].join(" ")}
+                    style={profilePhotoPreview ? { backgroundImage: `url(${profilePhotoPreview})` } : undefined}
+                  >
+                    {!profilePhotoPreview ? <Icon name="user" className="h-12 w-12" /> : null}
+                    <span className="absolute bottom-1 right-1 grid h-8 w-8 place-items-center rounded-full border border-black/10 bg-white text-black/55 shadow-sm">
+                      <Icon name="camera" className="h-4 w-4" />
+                    </span>
+                  </div>
+                  <span className="mt-3 text-[14px] text-black/45 group-hover:text-black/65">
+                    Add photo
+                  </span>
+                </button>
               </div>
               <div className="grid gap-2">
                 <span className="text-sm font-medium text-black/85">Name</span>
