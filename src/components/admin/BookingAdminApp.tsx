@@ -2770,22 +2770,22 @@ function CustomerSection({
 
 const customerImportFieldLabels: Record<CustomerImportField, string> = {
   name: "Name",
-  firstName: "First Name",
-  lastName: "Last Name",
+  firstName: "First name",
+  lastName: "Last name",
   email: "Email",
-  phone: "Phone",
+  phone: "Phone number",
   address: "Address",
   city: "City",
   state: "State",
-  zip: "Zip",
-  birthDate: "Birth Date",
-  birthYear: "Birth Year",
-  birthMonth: "Birth Month",
-  birthDay: "Birth Day",
+  zip: "Zip code",
+  birthDate: "Date of birth",
+  birthYear: "Birth year",
+  birthMonth: "Birth month",
+  birthDay: "Birth day",
   gender: "Gender",
-  emergencyContactName: "Emergency Contact Name",
-  emergencyContactEmail: "Emergency Contact Email",
-  emergencyContactPhone: "Emergency Contact Phone",
+  emergencyContactName: "Emergency contact name",
+  emergencyContactEmail: "Emergency contact email",
+  emergencyContactPhone: "Emergency contact phone",
   notes: "Notes",
 };
 
@@ -2803,14 +2803,40 @@ function CustomerImportModal({
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [parsedFile, setParsedFile] = useState<ParsedCsvFile | null>(null);
   const [mapping, setMapping] = useState<Partial<Record<CustomerImportField, string>>>({});
+  const [excludedHeaders, setExcludedHeaders] = useState<string[]>([]);
+  const [optInMarketing, setOptInMarketing] = useState(false);
   const [error, setError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const enabledHeaders = useMemo(
+    () => new Set((parsedFile?.headers ?? []).filter((header) => !excludedHeaders.includes(header))),
+    [excludedHeaders, parsedFile]
+  );
+
+  const effectiveMapping = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(mapping).filter((entry): entry is [string, string] => {
+          const header = entry[1];
+          return Boolean(header && enabledHeaders.has(header));
+        })
+      ) as Partial<Record<CustomerImportField, string>>,
+    [enabledHeaders, mapping]
+  );
+
+  const mappedFieldByHeader = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(effectiveMapping).map(([field, header]) => [header, field])
+      ) as Partial<Record<string, CustomerImportField>>,
+    [effectiveMapping]
+  );
+
   const previewCustomers = useMemo(() => {
     if (!parsedFile) return [];
-    return buildImportedCustomers(parsedFile.rows, mapping);
-  }, [parsedFile, mapping]);
+    return buildImportedCustomers(parsedFile.rows, effectiveMapping);
+  }, [effectiveMapping, parsedFile]);
 
   function downloadSampleFile() {
     const rows = [
@@ -2921,6 +2947,8 @@ function CustomerImportModal({
 
       setParsedFile(nextParsed);
       setMapping(suggestCustomerImportMapping(parsed.headers));
+      setExcludedHeaders([]);
+      setOptInMarketing(false);
       setError("");
       setStep(1);
     } catch (importError) {
@@ -2931,12 +2959,44 @@ function CustomerImportModal({
   function clearFile() {
     setParsedFile(null);
     setMapping({});
+    setExcludedHeaders([]);
+    setOptInMarketing(false);
     setError("");
     setStep(1);
   }
 
+  function setFieldForHeader(header: string, nextField: string) {
+    setMapping((current) => {
+      const next = { ...current };
+
+      for (const [field, mappedHeader] of Object.entries(next)) {
+        if (mappedHeader === header) {
+          delete next[field as CustomerImportField];
+        }
+      }
+
+      if (!nextField) {
+        return next;
+      }
+
+      delete next[nextField as CustomerImportField];
+      next[nextField as CustomerImportField] = header;
+      return next;
+    });
+  }
+
+  function toggleHeaderIncluded(header: string) {
+    setExcludedHeaders((current) =>
+      current.includes(header) ? current.filter((item) => item !== header) : [...current, header]
+    );
+  }
+
   function canProceedToReview() {
-    return Boolean(mapping.name || (mapping.firstName && mapping.lastName) || (mapping.email && mapping.phone));
+    return Boolean(
+      effectiveMapping.name ||
+        (effectiveMapping.firstName && effectiveMapping.lastName) ||
+        (effectiveMapping.email && effectiveMapping.phone)
+    );
   }
 
   return (
@@ -3095,33 +3155,75 @@ function CustomerImportModal({
 
         {step === 2 && parsedFile ? (
           <div className="px-6 py-5">
-            <div className="mb-4 text-sm text-black/60">
-              File: <span className="font-medium text-black">{parsedFile.fileName}</span>
-            </div>
-            <p className="mb-4 text-sm text-black/55">
-              Map your CSV headers to customer fields. Name is recommended, or use both Email and Phone.
+            <h4 className="text-[18px] font-semibold text-black">
+              {parsedFile.headers.filter((header) => !excludedHeaders.includes(header)).length} columns will be imported
+            </h4>
+            <p className="mt-2 max-w-[620px] text-[15px] leading-7 text-black/65">
+              Upload your customer data by mapping each file column to an equivalent field in Swift.
             </p>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {customerImportFieldOptions.map(([field, label]) => (
-                <label key={field} className="grid gap-1.5">
-                  <span className="text-sm font-semibold text-black/70">{label}</span>
-                  <select
-                    value={mapping[field] ?? ""}
-                    onChange={(event) =>
-                      setMapping((current) => ({ ...current, [field]: event.target.value || undefined }))
-                    }
-                    className="min-h-11 rounded-lg border border-black/10 px-3 outline-none focus:border-black/30"
-                  >
-                    <option value="">Do not import</option>
-                    {parsedFile.headers.map((header) => (
-                      <option key={header} value={header}>
-                        {header}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ))}
+
+            <div className="mt-6 overflow-auto rounded-2xl border border-black/12">
+              <div className="min-w-[700px]">
+                <div className="grid grid-cols-[1.3fr_64px_1.4fr_64px] border-b border-black/10 bg-white px-6 py-5 text-[15px] font-semibold">
+                  <div>File Column</div>
+                  <div />
+                  <div>Swift Field</div>
+                  <div />
+                </div>
+                <div className="max-h-[440px] overflow-auto">
+                  {parsedFile.headers.map((header) => {
+                    const checked = !excludedHeaders.includes(header);
+                    return (
+                      <div
+                        key={header}
+                        className="grid grid-cols-[1.3fr_64px_1.4fr_64px] items-center gap-0 border-b border-black/10 px-6 py-6 last:border-b-0"
+                      >
+                        <div className={`truncate pr-4 text-[15px] ${checked ? "text-black/75" : "text-black/30 line-through"}`}>
+                          {header}
+                        </div>
+                        <div className="flex justify-center text-black/55">
+                          <Icon name="arrow-left" className="h-4 w-4 -rotate-180" />
+                        </div>
+                        <div className="pr-4">
+                          <select
+                            value={mappedFieldByHeader[header] ?? ""}
+                            onChange={(event) => setFieldForHeader(header, event.target.value)}
+                            disabled={!checked}
+                            className="min-h-12 w-full rounded-lg border border-black/15 px-4 text-[15px] outline-none focus:border-black/30 disabled:bg-black/[0.03] disabled:text-black/35"
+                          >
+                            <option value="">Select field...</option>
+                            {customerImportFieldOptions.map(([field, label]) => (
+                              <option key={field} value={field}>
+                                {label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex justify-center">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleHeaderIncluded(header)}
+                            className="h-7 w-7 rounded accent-black"
+                            aria-label={`Include ${header}`}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
+
+            <label className="mt-6 flex items-start gap-3 text-[15px] text-black/85">
+              <input
+                type="checkbox"
+                checked={optInMarketing}
+                onChange={(event) => setOptInMarketing(event.target.checked)}
+                className="mt-0.5 h-7 w-7 rounded accent-black"
+              />
+              <span>Automatically opt-in all customers to receive marketing emails</span>
+            </label>
             {error ? <div className="mt-4 text-sm text-red-600">{error}</div> : null}
           </div>
         ) : null}
@@ -3152,7 +3254,8 @@ function CustomerImportModal({
         ) : null}
 
         <div className="flex items-center justify-between border-t border-black/10 bg-black/[0.02] px-6 py-4">
-          <button type="button" className="text-sm font-medium text-black/55 hover:text-black">
+          <button type="button" className="inline-flex items-center gap-3 text-sm font-medium text-black/55 hover:text-black">
+            <Icon name="help" className="h-5 w-5" />
             Need help with your import?
           </button>
           <div className="flex gap-2">
