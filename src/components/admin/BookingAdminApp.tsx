@@ -2577,7 +2577,6 @@ function EditorModal({
                   <button
                     type="button"
                     onClick={() => setShowWaiverDialog(true)}
-                    disabled={!state.policies.waiverEnabled}
                     className="rounded-lg border border-black/10 px-3 py-2 text-sm font-semibold hover:bg-black/[0.03]"
                   >
                     Agree to Waiver
