@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { hasSupabaseEnv, supabase } from "@/lib/supabaseClient";
 
 type View =
   | "home"
@@ -56,6 +58,84 @@ type Product = {
   name: string;
   sku: string;
   price: number;
+  stock: number;
+};
+
+type FacilitySettings = AppState["facility"];
+
+type ModalSaveChange =
+  | { type: "service"; item: Service }
+  | { type: "booking"; item: Booking }
+  | { type: "customer"; item: Customer }
+  | { type: "campaign"; item: Campaign }
+  | { type: "product"; item: Product };
+
+type BookingResourceRow = {
+  id: string;
+  name: string;
+  sort_order: number;
+  is_active: boolean;
+};
+
+type BookingSettingsRow = {
+  facility_name: string;
+  public_url: string;
+  timezone: string;
+  address: string | null;
+};
+
+type BookingServiceRow = {
+  id: string;
+  name: string;
+  duration_minutes: number;
+  price: number | string;
+  resource_id: string | null;
+  status: Service["status"];
+  sort_order: number;
+};
+
+type BookingCustomerRow = {
+  id: string;
+  parent_name: string;
+  player_name: string;
+  email: string | null;
+  phone: string | null;
+  notes: string | null;
+};
+
+type BookingBookingRow = {
+  id: string;
+  booking_date: string;
+  start_time: string;
+  end_time: string;
+  customer_id: string | null;
+  service_id: string | null;
+  resource_id: string | null;
+  status: Booking["status"];
+  paid: boolean;
+};
+
+type BookingAvailabilityRow = {
+  weekday: number;
+  day_name: string;
+  is_open: boolean;
+  start_time: string;
+  end_time: string;
+};
+
+type BookingCampaignRow = {
+  id: string;
+  name: string;
+  audience: string;
+  status: Campaign["status"];
+  sent: number;
+};
+
+type BookingProductRow = {
+  id: string;
+  name: string;
+  sku: string | null;
+  price: number | string;
   stock: number;
 };
 
@@ -253,7 +333,154 @@ function Icon({ name, className = "h-5 w-5" }: { name: IconName; className?: str
 }
 
 function makeId(prefix: string) {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function normalizeTime(value: string | null | undefined) {
+  return (value ?? "09:00").slice(0, 5);
+}
+
+function stateToStorage(next: AppState) {
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(storageKey, JSON.stringify(next));
+  }
+}
+
+function resourceLookup(resources: BookingResourceRow[]) {
+  return {
+    idsByName: Object.fromEntries(resources.map((resource) => [resource.name, resource.id])),
+    namesById: new Map(resources.map((resource) => [resource.id, resource.name])),
+  };
+}
+
+async function upsertFacilitySettings(facility: FacilitySettings) {
+  const { error } = await supabase.from("booking_settings").upsert({
+    key: "default",
+    facility_name: facility.name,
+    public_url: facility.publicUrl,
+    timezone: facility.timezone,
+    address: facility.address,
+  });
+
+  if (error) throw error;
+}
+
+async function upsertResources(resourceNames: string[]) {
+  const names = resourceNames.map((name) => name.trim()).filter(Boolean);
+  const current = await supabase.from("booking_resources").select("id,name,sort_order,is_active");
+  if (current.error) throw current.error;
+
+  const currentRows = (current.data ?? []) as BookingResourceRow[];
+  const currentByName = new Map(currentRows.map((resource) => [resource.name, resource]));
+  const activeRows = names.map((name, index) => {
+    const existing = currentByName.get(name);
+    return {
+      ...(existing?.id ? { id: existing.id } : {}),
+      name,
+      sort_order: index + 1,
+      is_active: true,
+    };
+  });
+
+  if (activeRows.length) {
+    const upserted = await supabase
+      .from("booking_resources")
+      .upsert(activeRows)
+      .select("id,name,sort_order,is_active")
+      .order("sort_order");
+    if (upserted.error) throw upserted.error;
+  }
+
+  const removedIds = currentRows
+    .filter((resource) => resource.is_active && !names.includes(resource.name))
+    .map((resource) => resource.id);
+
+  if (removedIds.length) {
+    const removed = await supabase.from("booking_resources").update({ is_active: false }).in("id", removedIds);
+    if (removed.error) throw removed.error;
+  }
+
+  const refreshed = await supabase
+    .from("booking_resources")
+    .select("id,name,sort_order,is_active")
+    .eq("is_active", true)
+    .order("sort_order");
+
+  if (refreshed.error) throw refreshed.error;
+
+  return (refreshed.data ?? []) as BookingResourceRow[];
+}
+
+async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Record<string, string>) {
+  if (change.type === "service") {
+    const item = change.item;
+    const { error } = await supabase.from("booking_services").upsert({
+      id: item.id,
+      name: item.name,
+      duration_minutes: item.duration,
+      price: item.price,
+      resource_id: resourceIdsByName[item.resource] || null,
+      status: item.status,
+    });
+    if (error) throw error;
+  }
+
+  if (change.type === "booking") {
+    const item = change.item;
+    const { error } = await supabase.from("booking_bookings").upsert({
+      id: item.id,
+      booking_date: item.date,
+      start_time: item.start,
+      end_time: item.end,
+      customer_id: item.customerId || null,
+      service_id: item.serviceId || null,
+      resource_id: resourceIdsByName[item.resource] || null,
+      status: item.status,
+      paid: item.paid,
+    });
+    if (error) throw error;
+  }
+
+  if (change.type === "customer") {
+    const item = change.item;
+    const { error } = await supabase.from("booking_customers").upsert({
+      id: item.id,
+      parent_name: item.name,
+      player_name: item.player,
+      email: item.email,
+      phone: item.phone,
+      notes: item.notes,
+    });
+    if (error) throw error;
+  }
+
+  if (change.type === "campaign") {
+    const item = change.item;
+    const { error } = await supabase.from("booking_campaigns").upsert({
+      id: item.id,
+      name: item.name,
+      audience: item.audience,
+      status: item.status,
+      sent: item.sent,
+    });
+    if (error) throw error;
+  }
+
+  if (change.type === "product") {
+    const item = change.item;
+    const { error } = await supabase.from("booking_products").upsert({
+      id: item.id,
+      name: item.name,
+      sku: item.sku,
+      price: item.price,
+      stock: item.stock,
+    });
+    if (error) throw error;
+  }
 }
 
 function money(value: number) {
@@ -302,18 +529,246 @@ export default function BookingAdminApp() {
   const [modal, setModal] = useState<ModalState>(null);
   const [toast, setToast] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
+  const [dataSource, setDataSource] = useState<"local" | "supabase">("local");
+  const [resourceIdsByName, setResourceIdsByName] = useState<Record<string, string>>({});
 
-  function updateState(updater: (current: AppState) => AppState) {
-    setState((current) => {
-      const next = updater(current);
-      window.localStorage.setItem(storageKey, JSON.stringify(next));
-      return next;
-    });
-  }
-
-  function showToast(message: string) {
+  const showToast = useCallback((message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(""), 2400);
+  }, []);
+
+  const loadFromSupabase = useCallback(async () => {
+    if (!hasSupabaseEnv) {
+      setDataSource("local");
+      return;
+    }
+
+    try {
+      const [
+        settingsResult,
+        resourcesResult,
+        servicesResult,
+        customersResult,
+        bookingsResult,
+        availabilityResult,
+        campaignsResult,
+        productsResult,
+      ] = await Promise.all([
+        supabase.from("booking_settings").select("*").eq("key", "default").maybeSingle(),
+        supabase.from("booking_resources").select("*").order("sort_order"),
+        supabase.from("booking_services").select("*").order("sort_order"),
+        supabase.from("booking_customers").select("*").order("created_at"),
+        supabase.from("booking_bookings").select("*").order("booking_date").order("start_time"),
+        supabase.from("booking_availability").select("*").order("weekday"),
+        supabase.from("booking_campaigns").select("*").order("created_at"),
+        supabase.from("booking_products").select("*").order("created_at"),
+      ]);
+
+      const error = [
+        settingsResult.error,
+        resourcesResult.error,
+        servicesResult.error,
+        customersResult.error,
+        bookingsResult.error,
+        availabilityResult.error,
+        campaignsResult.error,
+        productsResult.error,
+      ].find(Boolean);
+
+      if (error) throw error;
+
+      const settings = settingsResult.data as BookingSettingsRow | null;
+      const resourceRows = (resourcesResult.data ?? []) as BookingResourceRow[];
+      const serviceRows = (servicesResult.data ?? []) as BookingServiceRow[];
+      const customerRows = (customersResult.data ?? []) as BookingCustomerRow[];
+      const bookingRows = (bookingsResult.data ?? []) as BookingBookingRow[];
+      const availabilityRows = (availabilityResult.data ?? []) as BookingAvailabilityRow[];
+      const campaignRows = (campaignsResult.data ?? []) as BookingCampaignRow[];
+      const productRows = (productsResult.data ?? []) as BookingProductRow[];
+      const activeResourceRows = resourceRows.filter((resource) => resource.is_active);
+      const resources = activeResourceRows.length ? activeResourceRows : defaultState.resources.map((name, index) => ({
+        id: "",
+        name,
+        sort_order: index + 1,
+        is_active: true,
+      }));
+      const { idsByName, namesById } = resourceLookup(resourceRows.length ? resourceRows : resources);
+      const availabilityOrder = new Map(defaultState.availability.map(([day], index) => [day, index]));
+
+      setResourceIdsByName(idsByName);
+      setState({
+        facility: {
+          name: settings?.facility_name ?? defaultState.facility.name,
+          publicUrl: settings?.public_url ?? defaultState.facility.publicUrl,
+          timezone: settings?.timezone ?? defaultState.facility.timezone,
+          address: settings?.address ?? defaultState.facility.address,
+        },
+        resources: resources.map((resource) => resource.name),
+        services: serviceRows.map((service) => ({
+          id: service.id,
+          name: service.name,
+          duration: service.duration_minutes,
+          price: Number(service.price),
+          resource: service.resource_id ? namesById.get(service.resource_id) ?? "" : "",
+          status: service.status,
+        })),
+        customers: customerRows.map((customer) => ({
+          id: customer.id,
+          name: customer.parent_name,
+          player: customer.player_name,
+          email: customer.email ?? "",
+          phone: customer.phone ?? "",
+          notes: customer.notes ?? "",
+        })),
+        bookings: bookingRows.map((booking) => ({
+          id: booking.id,
+          date: booking.booking_date,
+          start: normalizeTime(booking.start_time),
+          end: normalizeTime(booking.end_time),
+          customerId: booking.customer_id ?? "",
+          serviceId: booking.service_id ?? "",
+          resource: booking.resource_id ? namesById.get(booking.resource_id) ?? "" : "",
+          status: booking.status,
+          paid: booking.paid,
+        })),
+        availability: availabilityRows.length
+          ? availabilityRows
+              .map((row): [string, boolean, string, string] => [
+                row.day_name,
+                row.is_open,
+                normalizeTime(row.start_time),
+                normalizeTime(row.end_time),
+              ])
+              .sort((a, b) => (availabilityOrder.get(a[0]) ?? 99) - (availabilityOrder.get(b[0]) ?? 99))
+          : defaultState.availability,
+        campaigns: campaignRows.map((campaign) => ({
+          id: campaign.id,
+          name: campaign.name,
+          audience: campaign.audience,
+          status: campaign.status,
+          sent: campaign.sent,
+        })),
+        products: productRows.map((product) => ({
+          id: product.id,
+          name: product.name,
+          sku: product.sku ?? "",
+          price: Number(product.price),
+          stock: product.stock,
+        })),
+      });
+      setDataSource("supabase");
+    } catch (error) {
+      console.error(error);
+      setDataSource("local");
+      showToast("Could not load Supabase data. Using local draft data.");
+    }
+  }, [showToast]);
+
+  useEffect(() => {
+    void loadFromSupabase();
+  }, [loadFromSupabase]);
+
+  function saveLocal(next: AppState, message: string) {
+    setState(next);
+    stateToStorage(next);
+    showToast(message);
+  }
+
+  async function saveSettings(next: AppState) {
+    if (dataSource === "local") {
+      saveLocal(next, "Settings saved.");
+      return;
+    }
+
+    setState(next);
+
+    try {
+      await upsertFacilitySettings(next.facility);
+      const resources = await upsertResources(next.resources);
+      setResourceIdsByName(resourceLookup(resources).idsByName);
+      showToast("Settings saved.");
+    } catch (error) {
+      console.error(error);
+      showToast("Settings could not be saved.");
+    }
+  }
+
+  async function saveAvailability(rows: AppState["availability"]) {
+    const next = { ...state, availability: rows };
+
+    if (dataSource === "local") {
+      saveLocal(next, "Availability saved.");
+      return;
+    }
+
+    setState(next);
+
+    try {
+      await supabase.from("booking_availability").upsert(
+        rows.map(([day, open, start, end], index) => ({
+          weekday: day === "Sunday" ? 0 : index + 1,
+          day_name: day,
+          is_open: open,
+          start_time: start,
+          end_time: end,
+        })),
+        { onConflict: "weekday" }
+      );
+      showToast("Availability saved.");
+    } catch (error) {
+      console.error(error);
+      showToast("Availability could not be saved.");
+    }
+  }
+
+  async function saveModalChange(next: AppState, message: string, change: ModalSaveChange) {
+    if (dataSource === "local") {
+      saveLocal(next, message);
+      setModal(null);
+      return;
+    }
+
+    setState(next);
+    setModal(null);
+
+    try {
+      await upsertModalChange(change, resourceIdsByName);
+      showToast(message);
+    } catch (error) {
+      console.error(error);
+      showToast("That change could not be saved.");
+    }
+  }
+
+  async function deleteService(id: string) {
+    const next = { ...state, services: state.services.filter((service) => service.id !== id) };
+
+    if (dataSource === "local") {
+      saveLocal(next, "Service deleted.");
+      return;
+    }
+
+    setState(next);
+    const { error } = await supabase.from("booking_services").delete().eq("id", id);
+    showToast(error ? "Service could not be deleted." : "Service deleted.");
+  }
+
+  async function deleteCustomer(id: string) {
+    const next = {
+      ...state,
+      customers: state.customers.filter((customer) => customer.id !== id),
+      bookings: state.bookings.filter((booking) => booking.customerId !== id),
+    };
+
+    if (dataSource === "local") {
+      saveLocal(next, "Customer deleted.");
+      return;
+    }
+
+    setState(next);
+    const bookingDelete = await supabase.from("booking_bookings").delete().eq("customer_id", id);
+    const customerDelete = await supabase.from("booking_customers").delete().eq("id", id);
+    showToast(bookingDelete.error || customerDelete.error ? "Customer could not be deleted." : "Customer deleted.");
   }
 
   const customersById = useMemo(
@@ -395,12 +850,7 @@ export default function BookingAdminApp() {
               services={state.services}
               onNew={() => setModal({ type: "service" })}
               onEdit={(id) => setModal({ type: "service", id })}
-              onDelete={(id) =>
-                updateState((current) => ({
-                  ...current,
-                  services: current.services.filter((service) => service.id !== id),
-                }))
-              }
+              onDelete={(id) => void deleteService(id)}
             />
           ) : null}
           {view === "calendar" ? (
@@ -418,8 +868,8 @@ export default function BookingAdminApp() {
           {view === "availability" ? (
             <AvailabilityView
               rows={state.availability}
-              onChange={(rows) => updateState((current) => ({ ...current, availability: rows }))}
-              onSave={() => showToast("Availability saved.")}
+              onChange={(rows) => setState((current) => ({ ...current, availability: rows }))}
+              onSave={() => void saveAvailability(state.availability)}
             />
           ) : null}
           {view === "customers" ? (
@@ -430,13 +880,7 @@ export default function BookingAdminApp() {
               onSearch={setCustomerSearch}
               onNew={() => setModal({ type: "customer" })}
               onEdit={(id) => setModal({ type: "customer", id })}
-              onDelete={(id) =>
-                updateState((current) => ({
-                  ...current,
-                  customers: current.customers.filter((customer) => customer.id !== id),
-                  bookings: current.bookings.filter((booking) => booking.customerId !== id),
-                }))
-              }
+              onDelete={(id) => void deleteCustomer(id)}
             />
           ) : null}
           {view === "marketing" ? (
@@ -478,10 +922,7 @@ export default function BookingAdminApp() {
           {view === "settings" ? (
             <SettingsView
               state={state}
-              onSave={(next) => {
-                updateState(() => next);
-                showToast("Settings saved.");
-              }}
+              onSave={(next) => void saveSettings(next)}
             />
           ) : null}
         </main>
@@ -493,11 +934,7 @@ export default function BookingAdminApp() {
           state={state}
           activeDate={activeDate}
           onClose={() => setModal(null)}
-          onSave={(next, message) => {
-            updateState(() => next);
-            setModal(null);
-            showToast(message);
-          }}
+          onSave={(next, message, change) => void saveModalChange(next, message, change)}
         />
       ) : null}
 
@@ -1174,7 +1611,7 @@ function EditorModal({
   state: AppState;
   activeDate: string;
   onClose: () => void;
-  onSave: (next: AppState, message: string) => void;
+  onSave: (next: AppState, message: string, change: ModalSaveChange) => void;
 }) {
   const service =
     modal.type === "service"
@@ -1246,23 +1683,23 @@ function EditorModal({
   function save() {
     if (modal.type === "service") {
       const item = { ...(draft as Service), id: draft.id || makeId("svc") };
-      onSave({ ...state, services: upsert(state.services, item) }, "Service saved.");
+      onSave({ ...state, services: upsert(state.services, item) }, "Service saved.", { type: "service", item });
     }
     if (modal.type === "booking") {
       const item = { ...(draft as Booking), id: draft.id || makeId("bk") };
-      onSave({ ...state, bookings: upsert(state.bookings, item) }, "Booking saved.");
+      onSave({ ...state, bookings: upsert(state.bookings, item) }, "Booking saved.", { type: "booking", item });
     }
     if (modal.type === "customer") {
       const item = { ...(draft as Customer), id: draft.id || makeId("cust") };
-      onSave({ ...state, customers: upsert(state.customers, item) }, "Customer saved.");
+      onSave({ ...state, customers: upsert(state.customers, item) }, "Customer saved.", { type: "customer", item });
     }
     if (modal.type === "campaign") {
       const item = { ...(draft as Campaign), id: draft.id || makeId("cmp") };
-      onSave({ ...state, campaigns: upsert(state.campaigns, item) }, "Campaign saved.");
+      onSave({ ...state, campaigns: upsert(state.campaigns, item) }, "Campaign saved.", { type: "campaign", item });
     }
     if (modal.type === "product") {
       const item = { ...(draft as Product), id: draft.id || makeId("prd") };
-      onSave({ ...state, products: upsert(state.products, item) }, "Item saved.");
+      onSave({ ...state, products: upsert(state.products, item) }, "Item saved.", { type: "product", item });
     }
   }
 
