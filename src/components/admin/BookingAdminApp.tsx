@@ -2156,6 +2156,22 @@ function customerBirthDate(customer: Customer) {
   return `${customer.birthMonth.padStart(2, "0")}/${customer.birthDay.padStart(2, "0")}/${customer.birthYear}`;
 }
 
+function formatUsDateInput(value: string) {
+  const digits = value.replace(/\D/g, "").slice(0, 8);
+
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+function formatUsPhoneInput(value: string) {
+  const digits = value.replace(/\D/g, "").slice(0, 10);
+
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
 function customerJoinedLabel(value: string) {
   if (!value) return "";
 
@@ -2322,8 +2338,10 @@ function FamilyMemberModal({
               <div className="relative">
                 <input
                   value={birthDate}
-                  onChange={(event) => setBirthDate(event.target.value)}
+                  onChange={(event) => setBirthDate(formatUsDateInput(event.target.value))}
                   placeholder="MM/DD/YYYY"
+                  inputMode="numeric"
+                  maxLength={10}
                   className="min-h-11 w-full rounded-md border border-black/15 px-4 pr-11 text-[15px] outline-none"
                 />
                 <div className="absolute inset-y-0 right-3 flex items-center text-black/45">
@@ -2370,6 +2388,7 @@ function CustomerDetailView({
 }) {
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
   const [showFamilyModal, setShowFamilyModal] = useState(false);
+  const [profilePhone, setProfilePhone] = useState(customer?.phone ?? "");
 
   if (!customer) {
     return (
@@ -2512,7 +2531,10 @@ function CustomerDetailView({
                   <div className="grid grid-cols-[38px_minmax(0,1fr)] gap-2">
                     <div className="grid min-h-11 place-items-center rounded-md border border-black/15 text-lg">🇺🇸</div>
                     <input
-                      defaultValue={customer.phone}
+                      value={profilePhone}
+                      onChange={(event) => setProfilePhone(formatUsPhoneInput(event.target.value))}
+                      inputMode="numeric"
+                      maxLength={14}
                       className="min-h-11 rounded-md border border-black/15 px-4 text-[15px] outline-none"
                     />
                   </div>
