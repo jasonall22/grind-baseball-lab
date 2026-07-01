@@ -32,6 +32,9 @@ type Customer = {
   phone: string;
   age: number | "";
   memberships: string[];
+  waiverAgreed: boolean;
+  emergencyContactName: string;
+  emergencyContactPhone: string;
   notes: string;
   createdAt: string;
 };
@@ -105,6 +108,9 @@ type BookingCustomerRow = {
   phone: string | null;
   age: number | null;
   memberships: string[] | null;
+  waiver_agreed: boolean | null;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
   notes: string | null;
   created_at: string;
 };
@@ -226,6 +232,9 @@ const defaultState: AppState = {
       phone: "(407) 555-0148",
       age: "",
       memberships: [],
+      waiverAgreed: false,
+      emergencyContactName: "",
+      emergencyContactPhone: "",
       notes: "Varsity middle infielder",
       createdAt: "2026-07-01",
     },
@@ -237,6 +246,9 @@ const defaultState: AppState = {
       phone: "(407) 555-0192",
       age: "",
       memberships: ["Pitching package"],
+      waiverAgreed: false,
+      emergencyContactName: "",
+      emergencyContactPhone: "",
       notes: "Pitching package",
       createdAt: "2026-07-01",
     },
@@ -307,6 +319,7 @@ type IconName =
   | "trash"
   | "download"
   | "search"
+  | "chevron"
   | "x";
 
 const iconPaths: Record<IconName, string[]> = {
@@ -333,6 +346,7 @@ const iconPaths: Record<IconName, string[]> = {
   trash: ["M3 6h18", "M8 6V4h8v2", "m19 6-1 15H6L5 6", "M10 11v6M14 11v6"],
   download: ["M12 3v12", "m7 10 5 5 5-5", "M5 21h14"],
   search: ["M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z", "m21 21-4.3-4.3"],
+  chevron: ["m9 18 6-6-6-6"],
   x: ["M18 6 6 18", "M6 6l12 12"],
 };
 
@@ -469,6 +483,9 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
       phone: item.phone,
       age: item.age === "" ? null : item.age,
       memberships: item.memberships,
+      waiver_agreed: item.waiverAgreed,
+      emergency_contact_name: item.emergencyContactName,
+      emergency_contact_phone: item.emergencyContactPhone,
       notes: item.notes,
     });
     if (error) throw error;
@@ -537,6 +554,18 @@ function parseMemberships(value: string) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function splitName(value: string) {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  return {
+    first: parts[0] ?? "",
+    last: parts.slice(1).join(" "),
+  };
+}
+
+function joinName(first: string, last: string) {
+  return [first.trim(), last.trim()].filter(Boolean).join(" ");
 }
 
 function pillClass(status: string) {
@@ -660,6 +689,9 @@ export default function BookingAdminApp() {
           phone: customer.phone ?? "",
           age: customer.age ?? "",
           memberships: customer.memberships ?? [],
+          waiverAgreed: customer.waiver_agreed ?? false,
+          emergencyContactName: customer.emergency_contact_name ?? "",
+          emergencyContactPhone: customer.emergency_contact_phone ?? "",
           notes: customer.notes ?? "",
           createdAt: customer.created_at,
         })),
@@ -1756,6 +1788,32 @@ function SelectField({
   );
 }
 
+function CustomerSection({
+  title,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="sm:col-span-2 border-t border-black/10">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex min-h-12 w-full items-center justify-between text-left text-xs font-extrabold uppercase text-black/45"
+      >
+        {title}
+        <Icon name="chevron" className={`h-4 w-4 transition ${open ? "rotate-90" : ""}`} />
+      </button>
+      {open ? <div className="grid gap-4 pb-4 sm:grid-cols-2">{children}</div> : null}
+    </div>
+  );
+}
+
 function EditorModal({
   modal,
   state,
@@ -1806,6 +1864,9 @@ function EditorModal({
           phone: "",
           age: "",
           memberships: [],
+          waiverAgreed: false,
+          emergencyContactName: "",
+          emergencyContactPhone: "",
           notes: "",
           createdAt: new Date().toISOString(),
         }
@@ -1836,8 +1897,14 @@ function EditorModal({
   const [draft, setDraft] = useState<Service | Booking | Customer | Campaign | Product>(
     service ?? booking ?? customer ?? campaign ?? product!
   );
+  const [openCustomerSections, setOpenCustomerSections] = useState<string[]>([]);
 
   const title = `${modal.id ? "Edit" : "New"} ${modal.type}`;
+  const customerDraft = draft as Customer;
+  const customerName = modal.type === "customer" ? splitName(customerDraft.name) : { first: "", last: "" };
+  const canSave =
+    modal.type !== "customer" ||
+    Boolean(customerName.first.trim() && customerName.last.trim() && customerDraft.email.trim());
 
   function save() {
     if (modal.type === "service") {
@@ -1864,6 +1931,12 @@ function EditorModal({
 
   function patch(next: Partial<typeof draft>) {
     setDraft((current) => ({ ...current, ...next }) as typeof draft);
+  }
+
+  function toggleCustomerSection(section: string) {
+    setOpenCustomerSections((current) =>
+      current.includes(section) ? current.filter((item) => item !== section) : [...current, section]
+    );
   }
 
   return (
@@ -1920,29 +1993,116 @@ function EditorModal({
 
           {modal.type === "customer" ? (
             <>
-              <TextField label="Parent name" value={(draft as Customer).name} onChange={(value) => patch({ name: value })} />
-              <TextField label="Player name" value={(draft as Customer).player} onChange={(value) => patch({ player: value })} />
-              <TextField label="Email" type="email" value={(draft as Customer).email} onChange={(value) => patch({ email: value })} />
-              <TextField label="Phone" value={(draft as Customer).phone} onChange={(value) => patch({ phone: value })} />
-              <TextField
-                label="Age"
-                type="number"
-                value={(draft as Customer).age}
-                onChange={(value) => patch({ age: value ? Number(value) : "" })}
-              />
-              <TextField
-                label="Memberships"
-                value={membershipText((draft as Customer).memberships)}
-                onChange={(value) => patch({ memberships: parseMemberships(value) })}
-              />
-              <label className="grid gap-1.5 sm:col-span-2">
-                <span className="text-sm font-semibold text-black/70">Notes</span>
-                <textarea
-                  value={(draft as Customer).notes}
-                  onChange={(event) => patch({ notes: event.target.value })}
-                  className="min-h-24 rounded-lg border border-black/10 px-3 py-2 outline-none focus:border-black/30"
+              <div className="sm:col-span-2 grid gap-5 sm:grid-cols-[72px_minmax(0,1fr)]">
+                <div className="mt-5 grid h-20 w-20 place-items-center rounded-full bg-black/25 text-white">
+                  <Icon name="user" className="h-10 w-10" />
+                </div>
+                <div className="grid gap-4">
+                  <div>
+                    <div className="mb-2 text-sm font-semibold text-black/70">Name</div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <input
+                        value={customerName.first}
+                        onChange={(event) =>
+                          patch({
+                            name: joinName(event.target.value, customerName.last),
+                            player: joinName(event.target.value, customerName.last),
+                          })
+                        }
+                        placeholder="First name"
+                        className="min-h-10 rounded-lg border border-black/10 px-3 outline-none focus:border-black/30"
+                      />
+                      <input
+                        value={customerName.last}
+                        onChange={(event) =>
+                          patch({
+                            name: joinName(customerName.first, event.target.value),
+                            player: joinName(customerName.first, event.target.value),
+                          })
+                        }
+                        placeholder="Last name"
+                        className="min-h-10 rounded-lg border border-black/10 px-3 outline-none focus:border-black/30"
+                      />
+                    </div>
+                  </div>
+                  <TextField label="Email" type="email" value={customerDraft.email} onChange={(value) => patch({ email: value })} />
+                </div>
+              </div>
+
+              <div className="sm:col-span-2 flex flex-col gap-3 border-t border-black/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="font-semibold">Liability Waiver</div>
+                  <div className="text-sm text-black/55">{customerDraft.waiverAgreed ? "Agreed" : "Not agreed"}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={[
+                      "rounded-full px-3 py-1 text-xs font-bold",
+                      customerDraft.waiverAgreed ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700",
+                    ].join(" ")}
+                  >
+                    {customerDraft.waiverAgreed ? "Agreed" : "Not agreed"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => patch({ waiverAgreed: true })}
+                    className="rounded-lg border border-black/10 px-3 py-2 text-sm font-semibold hover:bg-black/[0.03]"
+                  >
+                    Agree to Waiver
+                  </button>
+                </div>
+              </div>
+
+              <CustomerSection
+                title="Personal Information"
+                open={openCustomerSections.includes("personal")}
+                onToggle={() => toggleCustomerSection("personal")}
+              >
+                <TextField
+                  label="Age"
+                  type="number"
+                  value={customerDraft.age}
+                  onChange={(value) => patch({ age: value ? Number(value) : "" })}
                 />
-              </label>
+                <TextField
+                  label="Memberships"
+                  value={membershipText(customerDraft.memberships)}
+                  onChange={(value) => patch({ memberships: parseMemberships(value) })}
+                />
+                <label className="grid gap-1.5 sm:col-span-2">
+                  <span className="text-sm font-semibold text-black/70">Notes</span>
+                  <textarea
+                    value={customerDraft.notes}
+                    onChange={(event) => patch({ notes: event.target.value })}
+                    className="min-h-24 rounded-lg border border-black/10 px-3 py-2 outline-none focus:border-black/30"
+                  />
+                </label>
+              </CustomerSection>
+
+              <CustomerSection
+                title="Contact Information"
+                open={openCustomerSections.includes("contact")}
+                onToggle={() => toggleCustomerSection("contact")}
+              >
+                <TextField label="Phone" value={customerDraft.phone} onChange={(value) => patch({ phone: value })} />
+              </CustomerSection>
+
+              <CustomerSection
+                title="Emergency Contact"
+                open={openCustomerSections.includes("emergency")}
+                onToggle={() => toggleCustomerSection("emergency")}
+              >
+                <TextField
+                  label="Emergency contact name"
+                  value={customerDraft.emergencyContactName}
+                  onChange={(value) => patch({ emergencyContactName: value })}
+                />
+                <TextField
+                  label="Emergency contact phone"
+                  value={customerDraft.emergencyContactPhone}
+                  onChange={(value) => patch({ emergencyContactPhone: value })}
+                />
+              </CustomerSection>
             </>
           ) : null}
 
@@ -1972,7 +2132,12 @@ function EditorModal({
           <button type="button" onClick={onClose} className="rounded-lg border border-black/10 px-4 py-2 text-sm font-semibold">
             Cancel
           </button>
-          <button type="button" onClick={save} className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white">
+          <button
+            type="button"
+            onClick={save}
+            disabled={!canSave}
+            className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white disabled:bg-black/15 disabled:text-black/35"
+          >
             Save
           </button>
         </div>
