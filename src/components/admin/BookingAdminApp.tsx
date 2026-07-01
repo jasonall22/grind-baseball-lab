@@ -2470,9 +2470,11 @@ function FamilyMemberModal({
                 </button>
 
                 {showBirthCalendar ? (
-                  <div className="absolute left-0 top-[calc(100%+4px)] z-20 w-[334px] rounded-xl border border-black/10 bg-white p-5 shadow-2xl">
-                    <div className="mb-5 flex items-center justify-between">
-                      <div className="text-[16px] font-medium text-black">
+                  <div
+                    className="absolute bottom-[calc(100%+8px)] left-0 z-20 w-[284px] max-w-[calc(100vw-72px)] rounded-xl border border-black/10 bg-white p-4 shadow-2xl"
+                  >
+                    <div className="mb-4 flex items-center justify-between">
+                      <div className="text-[15px] font-medium text-black">
                         {visibleBirthMonth.toLocaleDateString("en-US", {
                           month: "long",
                           year: "numeric",
@@ -2482,7 +2484,7 @@ function FamilyMemberModal({
                         <button
                           type="button"
                           onClick={() => setVisibleBirthMonth((current) => addMonths(current, -1))}
-                          className="grid h-8 w-8 place-items-center rounded-full hover:bg-black/[0.04]"
+                          className="grid h-7 w-7 place-items-center rounded-full hover:bg-black/[0.04]"
                           aria-label="Previous month"
                         >
                           <Icon name="chevron" className="h-4 w-4 rotate-90" />
@@ -2490,7 +2492,7 @@ function FamilyMemberModal({
                         <button
                           type="button"
                           onClick={() => setVisibleBirthMonth((current) => addMonths(current, 1))}
-                          className="grid h-8 w-8 place-items-center rounded-full hover:bg-black/[0.04]"
+                          className="grid h-7 w-7 place-items-center rounded-full hover:bg-black/[0.04]"
                           aria-label="Next month"
                         >
                           <Icon name="chevron" className="h-4 w-4 -rotate-90" />
@@ -2498,13 +2500,13 @@ function FamilyMemberModal({
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-7 gap-y-3 text-center text-[13px] text-black/55">
+                    <div className="grid grid-cols-7 gap-y-2 text-center text-[12px] text-black/55">
                       {["S", "M", "T", "W", "T", "F", "S"].map((day) => (
                         <div key={day}>{day}</div>
                       ))}
                     </div>
 
-                    <div className="mt-4 grid grid-cols-7 gap-y-3 text-center">
+                    <div className="mt-3 grid grid-cols-7 gap-y-2 text-center">
                       {birthCalendarDays.map((day) => {
                         const isSelected =
                           !!selectedBirthDate &&
@@ -2518,7 +2520,7 @@ function FamilyMemberModal({
                             type="button"
                             onClick={() => chooseBirthDate(day.date)}
                             className={[
-                              "mx-auto grid h-10 w-10 place-items-center rounded-full text-[15px]",
+                              "mx-auto grid h-8 w-8 place-items-center rounded-full text-[14px]",
                               day.isCurrentMonth ? "text-black/75" : "text-black/25",
                               isSelected ? "border border-black/35 text-black" : "hover:bg-black/[0.04]",
                             ].join(" ")}
