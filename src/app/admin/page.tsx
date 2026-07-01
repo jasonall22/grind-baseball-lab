@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { CSSProperties } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 type CardDef = {
@@ -11,6 +12,44 @@ type CardDef = {
 };
 
 const STORAGE_KEY = "grind_admin_dashboard_cards_v1";
+const DEFAULT_CARDS: CardDef[] = [
+  {
+    id: "bookings",
+    href: "/admin/home",
+    title: "Bookings",
+    desc: "Manage Swift-style services, calendar, customers, and availability.",
+  },
+  {
+    id: "hero",
+    href: "/admin/hero",
+    title: "Hero Slider",
+    desc: "Control hero images and messaging.",
+  },
+  {
+    id: "news",
+    href: "/admin/news",
+    title: "News & Updates",
+    desc: "Manage homepage news slides.",
+  },
+  {
+    id: "memberships",
+    href: "/admin/memberships",
+    title: "Memberships",
+    desc: "Manage membership tiers and pricing.",
+  },
+  {
+    id: "pricing",
+    href: "/admin/pricing",
+    title: "Pricing",
+    desc: "Manage cage rental prices and booking link.",
+  },
+  {
+    id: "trainers",
+    href: "/admin/trainers",
+    title: "Trainers",
+    desc: "Add, edit, reorder, and manage trainers.",
+  },
+];
 
 function moveItem<T>(arr: T[], fromIndex: number, toIndex: number) {
   const next = arr.slice();
@@ -20,71 +59,24 @@ function moveItem<T>(arr: T[], fromIndex: number, toIndex: number) {
 }
 
 export default function AdminPage() {
-  const defaultCards: CardDef[] = useMemo(
-    () => [
-      {
-        id: "bookings",
-        href: "/admin/bookings",
-        title: "Bookings",
-        desc: "Manage Swift-style services, calendar, customers, and availability.",
-      },
-      {
-        id: "hero",
-        href: "/admin/hero",
-        title: "Hero Slider",
-        desc: "Control hero images and messaging.",
-      },
-      {
-        id: "news",
-        href: "/admin/news",
-        title: "News & Updates",
-        desc: "Manage homepage news slides.",
-      },
-      {
-        id: "memberships",
-        href: "/admin/memberships",
-        title: "Memberships",
-        desc: "Manage membership tiers and pricing.",
-      },
-      {
-        id: "pricing",
-        href: "/admin/pricing",
-        title: "Pricing",
-        desc: "Manage cage rental prices and booking link.",
-      },
-      {
-        id: "trainers",
-        href: "/admin/trainers",
-        title: "Trainers",
-        desc: "Add, edit, reorder, and manage trainers.",
-      },
-    ],
-    []
-  );
-
   const cardMap = useMemo(() => {
     const m = new Map<string, CardDef>();
-    for (const c of defaultCards) m.set(c.id, c);
+    for (const c of DEFAULT_CARDS) m.set(c.id, c);
     return m;
-  }, [defaultCards]);
+  }, []);
 
   const [reorderMode, setReorderMode] = useState(false);
-  const [cards, setCards] = useState<CardDef[]>(defaultCards);
+  const [cards, setCards] = useState<CardDef[]>(() => {
+    if (typeof window === "undefined") {
+      return DEFAULT_CARDS;
+    }
 
-  // Pointer-drag state
-  const draggingIdRef = useRef<string | null>(null);
-  const startRef = useRef<{ x: number; y: number } | null>(null);
-  const movedRef = useRef(false);
-  const suppressClickRef = useRef(false);
-
-  // Load saved order
-  useEffect(() => {
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
+      if (!raw) return DEFAULT_CARDS;
 
       const ids = JSON.parse(raw) as unknown;
-      if (!Array.isArray(ids)) return;
+      if (!Array.isArray(ids)) return DEFAULT_CARDS;
 
       const seen = new Set<string>();
       const ordered: CardDef[] = [];
@@ -92,23 +84,30 @@ export default function AdminPage() {
       for (const id of ids) {
         if (typeof id !== "string") continue;
         if (seen.has(id)) continue;
-        const card = cardMap.get(id);
+
+        const card = DEFAULT_CARDS.find((item) => item.id === id);
         if (card) {
           ordered.push(card);
           seen.add(id);
         }
       }
 
-      // Append any new cards not in storage
-      for (const c of defaultCards) {
-        if (!seen.has(c.id)) ordered.push(c);
+      for (const card of DEFAULT_CARDS) {
+        if (!seen.has(card.id)) ordered.push(card);
       }
 
-      if (ordered.length) setCards(ordered);
+      return ordered.length ? ordered : DEFAULT_CARDS;
     } catch {
-      // ignore
+      return DEFAULT_CARDS;
     }
-  }, [cardMap, defaultCards]);
+  });
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+
+  // Pointer-drag state
+  const draggingIdRef = useRef<string | null>(null);
+  const startRef = useRef<{ x: number; y: number } | null>(null);
+  const movedRef = useRef(false);
+  const suppressClickRef = useRef(false);
 
   // Persist order
   useEffect(() => {
@@ -120,7 +119,7 @@ export default function AdminPage() {
     } catch {
       // ignore
     }
-  }, [cards]);
+  }, [cardMap, cards]);
 
   function onCardPointerDown(e: React.PointerEvent, id: string) {
     if (!reorderMode) return;
@@ -129,6 +128,7 @@ export default function AdminPage() {
     if (e.pointerType === "mouse" && e.button !== 0) return;
 
     draggingIdRef.current = id;
+    setDraggingId(id);
     startRef.current = { x: e.clientX, y: e.clientY };
     movedRef.current = false;
 
@@ -187,6 +187,7 @@ export default function AdminPage() {
     const didMove = movedRef.current;
 
     draggingIdRef.current = null;
+    setDraggingId(null);
     startRef.current = null;
 
     if (didMove) {
@@ -231,7 +232,7 @@ export default function AdminPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map((card) => {
-          const isDragging = reorderMode && draggingIdRef.current === card.id;
+          const isDragging = reorderMode && draggingId === card.id;
 
           return (
             <Link
@@ -247,7 +248,7 @@ export default function AdminPage() {
                 reorderMode ? "cursor-grab select-none" : "",
                 isDragging ? "cursor-grabbing" : "",
               ].join(" ")}
-              style={reorderMode ? ({ touchAction: "none" } as any) : undefined}
+              style={reorderMode ? ({ touchAction: "none" } satisfies CSSProperties) : undefined}
             >
               <div className="font-semibold">{card.title}</div>
               <div className="mt-1 text-sm text-black/60">{card.desc}</div>

@@ -1,10 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { hasSupabaseEnv, supabase } from "@/lib/supabaseClient";
 
-type View =
+export type BookingAdminView =
   | "home"
   | "services"
   | "calendar"
@@ -14,6 +15,37 @@ type View =
   | "retail"
   | "reports"
   | "settings";
+
+export const bookingAdminRouteByView: Record<BookingAdminView, string> = {
+  home: "/admin/home",
+  services: "/admin/services",
+  calendar: "/admin/calendar",
+  availability: "/admin/availability",
+  customers: "/admin/customers",
+  marketing: "/admin/marketing",
+  retail: "/admin/retail",
+  reports: "/admin/reports",
+  settings: "/admin/settings",
+};
+
+export function bookingAdminViewFromSection(
+  section: string
+): BookingAdminView | null {
+  switch (section) {
+    case "home":
+    case "services":
+    case "calendar":
+    case "availability":
+    case "customers":
+    case "marketing":
+    case "retail":
+    case "reports":
+    case "settings":
+      return section;
+    default:
+      return null;
+  }
+}
 
 type Service = {
   id: string;
@@ -177,7 +209,7 @@ type ModalState =
 
 const storageKey = "grind_booking_admin_v1";
 
-const navItems: { key: View; label: string; icon: IconName }[] = [
+const navItems: { key: BookingAdminView; label: string; icon: IconName }[] = [
   { key: "home", label: "Home", icon: "home" },
   { key: "services", label: "Services", icon: "link" },
   { key: "calendar", label: "Calendar", icon: "calendar" },
@@ -591,8 +623,11 @@ function loadInitialState() {
   }
 }
 
-export default function BookingAdminApp() {
-  const [view, setView] = useState<View>("home");
+export default function BookingAdminApp({
+  view = "home",
+}: {
+  view?: BookingAdminView;
+}) {
   const [state, setState] = useState<AppState>(loadInitialState);
   const [activeDate, setActiveDate] = useState("2026-07-01");
   const [modal, setModal] = useState<ModalState>(null);
@@ -874,10 +909,9 @@ export default function BookingAdminApp() {
 
           <nav className="flex w-full gap-1 overflow-x-auto md:mt-8 md:grid md:overflow-visible">
             {navItems.map((item) => (
-              <button
+              <Link
                 key={item.key}
-                type="button"
-                onClick={() => setView(item.key)}
+                href={bookingAdminRouteByView[item.key]}
                 title={item.label}
                 className={[
                   "flex h-10 shrink-0 items-center gap-3 rounded-lg px-3 text-left text-lg transition md:w-full",
@@ -886,7 +920,7 @@ export default function BookingAdminApp() {
               >
                 <Icon name={item.icon} />
                 <span className="hidden md:inline">{item.label}</span>
-              </button>
+              </Link>
             ))}
           </nav>
 

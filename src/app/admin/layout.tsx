@@ -9,6 +9,21 @@ type ProfileRoleRow = {
   role: Role;
 };
 
+function isBookingAdminPath(pathname: string) {
+  return (
+    pathname === "/admin/bookings" ||
+    pathname === "/admin/home" ||
+    pathname === "/admin/services" ||
+    pathname === "/admin/calendar" ||
+    pathname === "/admin/availability" ||
+    pathname === "/admin/customers" ||
+    pathname === "/admin/marketing" ||
+    pathname === "/admin/retail" ||
+    pathname === "/admin/reports" ||
+    pathname === "/admin/settings"
+  );
+}
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -24,7 +39,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       if (
         process.env.NODE_ENV !== "production" &&
         !hasSupabaseEnv &&
-        pathname === "/admin/bookings"
+        isBookingAdminPath(pathname)
       ) {
         setStatus("allowed");
         return;
