@@ -521,13 +521,16 @@ function Icon({ name, className = "h-5 w-5" }: { name: IconName; className?: str
 function PhotoUploadAvatar({
   preview,
   onPick,
+  size = "regular",
 }: {
   preview: string;
   onPick: () => void;
+  size?: "regular" | "compact";
 }) {
+  const isCompact = size === "compact";
   return (
     <button type="button" onClick={onPick} className="group flex flex-col items-center">
-      <div className="relative h-[106px] w-[106px]">
+      <div className={isCompact ? "relative h-[72px] w-[72px]" : "relative h-[106px] w-[106px]"}>
         <div
           className={[
             "grid h-full w-full place-items-center overflow-hidden rounded-full border-2 border-[#cfd4df] bg-[#eceff5] transition",
@@ -536,7 +539,11 @@ function PhotoUploadAvatar({
           style={preview ? { backgroundImage: `url(${preview})` } : undefined}
         >
           {!preview ? (
-            <svg viewBox="0 0 64 64" className="h-[54px] w-[54px] text-[#4a4d57]" aria-hidden="true">
+            <svg
+              viewBox="0 0 64 64"
+              className={isCompact ? "h-[38px] w-[38px] text-[#4a4d57]" : "h-[54px] w-[54px] text-[#4a4d57]"}
+              aria-hidden="true"
+            >
               <circle cx="32" cy="21" r="10" fill="currentColor" />
               <path
                 d="M14 49c0-8.8 8-14 18-14s18 5.2 18 14v3H14Z"
@@ -545,11 +552,23 @@ function PhotoUploadAvatar({
             </svg>
           ) : null}
         </div>
-        <span className="absolute bottom-[2px] right-[-2px] grid h-8 w-8 place-items-center rounded-full border border-[#d3d7e1] bg-white text-[#6a6d77] shadow-sm">
-          <Icon name="camera" className="h-4 w-4" />
+        <span
+          className={[
+            "absolute grid place-items-center rounded-full border border-[#d3d7e1] bg-white text-[#6a6d77] shadow-sm",
+            isCompact ? "bottom-[-1px] right-[-2px] h-6 w-6" : "bottom-[2px] right-[-2px] h-8 w-8",
+          ].join(" ")}
+        >
+          <Icon name="camera" className={isCompact ? "h-3.5 w-3.5" : "h-4 w-4"} />
         </span>
       </div>
-      <span className="mt-2 text-[14px] text-[#737784] group-hover:text-[#4f5563]">Add photo</span>
+      <span
+        className={[
+          "text-[#737784] group-hover:text-[#4f5563]",
+          isCompact ? "mt-1 text-[11px]" : "mt-2 text-[14px]",
+        ].join(" ")}
+      >
+        Add photo
+      </span>
     </button>
   );
 }
@@ -2281,8 +2300,8 @@ function DetailPanel({
 }) {
   return (
     <section className="overflow-hidden rounded-xl border border-black/10 bg-white">
-      <div className="flex min-h-12 items-center justify-between border-b border-black/10 bg-black/[0.02] px-4">
-        <h3 className="text-[15px] font-medium text-black/85">{title}</h3>
+      <div className="flex min-h-10 items-center justify-between border-b border-black/10 bg-black/[0.02] px-4">
+        <h3 className="text-[14px] font-medium text-black/85">{title}</h3>
         {action}
       </div>
       <div>{children}</div>
@@ -2302,15 +2321,15 @@ function ProfileField({
   trailing?: React.ReactNode;
 }) {
   return (
-    <label className="grid gap-2">
+    <label className="grid gap-1.5">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-black/85">{label}</span>
-        {rightLabel ? <span className="text-sm text-black/45">{rightLabel}</span> : null}
+        <span className="text-[13px] font-medium text-black/85">{label}</span>
+        {rightLabel ? <span className="text-[13px] text-black/45">{rightLabel}</span> : null}
       </div>
       <div className="relative">
         <input
           defaultValue={value}
-          className="min-h-11 w-full rounded-md border border-black/15 px-4 text-[15px] outline-none"
+          className="min-h-10 w-full rounded-md border border-black/15 px-4 text-[14px] outline-none"
         />
         {trailing ? <div className="absolute inset-y-0 right-3 flex items-center gap-2 text-black/45">{trailing}</div> : null}
       </div>
@@ -2687,8 +2706,8 @@ function CustomerDetailView({
   const age = calculateAge(customer.birthYear, customer.birthMonth, customer.birthDay);
 
   return (
-    <section className="min-h-screen px-6 py-8">
-      <div className="flex flex-wrap items-center gap-2 text-[15px] text-black/55">
+    <section className="min-h-screen px-5 py-6">
+      <div className="flex flex-wrap items-center gap-2 text-[14px] text-black/55">
         <Link href="/admin/customers" className="font-medium text-black/75 hover:text-black">
           Customers
         </Link>
@@ -2696,24 +2715,24 @@ function CustomerDetailView({
         <span className="font-medium text-black">{customer.name || "Customer"}</span>
       </div>
 
-      <div className="mt-4 flex flex-col gap-5 border-b border-black/10 pb-6 xl:flex-row xl:items-start xl:justify-between">
+      <div className="mt-3 flex flex-col gap-4 border-b border-black/10 pb-5 xl:flex-row xl:items-start xl:justify-between">
         <div className="flex items-start gap-4">
-          <div className="grid h-[58px] w-[58px] place-items-center rounded-full border border-black/12 bg-black/[0.04] text-[18px] font-medium text-black/65">
+          <div className="grid h-[48px] w-[48px] place-items-center rounded-full border border-black/12 bg-black/[0.04] text-[16px] font-medium text-black/65">
             {initials}
           </div>
           <div>
-            <h1 className="text-[27px] font-medium text-black">{customer.name || "Customer"}</h1>
-            <div className="mt-2 flex flex-wrap items-center gap-x-6 gap-y-2 text-[15px] text-black/55">
-              <span className="inline-flex items-center gap-2">
-                <Icon name="message" className="h-4 w-4" />
+            <h1 className="text-[22px] font-medium text-black">{customer.name || "Customer"}</h1>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[13px] text-black/55">
+              <span className="inline-flex items-center gap-1.5">
+                <Icon name="message" className="h-3.5 w-3.5" />
                 {customer.email || "No email"}
               </span>
-              <span className="inline-flex items-center gap-2">
-                <Icon name="clock" className="h-4 w-4" />
+              <span className="inline-flex items-center gap-1.5">
+                <Icon name="clock" className="h-3.5 w-3.5" />
                 {customer.phone || "No phone"}
               </span>
-              <span className="inline-flex items-center gap-2">
-                <Icon name="calendar" className="h-4 w-4" />
+              <span className="inline-flex items-center gap-1.5">
+                <Icon name="calendar" className="h-3.5 w-3.5" />
                 {joinedLabel ? `Joined ${joinedLabel}` : "Recently joined"}
               </span>
             </div>
@@ -2721,27 +2740,27 @@ function CustomerDetailView({
         </div>
 
         <div className="flex flex-wrap gap-3">
-          <button type="button" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-black/12 bg-white px-5 text-[15px] font-medium">
-            <Icon name="message" className="h-4 w-4" />
+          <button type="button" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-black/12 bg-white px-4 text-[14px] font-medium">
+            <Icon name="message" className="h-3.5 w-3.5" />
             Email
           </button>
-          <button type="button" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-black/12 bg-white px-5 text-[15px] font-medium">
-            <Icon name="plus" className="h-4 w-4" />
+          <button type="button" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-black/12 bg-white px-4 text-[14px] font-medium">
+            <Icon name="plus" className="h-3.5 w-3.5" />
             Add note
           </button>
-          <button type="button" className="grid h-11 w-11 place-items-center rounded-xl border border-black/12 bg-white text-xl leading-none">
+          <button type="button" className="grid h-10 w-10 place-items-center rounded-xl border border-black/12 bg-white text-lg leading-none">
             ...
           </button>
         </div>
       </div>
 
-      <div className="mt-5 inline-flex flex-wrap gap-1 rounded-xl bg-black/[0.05] p-1 text-[15px]">
+      <div className="mt-4 inline-flex flex-wrap gap-1 rounded-xl bg-black/[0.05] p-1 text-[14px]">
         {["Profile", "Billing", "Memberships", "Packages", "Activity", "Invoices", "Credits"].map((tab, index) => (
           <button
             key={tab}
             type="button"
             className={[
-              "rounded-lg px-4 py-2 font-medium",
+              "rounded-lg px-3.5 py-1.5 font-medium",
               index === 0 ? "bg-white text-black shadow-sm" : "text-black/55",
             ].join(" ")}
           >
@@ -2750,10 +2769,10 @@ function CustomerDetailView({
         ))}
       </div>
 
-      <div className="mt-7 grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,1fr)]">
+      <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(300px,1fr)]">
         <DetailPanel title="About">
-          <div className="grid gap-6 p-6">
-            <div className="grid gap-5 md:grid-cols-[128px_minmax(0,1fr)]">
+          <div className="grid gap-5 p-5">
+            <div className="grid gap-4 md:grid-cols-[92px_minmax(0,1fr)]">
               <div className="flex flex-col items-center">
                 <input
                   ref={profilePhotoInputRef}
@@ -2769,18 +2788,19 @@ function CustomerDetailView({
                 <PhotoUploadAvatar
                   preview={profilePhotoPreview}
                   onPick={() => profilePhotoInputRef.current?.click()}
+                  size="compact"
                 />
               </div>
-              <div className="grid gap-2">
-                <span className="text-sm font-medium text-black/85">Name</span>
-                <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-1.5">
+                <span className="text-[13px] font-medium text-black/85">Name</span>
+                <div className="grid gap-3 sm:grid-cols-2">
                   <input
                     defaultValue={first}
-                    className="min-h-11 w-full rounded-md border border-black/15 px-4 text-[15px] outline-none"
+                    className="min-h-10 w-full rounded-md border border-black/15 px-4 text-[14px] outline-none"
                   />
                   <input
                     defaultValue={last}
-                    className="min-h-11 w-full rounded-md border border-black/15 px-4 text-[15px] outline-none"
+                    className="min-h-10 w-full rounded-md border border-black/15 px-4 text-[14px] outline-none"
                   />
                 </div>
               </div>
@@ -2793,9 +2813,9 @@ function CustomerDetailView({
               trailing={<Icon name="calendar" className="h-4 w-4" />}
             />
 
-            <label className="grid gap-2">
-              <span className="text-sm font-medium text-black/85">Gender</span>
-              <select defaultValue={customer.gender || ""} className="min-h-11 rounded-md border border-black/15 px-4 text-[15px] outline-none">
+            <label className="grid gap-1.5">
+              <span className="text-[13px] font-medium text-black/85">Gender</span>
+              <select defaultValue={customer.gender || ""} className="min-h-10 rounded-md border border-black/15 px-4 text-[14px] outline-none">
                 <option value="">Select gender</option>
                 <option value="Male">Male</option>
                 <option value="Female">Female</option>
@@ -2804,11 +2824,11 @@ function CustomerDetailView({
             </label>
 
             <div className="overflow-hidden rounded-md border border-black/10">
-              <div className="flex min-h-11 items-center justify-between bg-black/[0.02] px-4 text-[15px] text-black/55">
+              <div className="flex min-h-10 items-center justify-between bg-black/[0.02] px-4 text-[14px] text-black/55">
                 <span>Contact Information</span>
                 <Icon name="chevron" className="h-4 w-4 -rotate-90" />
               </div>
-              <div className="grid gap-5 p-4">
+              <div className="grid gap-4 p-4">
                 <ProfileField
                   label="Email"
                   value={customer.email}
@@ -2820,16 +2840,16 @@ function CustomerDetailView({
                   }
                 />
 
-                <label className="grid gap-2">
-                  <span className="text-sm font-medium text-black/85">Phone</span>
+                <label className="grid gap-1.5">
+                  <span className="text-[13px] font-medium text-black/85">Phone</span>
                   <div className="grid grid-cols-[38px_minmax(0,1fr)] gap-2">
-                    <div className="grid min-h-11 place-items-center rounded-md border border-black/15 text-lg">🇺🇸</div>
+                    <div className="grid min-h-10 place-items-center rounded-md border border-black/15 text-lg">🇺🇸</div>
                     <input
                       value={profilePhone}
                       onChange={(event) => setProfilePhone(formatUsPhoneInput(event.target.value))}
                       inputMode="numeric"
                       maxLength={14}
-                      className="min-h-11 rounded-md border border-black/15 px-4 text-[15px] outline-none"
+                      className="min-h-10 rounded-md border border-black/15 px-4 text-[14px] outline-none"
                     />
                   </div>
                 </label>
@@ -2840,13 +2860,13 @@ function CustomerDetailView({
           </div>
         </DetailPanel>
 
-        <div className="grid gap-6">
+        <div className="grid gap-4">
           <DetailPanel title="Emergency Contact">
             {customer.emergencyContactName ? (
               <div className="flex items-center justify-between gap-4 p-4">
                 <div>
-                  <div className="text-[15px] font-medium text-black">{customer.emergencyContactName}</div>
-                  <div className="mt-1 text-[15px] text-black/55">
+                  <div className="text-[14px] font-medium text-black">{customer.emergencyContactName}</div>
+                  <div className="mt-1 text-[13px] text-black/55">
                     {[customer.emergencyContactEmail, customer.emergencyContactPhone].filter(Boolean).join(" · ")}
                   </div>
                 </div>
@@ -2861,7 +2881,7 @@ function CustomerDetailView({
           </DetailPanel>
 
           <DetailPanel title="Custom Fields" action={<button type="button" className="text-2xl leading-none text-black/45">+</button>}>
-            <div className="flex items-center justify-between gap-4 p-4 text-[15px]">
+            <div className="flex items-center justify-between gap-4 p-4 text-[14px]">
               <div className="flex items-center gap-3 text-black/65">
                 <Icon name="send" className="h-4 w-4" />
                 <span>Referral</span>
@@ -2891,14 +2911,14 @@ function CustomerDetailView({
                 {familyMembers.map((member) => (
                   <div key={member.id} className="flex items-center justify-between gap-4 p-4">
                     <div className="flex items-center gap-4">
-                      <div className="grid h-11 w-11 place-items-center rounded-full border border-black/10 bg-black/[0.04] text-sm font-medium text-black/60">
+                      <div className="grid h-10 w-10 place-items-center rounded-full border border-black/10 bg-black/[0.04] text-[13px] font-medium text-black/60">
                         {`${member.firstName[0] ?? ""}${member.lastName[0] ?? ""}`.toUpperCase()}
                       </div>
                       <div>
-                        <div className="text-[15px] font-medium text-black">
+                        <div className="text-[14px] font-medium text-black">
                           {[member.firstName, member.lastName].filter(Boolean).join(" ")}
                         </div>
-                        <div className="mt-1 text-[15px] text-black/55">
+                        <div className="mt-0.5 text-[13px] text-black/55">
                           {[member.gender !== "Unspecified" ? member.gender : "", member.relationship !== "Unspecified" ? member.relationship : ""]
                             .filter(Boolean)
                             .join(" · ") || "Member"}
@@ -2923,33 +2943,33 @@ function CustomerDetailView({
           </DetailPanel>
 
           <DetailPanel title="Preferences">
-            <div className="grid gap-5 p-4">
+            <div className="grid gap-4 p-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <div className="text-[15px] font-medium text-black">Liability Waiver</div>
-                  <div className="mt-1 text-[15px] text-black/55">
+                  <div className="text-[14px] font-medium text-black">Liability Waiver</div>
+                  <div className="mt-1 text-[13px] text-black/55">
                     {customer.waiverAgreed ? "Agreed" : "Not yet agreed"}
                   </div>
                 </div>
-                <span className={`rounded-full px-3 py-1 text-sm font-semibold ${customer.waiverAgreed ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+                <span className={`rounded-full px-3 py-1 text-[12px] font-semibold ${customer.waiverAgreed ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
                   {customer.waiverAgreed ? "Agreed" : "Pending"}
                 </span>
               </div>
 
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <div className="text-[15px] font-medium text-black">Email marketing</div>
-                  <div className="mt-1 text-[15px] text-black/55">Opted in to receive marketing emails</div>
+                  <div className="text-[14px] font-medium text-black">Email marketing</div>
+                  <div className="mt-1 text-[13px] text-black/55">Opted in to receive marketing emails</div>
                 </div>
-                <button type="button" className="relative h-7 w-12 rounded-full bg-black">
-                  <span className="absolute right-0.5 top-0.5 h-6 w-6 rounded-full bg-white" />
+                <button type="button" className="relative h-6 w-11 rounded-full bg-black">
+                  <span className="absolute right-0.5 top-0.5 h-5 w-5 rounded-full bg-white" />
                 </button>
               </div>
             </div>
           </DetailPanel>
 
           <DetailPanel title="Notes" action={<button type="button" className="text-2xl leading-none text-black/45">+</button>}>
-            <div className="p-8 text-center text-[15px] text-black/45">
+            <div className="p-7 text-center text-[14px] text-black/45">
               {customer.notes ? customer.notes : "No notes yet. Click + to add the first note."}
             </div>
           </DetailPanel>
