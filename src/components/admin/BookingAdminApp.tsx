@@ -2351,7 +2351,7 @@ function FamilyMemberModal({
 
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/45 p-4">
-      <div className="w-full max-w-[604px] overflow-hidden rounded-xl bg-white shadow-2xl">
+      <div className="w-full max-w-[604px] overflow-visible rounded-xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-black/10 px-6 py-5">
           <h3 className="text-[18px] font-medium text-black">Add Member</h3>
           <button
