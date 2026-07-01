@@ -518,6 +518,40 @@ function Icon({ name, className = "h-5 w-5" }: { name: IconName; className?: str
   );
 }
 
+function PhotoUploadAvatar({
+  preview,
+  onPick,
+}: {
+  preview: string;
+  onPick: () => void;
+}) {
+  return (
+    <button type="button" onClick={onPick} className="group flex flex-col items-center">
+      <div
+        className={[
+          "relative grid h-[106px] w-[106px] place-items-center overflow-hidden rounded-full border-2 border-[#cfd4df] bg-[#eceff5] transition",
+          preview ? "bg-cover bg-center" : "",
+        ].join(" ")}
+        style={preview ? { backgroundImage: `url(${preview})` } : undefined}
+      >
+        {!preview ? (
+          <svg viewBox="0 0 64 64" className="h-[54px] w-[54px] text-[#4a4d57]" aria-hidden="true">
+            <circle cx="32" cy="21" r="10" fill="currentColor" />
+            <path
+              d="M14 49c0-8.8 8-14 18-14s18 5.2 18 14v3H14Z"
+              fill="currentColor"
+            />
+          </svg>
+        ) : null}
+        <span className="absolute bottom-[2px] right-[-2px] grid h-8 w-8 place-items-center rounded-full border border-[#d3d7e1] bg-white text-[#6a6d77] shadow-sm">
+          <Icon name="camera" className="h-4 w-4" />
+        </span>
+      </div>
+      <span className="mt-2 text-[14px] text-[#737784] group-hover:text-[#4f5563]">Add photo</span>
+    </button>
+  );
+}
+
 function makeId(prefix: string) {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -2384,27 +2418,7 @@ function FamilyMemberModal({
                 event.currentTarget.value = "";
               }}
             />
-            <button
-              type="button"
-              onClick={() => photoInputRef.current?.click()}
-              className="group flex flex-col items-center"
-            >
-              <div
-                className={[
-                  "relative grid h-[112px] w-[112px] place-items-center overflow-hidden rounded-full border border-black/10 bg-black/[0.05] text-black/50 transition",
-                  photoPreview ? "bg-cover bg-center" : "",
-                ].join(" ")}
-                style={photoPreview ? { backgroundImage: `url(${photoPreview})` } : undefined}
-              >
-                {!photoPreview ? <Icon name="user" className="h-12 w-12" /> : null}
-                <span className="absolute bottom-1 right-1 grid h-8 w-8 place-items-center rounded-full border border-black/10 bg-white text-black/55 shadow-sm">
-                  <Icon name="camera" className="h-4 w-4" />
-                </span>
-              </div>
-              <span className="mt-3 text-[14px] text-black/45 group-hover:text-black/65">
-              Add photo
-              </span>
-            </button>
+            <PhotoUploadAvatar preview={photoPreview} onPick={() => photoInputRef.current?.click()} />
           </div>
 
           <div className="grid gap-5">
@@ -2750,27 +2764,10 @@ function CustomerDetailView({
                     event.currentTarget.value = "";
                   }}
                 />
-                <button
-                  type="button"
-                  onClick={() => profilePhotoInputRef.current?.click()}
-                  className="group flex flex-col items-center"
-                >
-                  <div
-                    className={[
-                      "relative grid h-[112px] w-[112px] place-items-center overflow-hidden rounded-full border border-black/10 bg-black/[0.05] text-black/50 transition",
-                      profilePhotoPreview ? "bg-cover bg-center" : "",
-                    ].join(" ")}
-                    style={profilePhotoPreview ? { backgroundImage: `url(${profilePhotoPreview})` } : undefined}
-                  >
-                    {!profilePhotoPreview ? <Icon name="user" className="h-12 w-12" /> : null}
-                    <span className="absolute bottom-1 right-1 grid h-8 w-8 place-items-center rounded-full border border-black/10 bg-white text-black/55 shadow-sm">
-                      <Icon name="camera" className="h-4 w-4" />
-                    </span>
-                  </div>
-                  <span className="mt-3 text-[14px] text-black/45 group-hover:text-black/65">
-                    Add photo
-                  </span>
-                </button>
+                <PhotoUploadAvatar
+                  preview={profilePhotoPreview}
+                  onPick={() => profilePhotoInputRef.current?.click()}
+                />
               </div>
               <div className="grid gap-2">
                 <span className="text-sm font-medium text-black/85">Name</span>
