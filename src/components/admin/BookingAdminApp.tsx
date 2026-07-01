@@ -458,6 +458,7 @@ type IconName =
   | "bar"
   | "gear"
   | "message"
+  | "phone"
   | "help"
   | "copy"
   | "plus"
@@ -491,6 +492,7 @@ const iconPaths: Record<IconName, string[]> = {
     "M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1A2 2 0 1 1 4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1A2 2 0 1 1 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1A2 2 0 1 1 19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.6 1h.1a2 2 0 1 1 0 4H21a1.7 1.7 0 0 0-1.6 1Z",
   ],
   message: ["M21 11.5a8.4 8.4 0 0 1-9 8.4 8.6 8.6 0 0 1-4.1-1L3 20l1.1-4.1a8.5 8.5 0 1 1 16.9-4.4Z"],
+  phone: ["M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1A19.5 19.5 0 0 1 5.2 12.8 19.8 19.8 0 0 1 2.1 4.1 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7l.4 3a2 2 0 0 1-.6 1.8L7.1 10.3a16 16 0 0 0 6.6 6.6l1.8-1.8a2 2 0 0 1 1.8-.6l3 .4A2 2 0 0 1 22 16.9Z"],
   help: ["M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z", "M9.5 9a2.6 2.6 0 0 1 5 1c0 2-2.5 2-2.5 4", "M12 17h.01"],
   copy: ["M8 8h11a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2Z", "M4 16V5a2 2 0 0 1 2-2h11"],
   plus: ["M12 5v14", "M5 12h14"],
@@ -2673,21 +2675,6 @@ function CustomerDetailView({
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
   const [showFamilyModal, setShowFamilyModal] = useState(false);
   const [profilePhone, setProfilePhone] = useState(customer?.phone ?? "");
-  const [profilePhotoPreview, setProfilePhotoPreview] = useState("");
-  const profilePhotoInputRef = useRef<HTMLInputElement | null>(null);
-
-  async function handleProfilePhotoFile(file: File) {
-    if (!file.type.startsWith("image/")) return;
-
-    const reader = new FileReader();
-    const preview = await new Promise<string>((resolve, reject) => {
-      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(file);
-    });
-
-    setProfilePhotoPreview(preview);
-  }
 
   if (!customer) {
     return (
@@ -2715,7 +2702,7 @@ function CustomerDetailView({
         <span className="font-medium text-black">{customer.name || "Customer"}</span>
       </div>
 
-      <div className="mt-3 flex flex-col gap-4 border-b border-black/10 pb-5 xl:flex-row xl:items-start xl:justify-between">
+      <div className="mt-3 flex flex-col gap-4 border-b border-black/10 pb-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex items-start gap-4">
           <div className="grid h-[48px] w-[48px] place-items-center rounded-full border border-black/12 bg-black/[0.04] text-[16px] font-medium text-black/65">
             {initials}
@@ -2728,7 +2715,7 @@ function CustomerDetailView({
                 {customer.email || "No email"}
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <Icon name="clock" className="h-3.5 w-3.5" />
+                <Icon name="phone" className="h-3.5 w-3.5" />
                 {customer.phone || "No phone"}
               </span>
               <span className="inline-flex items-center gap-1.5">
@@ -2739,16 +2726,16 @@ function CustomerDetailView({
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-3">
-          <button type="button" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-black/12 bg-white px-4 text-[14px] font-medium">
+        <div className="flex flex-wrap gap-2.5 lg:justify-end">
+          <button type="button" className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-black/12 bg-white px-4 text-[14px] font-medium">
             <Icon name="message" className="h-3.5 w-3.5" />
             Email
           </button>
-          <button type="button" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-black/12 bg-white px-4 text-[14px] font-medium">
+          <button type="button" className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-black/12 bg-white px-4 text-[14px] font-medium">
             <Icon name="plus" className="h-3.5 w-3.5" />
             Add note
           </button>
-          <button type="button" className="grid h-10 w-10 place-items-center rounded-xl border border-black/12 bg-white text-lg leading-none">
+          <button type="button" className="grid h-10 w-10 place-items-center rounded-lg border border-black/12 bg-white text-lg leading-none">
             ...
           </button>
         </div>
@@ -2769,27 +2756,14 @@ function CustomerDetailView({
         ))}
       </div>
 
-      <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(300px,1fr)]">
+      <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_30rem]">
         <DetailPanel title="About">
           <div className="grid gap-5 p-5">
-            <div className="grid gap-4 md:grid-cols-[92px_minmax(0,1fr)]">
-              <div className="flex flex-col items-center">
-                <input
-                  ref={profilePhotoInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) void handleProfilePhotoFile(file);
-                    event.currentTarget.value = "";
-                  }}
-                />
-                <PhotoUploadAvatar
-                  preview={profilePhotoPreview}
-                  onPick={() => profilePhotoInputRef.current?.click()}
-                  size="compact"
-                />
+            <div className="grid gap-4 md:grid-cols-[104px_minmax(0,1fr)]">
+              <div className="grid place-items-start pt-1">
+                <div className="grid h-[82px] w-[82px] place-items-center rounded-full border border-black/12 bg-black/[0.05] text-black/35">
+                  <Icon name="user" className="h-11 w-11" />
+                </div>
               </div>
               <div className="grid gap-1.5">
                 <span className="text-[13px] font-medium text-black/85">Name</span>
