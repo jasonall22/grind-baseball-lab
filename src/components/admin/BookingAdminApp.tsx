@@ -34,6 +34,7 @@ type Customer = {
   memberships: string[];
   waiverAgreed: boolean;
   emergencyContactName: string;
+  emergencyContactEmail: string;
   emergencyContactPhone: string;
   notes: string;
   createdAt: string;
@@ -123,6 +124,7 @@ type BookingCustomerRow = {
   memberships: string[] | null;
   waiver_agreed: boolean | null;
   emergency_contact_name: string | null;
+  emergency_contact_email: string | null;
   emergency_contact_phone: string | null;
   notes: string | null;
   created_at: string;
@@ -343,6 +345,7 @@ const defaultState: AppState = {
       memberships: [],
       waiverAgreed: false,
       emergencyContactName: "",
+      emergencyContactEmail: "",
       emergencyContactPhone: "",
       notes: "Varsity middle infielder",
       createdAt: "2026-07-01",
@@ -363,6 +366,7 @@ const defaultState: AppState = {
       memberships: ["Pitching package"],
       waiverAgreed: false,
       emergencyContactName: "",
+      emergencyContactEmail: "",
       emergencyContactPhone: "",
       notes: "Pitching package",
       createdAt: "2026-07-01",
@@ -680,6 +684,7 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
       memberships: item.memberships,
       waiver_agreed: item.waiverAgreed,
       emergency_contact_name: item.emergencyContactName,
+      emergency_contact_email: item.emergencyContactEmail || null,
       emergency_contact_phone: item.emergencyContactPhone,
       notes: item.notes,
     });
@@ -934,6 +939,7 @@ export default function BookingAdminApp({
           memberships: customer.memberships ?? [],
           waiverAgreed: customer.waiver_agreed ?? false,
           emergencyContactName: customer.emergency_contact_name ?? "",
+          emergencyContactEmail: customer.emergency_contact_email ?? "",
           emergencyContactPhone: customer.emergency_contact_phone ?? "",
           notes: customer.notes ?? "",
           createdAt: customer.created_at,
@@ -2499,6 +2505,7 @@ function EditorModal({
           memberships: [],
           waiverAgreed: false,
           emergencyContactName: "",
+          emergencyContactEmail: "",
           emergencyContactPhone: "",
           notes: "",
           createdAt: new Date().toISOString(),
@@ -2817,14 +2824,21 @@ function EditorModal({
                 onToggle={() => toggleCustomerSection("emergency")}
               >
                 <TextField
-                  label="Emergency contact name"
+                  label="Name"
                   value={customerDraft.emergencyContactName}
                   onChange={(value) => patch({ emergencyContactName: value })}
                 />
                 <TextField
-                  label="Emergency contact phone"
+                  label="Email"
+                  type="email"
+                  value={customerDraft.emergencyContactEmail}
+                  onChange={(value) => patch({ emergencyContactEmail: value })}
+                />
+                <TextField
+                  label="Phone"
                   value={customerDraft.emergencyContactPhone}
                   onChange={(value) => patch({ emergencyContactPhone: value })}
+                  placeholder="123-456-7890"
                 />
               </CustomerSection>
             </>
