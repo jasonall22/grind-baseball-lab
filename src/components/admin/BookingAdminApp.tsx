@@ -184,6 +184,7 @@ type ModalState =
   | null;
 
 const storageKey = "grind_booking_admin_v1";
+const lastAppRouteKey = "grind_booking_admin_last_app_route";
 type SettingsSection = "basics" | "policies";
 
 const navItems: { key: BookingAdminView; label: string; icon: IconName }[] = [
@@ -694,6 +695,7 @@ export default function BookingAdminApp({
   const [customerSearch, setCustomerSearch] = useState("");
   const [dataSource, setDataSource] = useState<"local" | "supabase">("local");
   const [resourceIdsByName, setResourceIdsByName] = useState<Record<string, string>>({});
+  const [backToAppHref, setBackToAppHref] = useState(bookingAdminRouteByView.home);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -967,63 +969,85 @@ export default function BookingAdminApp({
 
   const dayBookings = state.bookings.filter((booking) => booking.date === activeDate);
   const activeMainView = view.startsWith("settings") ? "settings" : view;
+  const isSettingsView = activeMainView === "settings";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (!isSettingsView) {
+      const href = bookingAdminRouteByView[view];
+      window.localStorage.setItem(lastAppRouteKey, href);
+      setBackToAppHref(href);
+      return;
+    }
+
+    const saved = window.localStorage.getItem(lastAppRouteKey);
+    setBackToAppHref(saved || bookingAdminRouteByView.home);
+  }, [isSettingsView, view]);
 
   return (
     <div className="min-h-screen bg-white text-black">
-      <div className="grid min-h-screen grid-cols-1 bg-white md:grid-cols-[284px_minmax(0,1fr)]">
-        <aside className="flex bg-[#f5f5f5] p-3 md:min-h-screen md:flex-col md:px-6 md:py-6">
-          <div className="hidden items-center justify-between md:flex">
-            <div className="flex items-center gap-2 text-2xl font-extrabold">
-              <span className="block h-6 w-4 -skew-x-12 rounded-sm bg-black" />
-              Swift
+      <div
+        className={[
+          "grid min-h-screen grid-cols-1 bg-white",
+          isSettingsView ? "" : "md:grid-cols-[284px_minmax(0,1fr)]",
+        ].join(" ")}
+      >
+        {!isSettingsView ? (
+          <aside className="flex bg-[#f5f5f5] p-3 md:min-h-screen md:flex-col md:px-6 md:py-6">
+            <div className="hidden items-center justify-between md:flex">
+              <div className="flex items-center gap-2 text-2xl font-extrabold">
+                <span className="block h-6 w-4 -skew-x-12 rounded-sm bg-black" />
+                Swift
+              </div>
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-black/20 text-white">
+                <Icon name="user" className="h-5 w-5" />
+              </div>
             </div>
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-black/20 text-white">
-              <Icon name="user" className="h-5 w-5" />
+
+            <nav className="flex w-full gap-1 overflow-x-auto md:mt-8 md:grid md:overflow-visible">
+              {navItems.map((item) => (
+                <Link
+                  key={item.key}
+                  href={bookingAdminRouteByView[item.key]}
+                  title={item.label}
+                  className={[
+                    "flex h-10 shrink-0 items-center gap-3 rounded-lg px-3 text-left text-lg transition md:w-full",
+                    activeMainView === item.key ? "bg-[#eeeeee] font-bold" : "hover:bg-black/5",
+                  ].join(" ")}
+                >
+                  <Icon name={item.icon} />
+                  <span className="hidden md:inline">{item.label}</span>
+                </Link>
+              ))}
+            </nav>
+
+            <div className="mt-auto hidden space-y-1 md:block">
+              {[
+                ["message", "Contact Us"],
+                ["help", "Help Center"],
+                ["copy", "Copy public page link"],
+              ].map(([icon, label]) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => {
+                    if (label.startsWith("Copy")) {
+                      void navigator.clipboard?.writeText(state.facility.publicUrl);
+                      showToast("Public page link copied.");
+                    } else {
+                      showToast(`${label} is ready for the next pass.`);
+                    }
+                  }}
+                  className="flex h-10 w-full items-center gap-3 rounded-lg text-left text-lg hover:bg-black/5"
+                >
+                  <Icon name={icon as IconName} />
+                  {label}
+                </button>
+              ))}
             </div>
-          </div>
-
-          <nav className="flex w-full gap-1 overflow-x-auto md:mt-8 md:grid md:overflow-visible">
-            {navItems.map((item) => (
-              <Link
-                key={item.key}
-                href={bookingAdminRouteByView[item.key]}
-                title={item.label}
-                className={[
-                  "flex h-10 shrink-0 items-center gap-3 rounded-lg px-3 text-left text-lg transition md:w-full",
-                  activeMainView === item.key ? "bg-[#eeeeee] font-bold" : "hover:bg-black/5",
-                ].join(" ")}
-              >
-                <Icon name={item.icon} />
-                <span className="hidden md:inline">{item.label}</span>
-              </Link>
-            ))}
-          </nav>
-
-          <div className="mt-auto hidden space-y-1 md:block">
-            {[
-              ["message", "Contact Us"],
-              ["help", "Help Center"],
-              ["copy", "Copy public page link"],
-            ].map(([icon, label]) => (
-              <button
-                key={label}
-                type="button"
-                onClick={() => {
-                  if (label.startsWith("Copy")) {
-                    void navigator.clipboard?.writeText(state.facility.publicUrl);
-                    showToast("Public page link copied.");
-                  } else {
-                    showToast(`${label} is ready for the next pass.`);
-                  }
-                }}
-                className="flex h-10 w-full items-center gap-3 rounded-lg text-left text-lg hover:bg-black/5"
-              >
-                <Icon name={icon as IconName} />
-                {label}
-              </button>
-            ))}
-          </div>
-        </aside>
+          </aside>
+        ) : null}
 
         <main className="min-w-0">
           {view === "home" ? (
@@ -1106,6 +1130,7 @@ export default function BookingAdminApp({
           ) : null}
           {view === "settings" || view === "settings-basics" || view === "settings-policies" ? (
             <SettingsView
+              backHref={backToAppHref}
               section={view === "settings-policies" ? "policies" : "basics"}
               state={state}
               showToast={showToast}
@@ -1741,11 +1766,13 @@ function MetricPanel({ title, rows }: { title: string; rows: [string, React.Reac
 }
 
 function SettingsView({
+  backHref,
   section,
   state,
   showToast,
   onSave,
 }: {
+  backHref: string;
   section: SettingsSection;
   state: AppState;
   showToast: (message: string) => void;
@@ -1763,7 +1790,7 @@ function SettingsView({
       <div className="grid min-h-screen lg:grid-cols-[220px_minmax(0,1fr)]">
         <aside className="border-b border-black/10 bg-[#f7f7f7] px-4 py-5 lg:border-b-0 lg:border-r">
           <Link
-            href={bookingAdminRouteByView.home}
+            href={backHref}
             className="inline-flex items-center gap-2 text-sm font-semibold text-black/70 transition hover:text-black"
           >
             <Icon name="arrow-left" className="h-4 w-4" />
