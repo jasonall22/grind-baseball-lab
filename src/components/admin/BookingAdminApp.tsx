@@ -24,6 +24,10 @@ type Customer = {
   player: string;
   email: string;
   phone: string;
+  birthYear: string;
+  birthMonth: string;
+  birthDay: string;
+  gender: string;
   age: number | "";
   memberships: string[];
   waiverAgreed: boolean;
@@ -107,6 +111,10 @@ type BookingCustomerRow = {
   player_name: string;
   email: string | null;
   phone: string | null;
+  birth_year: number | null;
+  birth_month: number | null;
+  birth_day: number | null;
+  gender: string | null;
   age: number | null;
   memberships: string[] | null;
   waiver_agreed: boolean | null;
@@ -321,6 +329,10 @@ const defaultState: AppState = {
       player: "Mason Reed",
       email: "mason.reed@example.com",
       phone: "(407) 555-0148",
+      birthYear: "",
+      birthMonth: "",
+      birthDay: "",
+      gender: "",
       age: "",
       memberships: [],
       waiverAgreed: false,
@@ -335,6 +347,10 @@ const defaultState: AppState = {
       player: "Jackson Johnson",
       email: "avery.johnson@example.com",
       phone: "(407) 555-0192",
+      birthYear: "",
+      birthMonth: "",
+      birthDay: "",
+      gender: "",
       age: "",
       memberships: ["Pitching package"],
       waiverAgreed: false,
@@ -643,7 +659,14 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
       player_name: item.player,
       email: item.email,
       phone: item.phone,
-      age: item.age === "" ? null : item.age,
+      birth_year: item.birthYear ? Number(item.birthYear) : null,
+      birth_month: item.birthMonth ? Number(item.birthMonth) : null,
+      birth_day: item.birthDay ? Number(item.birthDay) : null,
+      gender: item.gender || null,
+      age:
+        calculateAge(item.birthYear, item.birthMonth, item.birthDay) === ""
+          ? item.age === "" ? null : item.age
+          : calculateAge(item.birthYear, item.birthMonth, item.birthDay),
       memberships: item.memberships,
       waiver_agreed: item.waiverAgreed,
       emergency_contact_name: item.emergencyContactName,
@@ -707,15 +730,31 @@ function dateLabel(value: string) {
   });
 }
 
-function membershipText(memberships: string[]) {
-  return memberships.join(", ");
+function birthPart(value: number | null | undefined, width: number) {
+  if (!value) return "";
+  return String(value).padStart(width, "0");
 }
 
-function parseMemberships(value: string) {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
+function calculateAge(
+  birthYear: string,
+  birthMonth: string,
+  birthDay: string
+): number | "" {
+  const year = Number(birthYear);
+  const month = Number(birthMonth);
+  const day = Number(birthDay);
+
+  if (!year || !month || !day) return "";
+
+  const now = new Date();
+  let age = now.getFullYear() - year;
+  const beforeBirthday =
+    now.getMonth() + 1 < month ||
+    (now.getMonth() + 1 === month && now.getDate() < day);
+
+  if (beforeBirthday) age -= 1;
+
+  return age >= 0 ? age : "";
 }
 
 function splitName(value: string) {
@@ -868,7 +907,18 @@ export default function BookingAdminApp({
           player: customer.player_name,
           email: customer.email ?? "",
           phone: customer.phone ?? "",
-          age: customer.age ?? "",
+          birthYear: birthPart(customer.birth_year, 4),
+          birthMonth: birthPart(customer.birth_month, 2),
+          birthDay: birthPart(customer.birth_day, 2),
+          gender: customer.gender ?? "",
+          age: (() => {
+            const derivedAge = calculateAge(
+              birthPart(customer.birth_year, 4),
+              birthPart(customer.birth_month, 2),
+              birthPart(customer.birth_day, 2)
+            );
+            return derivedAge === "" ? customer.age ?? "" : derivedAge;
+          })(),
           memberships: customer.memberships ?? [],
           waiverAgreed: customer.waiver_agreed ?? false,
           emergencyContactName: customer.emergency_contact_name ?? "",
@@ -2234,11 +2284,13 @@ function TextField({
   value,
   onChange,
   type = "text",
+  placeholder,
 }: {
   label: string;
   value: string | number;
   onChange: (value: string) => void;
   type?: string;
+  placeholder?: string;
 }) {
   return (
     <label className="grid gap-1.5">
@@ -2246,6 +2298,7 @@ function TextField({
       <input
         type={type}
         value={value}
+        placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
         className="min-h-10 rounded-lg border border-black/10 px-3 outline-none focus:border-black/30"
       />
@@ -2283,6 +2336,38 @@ function ToggleSwitch({
         ].join(" ")}
       />
     </button>
+  );
+}
+
+function NotesEditor({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const toolbarButtons = ["↶", "↷", "≡", "B", "I", "U", "S", "<>", "↔", "☰", "☷"];
+
+  return (
+    <div className="mt-2 overflow-hidden rounded-lg border border-black/10">
+      <div className="flex min-h-14 flex-wrap items-center gap-x-2 gap-y-1 border-b border-black/10 px-3 py-2 text-black/55">
+        {toolbarButtons.map((item, index) => (
+          <button
+            key={`${item}-${index}`}
+            type="button"
+            className="grid h-8 min-w-8 place-items-center rounded-md px-2 text-lg transition hover:bg-black/[0.03]"
+          >
+            {item}
+          </button>
+        ))}
+      </div>
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="Add notes..."
+        className="min-h-[220px] w-full resize-none px-4 py-4 text-base outline-none"
+      />
+    </div>
   );
 }
 
@@ -2392,6 +2477,10 @@ function EditorModal({
           player: "",
           email: "",
           phone: "",
+          birthYear: "",
+          birthMonth: "",
+          birthDay: "",
+          gender: "",
           age: "",
           memberships: [],
           waiverAgreed: false,
@@ -2427,7 +2516,7 @@ function EditorModal({
   const [draft, setDraft] = useState<Service | Booking | Customer | Campaign | Product>(
     service ?? booking ?? customer ?? campaign ?? product!
   );
-  const [openCustomerSections, setOpenCustomerSections] = useState<string[]>([]);
+  const [openCustomerSections, setOpenCustomerSections] = useState<string[]>(["personal"]);
   const [showWaiverDialog, setShowWaiverDialog] = useState(false);
 
   const title = `${modal.id ? "Edit" : "New"} ${modal.type}`;
@@ -2589,25 +2678,87 @@ function EditorModal({
                 open={openCustomerSections.includes("personal")}
                 onToggle={() => toggleCustomerSection("personal")}
               >
-                <TextField
-                  label="Age"
-                  type="number"
-                  value={customerDraft.age}
-                  onChange={(value) => patch({ age: value ? Number(value) : "" })}
-                />
-                <TextField
-                  label="Memberships"
-                  value={membershipText(customerDraft.memberships)}
-                  onChange={(value) => patch({ memberships: parseMemberships(value) })}
-                />
-                <label className="grid gap-1.5 sm:col-span-2">
+                <div className="sm:col-span-2">
+                  <div className="mb-3 text-sm font-semibold text-black/75">Date of Birth</div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <TextField
+                      label="Year"
+                      value={customerDraft.birthYear}
+                      placeholder="ex: 1994"
+                      onChange={(value) =>
+                        patch({
+                          birthYear: value.replace(/\D/g, "").slice(0, 4),
+                          age:
+                            calculateAge(
+                              value.replace(/\D/g, "").slice(0, 4),
+                              customerDraft.birthMonth,
+                              customerDraft.birthDay
+                            ) || "",
+                        })
+                      }
+                    />
+                    <TextField
+                      label="Month"
+                      value={customerDraft.birthMonth}
+                      placeholder="ex: 07"
+                      onChange={(value) =>
+                        patch({
+                          birthMonth: value.replace(/\D/g, "").slice(0, 2),
+                          age:
+                            calculateAge(
+                              customerDraft.birthYear,
+                              value.replace(/\D/g, "").slice(0, 2),
+                              customerDraft.birthDay
+                            ) || "",
+                        })
+                      }
+                    />
+                    <TextField
+                      label="Day"
+                      value={customerDraft.birthDay}
+                      placeholder="ex: 28"
+                      onChange={(value) =>
+                        patch({
+                          birthDay: value.replace(/\D/g, "").slice(0, 2),
+                          age:
+                            calculateAge(
+                              customerDraft.birthYear,
+                              customerDraft.birthMonth,
+                              value.replace(/\D/g, "").slice(0, 2)
+                            ) || "",
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div className="sm:col-span-2 grid gap-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-black/70">Gender</span>
+                    <span className="rounded-full bg-black/[0.06] px-2.5 py-0.5 text-xs font-medium text-black/60">
+                      Optional
+                    </span>
+                  </div>
+                  <select
+                    value={customerDraft.gender}
+                    onChange={(event) => patch({ gender: event.target.value })}
+                    className="min-h-12 rounded-lg border border-black/10 px-3 outline-none focus:border-black/30"
+                  >
+                    <option value=""></option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Non-binary">Non-binary</option>
+                    <option value="Prefer not to say">Prefer not to say</option>
+                  </select>
+                </div>
+
+                <div className="sm:col-span-2">
                   <span className="text-sm font-semibold text-black/70">Notes</span>
-                  <textarea
+                  <NotesEditor
                     value={customerDraft.notes}
-                    onChange={(event) => patch({ notes: event.target.value })}
-                    className="min-h-24 rounded-lg border border-black/10 px-3 py-2 outline-none focus:border-black/30"
+                    onChange={(value) => patch({ notes: value })}
                   />
-                </label>
+                </div>
               </CustomerSection>
 
               <CustomerSection
