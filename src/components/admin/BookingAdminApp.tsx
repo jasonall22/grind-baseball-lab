@@ -467,6 +467,7 @@ type IconName =
   | "upload"
   | "file"
   | "table"
+  | "check"
   | "search"
   | "chevron"
   | "x"
@@ -498,6 +499,7 @@ const iconPaths: Record<IconName, string[]> = {
   upload: ["M12 21V9", "m7 14 5-5 5 5", "M5 3h14"],
   file: ["M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z", "M14 2v6h6"],
   table: ["M4 6h16", "M4 12h16", "M4 18h16", "M8 4v16", "M16 4v16"],
+  check: ["M5 12.5 10 17l9-10"],
   search: ["M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z", "m21 21-4.3-4.3"],
   chevron: ["m9 18 6-6-6-6"],
   x: ["M18 6 6 18", "M6 6l12 12"],
@@ -2793,6 +2795,32 @@ const customerImportFieldOptions = Object.entries(customerImportFieldLabels) as 
   [CustomerImportField, string]
 >;
 
+function ImportCheckbox({
+  checked,
+  onToggle,
+  label,
+}: {
+  checked: boolean;
+  onToggle: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-checked={checked}
+      aria-label={label}
+      role="checkbox"
+      className={[
+        "grid h-7 w-7 place-items-center rounded-[4px] border transition",
+        checked ? "border-black bg-black text-white" : "border-black/30 bg-white text-transparent hover:border-black/45",
+      ].join(" ")}
+    >
+      <Icon name="check" className="h-4 w-4" />
+    </button>
+  );
+}
+
 function CustomerImportModal({
   onClose,
   onImport,
@@ -3001,7 +3029,7 @@ function CustomerImportModal({
 
   return (
     <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/45 p-4">
-      <div className="w-full max-w-[540px] overflow-hidden rounded-xl bg-white shadow-2xl">
+      <div className="w-full max-w-[780px] overflow-hidden rounded-[18px] bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-black/10 px-6 py-5">
           <div>
             <h3 className="text-[18px] font-semibold">Import Your Customers</h3>
@@ -3163,7 +3191,7 @@ function CustomerImportModal({
             </p>
 
             <div className="mt-6 overflow-auto rounded-2xl border border-black/12">
-              <div className="min-w-[700px]">
+              <div className="min-w-[860px]">
                 <div className="grid grid-cols-[1.3fr_64px_1.4fr_64px] border-b border-black/10 bg-white px-6 py-5 text-[15px] font-semibold">
                   <div>File Column</div>
                   <div />
@@ -3173,6 +3201,7 @@ function CustomerImportModal({
                 <div className="max-h-[440px] overflow-auto">
                   {parsedFile.headers.map((header) => {
                     const checked = !excludedHeaders.includes(header);
+                    const selectedField = mappedFieldByHeader[header] ?? "";
                     return (
                       <div
                         key={header}
@@ -3181,15 +3210,18 @@ function CustomerImportModal({
                         <div className={`truncate pr-4 text-[15px] ${checked ? "text-black/75" : "text-black/30 line-through"}`}>
                           {header}
                         </div>
-                        <div className="flex justify-center text-black/55">
-                          <Icon name="arrow-left" className="h-4 w-4 -rotate-180" />
+                        <div className="flex justify-center text-[30px] leading-none text-black/55">
+                          <span aria-hidden="true">→</span>
                         </div>
                         <div className="pr-4">
                           <select
-                            value={mappedFieldByHeader[header] ?? ""}
+                            value={selectedField}
                             onChange={(event) => setFieldForHeader(header, event.target.value)}
                             disabled={!checked}
-                            className="min-h-12 w-full rounded-lg border border-black/15 px-4 text-[15px] outline-none focus:border-black/30 disabled:bg-black/[0.03] disabled:text-black/35"
+                            className={[
+                              "min-h-12 w-full rounded-lg border border-black/15 px-5 text-[15px] outline-none focus:border-black/30 disabled:bg-black/[0.03] disabled:text-black/35",
+                              selectedField ? "text-black not-italic" : "text-black/65 italic",
+                            ].join(" ")}
                           >
                             <option value="">Select field...</option>
                             {customerImportFieldOptions.map(([field, label]) => (
@@ -3200,12 +3232,10 @@ function CustomerImportModal({
                           </select>
                         </div>
                         <div className="flex justify-center">
-                          <input
-                            type="checkbox"
+                          <ImportCheckbox
                             checked={checked}
-                            onChange={() => toggleHeaderIncluded(header)}
-                            className="h-7 w-7 rounded accent-black"
-                            aria-label={`Include ${header}`}
+                            onToggle={() => toggleHeaderIncluded(header)}
+                            label={`Include ${header}`}
                           />
                         </div>
                       </div>
@@ -3216,12 +3246,13 @@ function CustomerImportModal({
             </div>
 
             <label className="mt-6 flex items-start gap-3 text-[15px] text-black/85">
-              <input
-                type="checkbox"
-                checked={optInMarketing}
-                onChange={(event) => setOptInMarketing(event.target.checked)}
-                className="mt-0.5 h-7 w-7 rounded accent-black"
-              />
+              <span className="mt-0.5">
+                <ImportCheckbox
+                  checked={optInMarketing}
+                  onToggle={() => setOptInMarketing((current) => !current)}
+                  label="Automatically opt-in all customers to receive marketing emails"
+                />
+              </span>
               <span>Automatically opt-in all customers to receive marketing emails</span>
             </label>
             {error ? <div className="mt-4 text-sm text-red-600">{error}</div> : null}
