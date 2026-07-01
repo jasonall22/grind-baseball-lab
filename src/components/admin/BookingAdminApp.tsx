@@ -23,7 +23,9 @@ type Customer = {
   name: string;
   player: string;
   email: string;
+  address: string;
   phone: string;
+  phoneCountry: string;
   birthYear: string;
   birthMonth: string;
   birthDay: string;
@@ -110,7 +112,9 @@ type BookingCustomerRow = {
   parent_name: string;
   player_name: string;
   email: string | null;
+  address: string | null;
   phone: string | null;
+  phone_country: string | null;
   birth_year: number | null;
   birth_month: number | null;
   birth_day: number | null;
@@ -328,7 +332,9 @@ const defaultState: AppState = {
       name: "Mason Reed",
       player: "Mason Reed",
       email: "mason.reed@example.com",
+      address: "",
       phone: "(407) 555-0148",
+      phoneCountry: "US",
       birthYear: "",
       birthMonth: "",
       birthDay: "",
@@ -346,7 +352,9 @@ const defaultState: AppState = {
       name: "Avery Johnson",
       player: "Jackson Johnson",
       email: "avery.johnson@example.com",
+      address: "",
       phone: "(407) 555-0192",
+      phoneCountry: "US",
       birthYear: "",
       birthMonth: "",
       birthDay: "",
@@ -658,7 +666,9 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
       parent_name: item.name,
       player_name: item.player,
       email: item.email,
+      address: item.address || null,
       phone: item.phone,
+      phone_country: item.phoneCountry || "US",
       birth_year: item.birthYear ? Number(item.birthYear) : null,
       birth_month: item.birthMonth ? Number(item.birthMonth) : null,
       birth_day: item.birthDay ? Number(item.birthDay) : null,
@@ -906,7 +916,9 @@ export default function BookingAdminApp({
           name: customer.parent_name,
           player: customer.player_name,
           email: customer.email ?? "",
+          address: customer.address ?? "",
           phone: customer.phone ?? "",
+          phoneCountry: customer.phone_country ?? "US",
           birthYear: birthPart(customer.birth_year, 4),
           birthMonth: birthPart(customer.birth_month, 2),
           birthDay: birthPart(customer.birth_day, 2),
@@ -2476,7 +2488,9 @@ function EditorModal({
           name: "",
           player: "",
           email: "",
+          address: "",
           phone: "",
+          phoneCountry: "US",
           birthYear: "",
           birthMonth: "",
           birthDay: "",
@@ -2766,7 +2780,50 @@ function EditorModal({
                 open={openCustomerSections.includes("contact")}
                 onToggle={() => toggleCustomerSection("contact")}
               >
-                <TextField label="Phone" value={customerDraft.phone} onChange={(value) => patch({ phone: value })} />
+                <div className="sm:col-span-2 grid gap-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-black/70">Address</span>
+                    <span className="rounded-full bg-black/[0.06] px-2.5 py-0.5 text-xs font-medium text-black/60">
+                      Optional
+                    </span>
+                  </div>
+                  <input
+                    value={customerDraft.address}
+                    onChange={(event) => patch({ address: event.target.value })}
+                    placeholder="Enter a location"
+                    className="min-h-12 rounded-lg border border-black/10 px-3 outline-none focus:border-black/30"
+                  />
+                </div>
+
+                <div className="sm:col-span-2 grid gap-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-black/70">Phone</span>
+                    <span className="rounded-full bg-black/[0.06] px-2.5 py-0.5 text-xs font-medium text-black/60">
+                      Optional
+                    </span>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-[48px_minmax(0,1fr)] sm:items-center">
+                    <div className="relative">
+                      <select
+                        value={customerDraft.phoneCountry}
+                        onChange={(event) => patch({ phoneCountry: event.target.value })}
+                        className="min-h-12 w-full appearance-none rounded-lg border border-black/10 bg-white pl-2 pr-6 text-lg outline-none focus:border-black/30"
+                      >
+                        <option value="US">🇺🇸</option>
+                        <option value="CA">🇨🇦</option>
+                      </select>
+                      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-black/45">
+                        ▾
+                      </span>
+                    </div>
+                    <input
+                      value={customerDraft.phone}
+                      onChange={(event) => patch({ phone: event.target.value })}
+                      placeholder="123-456-7890"
+                      className="min-h-12 rounded-lg border border-black/10 px-4 outline-none focus:border-black/30"
+                    />
+                  </div>
+                </div>
               </CustomerSection>
 
               <CustomerSection
