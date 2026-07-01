@@ -527,22 +527,24 @@ function PhotoUploadAvatar({
 }) {
   return (
     <button type="button" onClick={onPick} className="group flex flex-col items-center">
-      <div
-        className={[
-          "relative grid h-[106px] w-[106px] place-items-center overflow-hidden rounded-full border-2 border-[#cfd4df] bg-[#eceff5] transition",
-          preview ? "bg-cover bg-center" : "",
-        ].join(" ")}
-        style={preview ? { backgroundImage: `url(${preview})` } : undefined}
-      >
-        {!preview ? (
-          <svg viewBox="0 0 64 64" className="h-[54px] w-[54px] text-[#4a4d57]" aria-hidden="true">
-            <circle cx="32" cy="21" r="10" fill="currentColor" />
-            <path
-              d="M14 49c0-8.8 8-14 18-14s18 5.2 18 14v3H14Z"
-              fill="currentColor"
-            />
-          </svg>
-        ) : null}
+      <div className="relative h-[106px] w-[106px]">
+        <div
+          className={[
+            "grid h-full w-full place-items-center overflow-hidden rounded-full border-2 border-[#cfd4df] bg-[#eceff5] transition",
+            preview ? "bg-cover bg-center" : "",
+          ].join(" ")}
+          style={preview ? { backgroundImage: `url(${preview})` } : undefined}
+        >
+          {!preview ? (
+            <svg viewBox="0 0 64 64" className="h-[54px] w-[54px] text-[#4a4d57]" aria-hidden="true">
+              <circle cx="32" cy="21" r="10" fill="currentColor" />
+              <path
+                d="M14 49c0-8.8 8-14 18-14s18 5.2 18 14v3H14Z"
+                fill="currentColor"
+              />
+            </svg>
+          ) : null}
+        </div>
         <span className="absolute bottom-[2px] right-[-2px] grid h-8 w-8 place-items-center rounded-full border border-[#d3d7e1] bg-white text-[#6a6d77] shadow-sm">
           <Icon name="camera" className="h-4 w-4" />
         </span>
