@@ -297,7 +297,7 @@ type ParsedCsvFile = {
 
 const storageKey = "grind_booking_admin_v1";
 const lastAppRouteKey = "grind_booking_admin_last_app_route";
-type SettingsSection = "basics" | "policies";
+type SettingsSection = "basics" | "rooms" | "policies";
 
 const navItems: { key: BookingAdminView; label: string; icon: IconName }[] = [
   { key: "home", label: "Home", icon: "home" },
@@ -400,7 +400,12 @@ const settingsNavGroups: {
         href: bookingAdminRouteByView["settings-basics"],
         section: "basics",
       },
-      { label: "Rooms", icon: "home" },
+      {
+        label: "Rooms",
+        icon: "home",
+        href: bookingAdminRouteByView["settings-rooms"],
+        section: "rooms",
+      },
       { label: "Equipment", icon: "bag" },
       { label: "Schedules", icon: "calendar" },
     ],
@@ -1424,6 +1429,17 @@ function reorderServicesByVisibleList(
   });
 }
 
+function moveListItem<T>(items: T[], index: number, direction: "up" | "down") {
+  const targetIndex = direction === "up" ? index - 1 : index + 1;
+  if (index < 0 || targetIndex < 0 || targetIndex >= items.length) {
+    return items;
+  }
+
+  const next = [...items];
+  [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+  return next;
+}
+
 export default function BookingAdminApp({
   view = "home",
   selectedCustomerId,
@@ -2258,10 +2274,10 @@ export default function BookingAdminApp({
           {view === "reports" ? (
             <ReportsView bookings={state.bookings} services={state.services} onExport={() => exportReport(state, showToast)} />
           ) : null}
-          {view === "settings" || view === "settings-basics" || view === "settings-policies" ? (
+          {view === "settings" || view === "settings-basics" || view === "settings-rooms" || view === "settings-policies" ? (
             <SettingsView
               backHref={backToAppHref}
-              section={view === "settings-policies" ? "policies" : "basics"}
+              section={view === "settings-policies" ? "policies" : view === "settings-rooms" ? "rooms" : "basics"}
               state={state}
               showToast={showToast}
               onSave={(next) => void saveSettings(next)}
@@ -4776,9 +4792,12 @@ function SettingsView({
 }) {
   const [draft, setDraft] = useState(state);
   const isBasics = section === "basics";
+  const isRooms = section === "rooms";
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isUploadingWaiver, setIsUploadingWaiver] = useState(false);
   const [waiverUploadError, setWaiverUploadError] = useState("");
+  const [roomsExpanded, setRoomsExpanded] = useState(true);
+  const [roomSearch, setRoomSearch] = useState("");
 
   useEffect(() => {
     setDraft(state);
@@ -4809,6 +4828,56 @@ function SettingsView({
         ...next,
       },
     }));
+  }
+
+  function persistResources(resourceNames: string[]) {
+    const next = {
+      ...draft,
+      resources: resourceNames,
+    };
+
+    setDraft(next);
+    onSave(next);
+  }
+
+  function addRoom() {
+    if (typeof window === "undefined") return;
+
+    const value = window.prompt("Room name");
+    const name = value?.trim() ?? "";
+
+    if (!name) return;
+    if (draft.resources.some((item) => item.trim().toLowerCase() === name.toLowerCase())) {
+      showToast("That room already exists.");
+      return;
+    }
+
+    persistResources([...draft.resources, name]);
+  }
+
+  function renameRoom(index: number) {
+    if (typeof window === "undefined") return;
+
+    const current = draft.resources[index] ?? "";
+    const value = window.prompt("Edit room name", current);
+    const name = value?.trim() ?? "";
+
+    if (!name || name === current) return;
+    if (
+      draft.resources.some(
+        (item, itemIndex) => itemIndex !== index && item.trim().toLowerCase() === name.toLowerCase()
+      )
+    ) {
+      showToast("That room already exists.");
+      return;
+    }
+
+    const nextResources = draft.resources.map((item, itemIndex) => (itemIndex === index ? name : item));
+    persistResources(nextResources);
+  }
+
+  function moveRoom(index: number, direction: "up" | "down") {
+    persistResources(moveListItem(draft.resources, index, direction));
   }
 
   async function handleWaiverFile(file: File) {
@@ -4843,7 +4912,10 @@ function SettingsView({
     }
   }
 
-  const sectionTitle = isBasics ? "Basics" : "Policies";
+  const sectionTitle = isBasics ? "Basics" : isRooms ? "Rooms" : "Policies";
+  const filteredRooms = draft.resources.filter((resource) =>
+    resource.toLowerCase().includes(roomSearch.trim().toLowerCase())
+  );
 
   return (
     <section className="min-h-screen bg-white">
@@ -4906,13 +4978,21 @@ function SettingsView({
         <div className="px-7 py-8 lg:px-8">
           <div className="max-w-[1084px]">
             <PageHeader
-              title={isBasics ? "Basics" : "Policies"}
+              title={isBasics ? "Basics" : isRooms ? "Rooms" : "Policies"}
               subtitle={
                 isBasics
                   ? "Manage your facility settings."
+                  : isRooms
+                    ? "Rooms are bookable spaces within your facility."
                   : "Configure booking policies and rules for your facility."
               }
-            />
+            >
+              {isRooms ? (
+                <PrimaryButton icon="plus" onClick={addRoom}>
+                  New
+                </PrimaryButton>
+              ) : null}
+            </PageHeader>
 
             <div className="overflow-hidden rounded-[10px] border border-black/10 bg-white shadow-sm">
               <div className="border-t-4 border-t-[#4866b0]" />
@@ -5046,7 +5126,7 @@ function SettingsView({
                           <div className="flex items-center gap-2">
                             <div className="inline-flex min-h-10 min-w-[52px] items-center justify-center gap-1 rounded-lg border border-black/10 px-2 text-[13px] font-medium text-black/70">
                               <span aria-hidden="true" className="text-[18px] leading-none">
-                                🇺🇸
+                                {"\uD83C\uDDFA\uD83C\uDDF8"}
                               </span>
                               <Icon name="chevron" className="h-3.5 w-3.5 -rotate-90 text-black/45" />
                             </div>
@@ -5061,6 +5141,135 @@ function SettingsView({
                         </label>
                       </div>
                     </div>
+                  </div>
+                </>
+              ) : isRooms ? (
+                <>
+                  <div className="border-b border-black/10 px-5 py-4">
+                    <div className="max-w-full">
+                      <div className="relative">
+                        <Icon name="search" className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-black/35" />
+                        <input
+                          value={roomSearch}
+                          onChange={(event) => setRoomSearch(event.target.value)}
+                          placeholder="Search rooms..."
+                          className="min-h-12 w-full rounded-lg border border-black/10 bg-white pl-14 pr-4 text-[15px] outline-none focus:border-black/30"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="overflow-hidden">
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr className="bg-[#f3f6fa]">
+                          <th className="px-5 py-5 text-left text-[15px] font-semibold text-black">Name</th>
+                          <th className="px-5 py-5 text-left text-[15px] font-semibold text-black">Schedule</th>
+                          <th className="px-5 py-5 text-right text-[15px] font-semibold text-black">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-black/10">
+                        <tr className="bg-white">
+                          <td className="px-5 py-5 align-middle">
+                            <div className="flex items-center gap-4">
+                              <button
+                                type="button"
+                                onClick={() => setRoomsExpanded((current) => !current)}
+                                className="text-black/55"
+                                aria-label={roomsExpanded ? "Collapse rooms" : "Expand rooms"}
+                              >
+                                <Icon
+                                  name="chevron"
+                                  className={`h-5 w-5 transition ${roomsExpanded ? "rotate-90" : ""}`}
+                                />
+                              </button>
+                              <span className="text-[18px] font-semibold text-black">{draft.facility.name}</span>
+                            </div>
+                          </td>
+                          <td className="px-5 py-5 align-middle">
+                            <span className="inline-flex rounded-full bg-black/[0.06] px-4 py-1.5 text-[14px] font-medium text-black/80">
+                              Working Hours
+                            </span>
+                          </td>
+                          <td className="px-5 py-5 align-middle">
+                            <div className="flex items-center justify-end gap-6 text-black/45">
+                              <button
+                                type="button"
+                                onClick={() => showToast("Facility details are edited in Basics.")}
+                                aria-label="Edit facility"
+                              >
+                                <Icon name="edit" className="h-5 w-5" />
+                              </button>
+                              <span className="text-black/20">
+                                <Icon name="chevron" className="h-5 w-5 rotate-90" />
+                              </span>
+                              <span className="text-black/20">
+                                <Icon name="chevron" className="h-5 w-5 -rotate-90" />
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+
+                        {roomsExpanded
+                          ? filteredRooms.map((room) => {
+                              const sourceIndex = draft.resources.findIndex((item) => item === room);
+                              const isFirst = sourceIndex === 0;
+                              const isLast = sourceIndex === draft.resources.length - 1;
+
+                              return (
+                                <tr key={`${room}-${sourceIndex}`} className="bg-white">
+                                  <td className="px-5 py-5 align-middle">
+                                    <div className="pl-[88px] text-[18px] font-medium text-black">{room}</div>
+                                  </td>
+                                  <td className="px-5 py-5 align-middle">
+                                    <span className="inline-flex rounded-full bg-black/[0.06] px-4 py-1.5 text-[14px] font-medium text-black/80">
+                                      Working Hours
+                                    </span>
+                                  </td>
+                                  <td className="px-5 py-5 align-middle">
+                                    <div className="flex items-center justify-end gap-6">
+                                      <button
+                                        type="button"
+                                        onClick={() => renameRoom(sourceIndex)}
+                                        className="text-black/45 transition hover:text-black"
+                                        aria-label={`Edit ${room}`}
+                                      >
+                                        <Icon name="edit" className="h-5 w-5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => moveRoom(sourceIndex, "up")}
+                                        disabled={isFirst}
+                                        className="text-black/45 transition hover:text-black disabled:text-black/20"
+                                        aria-label={`Move ${room} up`}
+                                      >
+                                        <Icon name="chevron" className="h-5 w-5 rotate-90" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => moveRoom(sourceIndex, "down")}
+                                        disabled={isLast}
+                                        className="text-black/45 transition hover:text-black disabled:text-black/20"
+                                        aria-label={`Move ${room} down`}
+                                      >
+                                        <Icon name="chevron" className="h-5 w-5 -rotate-90" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          : null}
+
+                        {roomsExpanded && filteredRooms.length === 0 ? (
+                          <tr>
+                            <td colSpan={3} className="px-5 py-10 text-center text-[15px] text-black/45">
+                              No rooms found.
+                            </td>
+                          </tr>
+                        ) : null}
+                      </tbody>
+                    </table>
                   </div>
                 </>
               ) : (
@@ -5157,11 +5366,13 @@ function SettingsView({
                 </>
               )}
 
-              <div className="flex justify-end border-t border-black/10 bg-[#f7f8fb] px-5 py-4">
-                <PrimaryButton icon="gear" onClick={() => onSave(draft)}>
-                  Save
-                </PrimaryButton>
-              </div>
+              {!isRooms ? (
+                <div className="flex justify-end border-t border-black/10 bg-[#f7f8fb] px-5 py-4">
+                  <PrimaryButton icon="gear" onClick={() => onSave(draft)}>
+                    Save
+                  </PrimaryButton>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -5323,7 +5534,7 @@ function SettingsView({
                     <div className="flex items-center gap-2">
                       <div className="inline-flex min-h-[48px] min-w-[54px] items-center justify-center gap-1 rounded-[8px] border border-black/12 px-2 text-[13px] font-medium text-black/70">
                         <span aria-hidden="true" className="text-[19px] leading-none">
-                          🇺🇸
+                          {"\uD83C\uDDFA\uD83C\uDDF8"}
                         </span>
                         <Icon name="chevron" className="h-3.5 w-3.5 -rotate-90 text-black/45" />
                       </div>
@@ -5337,6 +5548,91 @@ function SettingsView({
                     </div>
                   </label>
                 </div>
+              </div>
+            </>
+          ) : isRooms ? (
+            <>
+              <div className="border-b border-black/10 px-6 py-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="text-[28px] font-medium text-black">Rooms</div>
+                    <p className="mt-1 text-[14px] leading-6 text-black/70">
+                      Rooms are bookable spaces within your facility.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addRoom}
+                    className="inline-flex min-h-12 items-center gap-2 rounded-[10px] bg-[#1f1b1b] px-5 text-[16px] font-medium text-white shadow-[0_3px_8px_rgba(0,0,0,0.18)]"
+                  >
+                    <Icon name="plus" className="h-4 w-4" />
+                    New
+                  </button>
+                </div>
+                <div className="mt-5 relative">
+                  <Icon name="search" className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-black/35" />
+                  <input
+                    value={roomSearch}
+                    onChange={(event) => setRoomSearch(event.target.value)}
+                    placeholder="Search rooms..."
+                    className="min-h-[48px] w-full rounded-[8px] border border-black/12 pl-14 pr-4 text-[14px] outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="overflow-hidden">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="bg-[#f3f6fa]">
+                      <th className="px-4 py-4 text-left text-[14px] font-semibold text-black">Name</th>
+                      <th className="px-4 py-4 text-left text-[14px] font-semibold text-black">Schedule</th>
+                      <th className="px-4 py-4 text-right text-[14px] font-semibold text-black">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-black/10">
+                    {filteredRooms.map((room) => {
+                      const sourceIndex = draft.resources.findIndex((item) => item === room);
+                      const isFirst = sourceIndex === 0;
+                      const isLast = sourceIndex === draft.resources.length - 1;
+
+                      return (
+                        <tr key={`${room}-${sourceIndex}`}>
+                          <td className="px-4 py-4 align-middle text-[15px] font-medium text-black">{room}</td>
+                          <td className="px-4 py-4 align-middle">
+                            <span className="inline-flex rounded-full bg-black/[0.06] px-3 py-1 text-[12px] font-medium text-black/80">
+                              Working Hours
+                            </span>
+                          </td>
+                          <td className="px-4 py-4 align-middle">
+                            <div className="flex items-center justify-end gap-4 text-black/45">
+                              <button type="button" onClick={() => renameRoom(sourceIndex)} aria-label={`Edit ${room}`}>
+                                <Icon name="edit" className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => moveRoom(sourceIndex, "up")}
+                                disabled={isFirst}
+                                className="disabled:text-black/20"
+                                aria-label={`Move ${room} up`}
+                              >
+                                <Icon name="chevron" className="h-4 w-4 rotate-90" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => moveRoom(sourceIndex, "down")}
+                                disabled={isLast}
+                                className="disabled:text-black/20"
+                                aria-label={`Move ${room} down`}
+                              >
+                                <Icon name="chevron" className="h-4 w-4 -rotate-90" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </>
           ) : (
@@ -5360,15 +5656,17 @@ function SettingsView({
             </>
           )}
 
-          <div className="flex justify-end border-t border-black/10 bg-[#f7f8fb] px-6 py-5">
-            <button
-              type="button"
-              onClick={() => onSave(draft)}
-              className="rounded-lg bg-[#1f1b1b] px-6 py-3 text-[15px] font-medium text-white shadow-[0_3px_8px_rgba(0,0,0,0.18)]"
-            >
-              Save
-            </button>
-          </div>
+          {!isRooms ? (
+            <div className="flex justify-end border-t border-black/10 bg-[#f7f8fb] px-6 py-5">
+              <button
+                type="button"
+                onClick={() => onSave(draft)}
+                className="rounded-lg bg-[#1f1b1b] px-6 py-3 text-[15px] font-medium text-white shadow-[0_3px_8px_rgba(0,0,0,0.18)]"
+              >
+                Save
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
     </section>
@@ -6694,3 +6992,4 @@ function exportReport(state: AppState, showToast: (message: string) => void) {
   URL.revokeObjectURL(url);
   showToast("Report exported.");
 }
+
