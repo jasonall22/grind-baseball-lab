@@ -78,6 +78,14 @@ type Product = {
   stock: number;
 };
 
+type ServiceSection =
+  | "rentals"
+  | "lessons"
+  | "camps"
+  | "classes"
+  | "memberships"
+  | "packages";
+
 type FacilitySettings = AppState["facility"];
 
 type BookingPolicies = AppState["policies"];
@@ -249,6 +257,15 @@ const navItems: { key: BookingAdminView; label: string; icon: IconName }[] = [
   { key: "retail", label: "Retail", icon: "bag" },
   { key: "reports", label: "Reports", icon: "bar" },
   { key: "settings", label: "Settings", icon: "gear" },
+];
+
+const serviceSectionItems: { key: ServiceSection; label: string; icon: IconName }[] = [
+  { key: "rentals", label: "Rentals", icon: "clock" },
+  { key: "lessons", label: "Lessons", icon: "user" },
+  { key: "camps", label: "Camps", icon: "calendar" },
+  { key: "classes", label: "Classes", icon: "user" },
+  { key: "memberships", label: "Memberships", icon: "table" },
+  { key: "packages", label: "Packages", icon: "bag" },
 ];
 
 const WAIVER_BUCKET_PRIMARY =
@@ -1144,6 +1161,7 @@ export default function BookingAdminApp({
   const [modal, setModal] = useState<ModalState>(null);
   const [toast, setToast] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
+  const [serviceSection, setServiceSection] = useState<ServiceSection>("rentals");
   const [dataSource, setDataSource] = useState<"local" | "supabase">("local");
   const [isRemoteLoading, setIsRemoteLoading] = useState(hasSupabaseEnv);
   const [resourceIdsByName, setResourceIdsByName] = useState<Record<string, string>>({});
@@ -1422,19 +1440,6 @@ export default function BookingAdminApp({
     }
   }
 
-  async function deleteService(id: string) {
-    const next = { ...state, services: state.services.filter((service) => service.id !== id) };
-
-    if (dataSource === "local") {
-      saveLocal(next, "Service deleted.");
-      return;
-    }
-
-    setState(next);
-    const { error } = await supabase.from("booking_services").delete().eq("id", id);
-    showToast(error ? "Service could not be deleted." : "Service deleted.");
-  }
-
   async function deleteCustomer(id: string) {
     const next = {
       ...state,
@@ -1557,18 +1562,38 @@ export default function BookingAdminApp({
 
             <nav className="flex w-full gap-1 overflow-x-auto md:mt-8 md:grid md:overflow-visible">
               {navItems.map((item) => (
-                <Link
-                  key={item.key}
-                  href={bookingAdminRouteByView[item.key]}
-                  title={item.label}
-                  className={[
-                    "flex h-10 shrink-0 items-center gap-3 rounded-lg px-3 text-left text-lg transition md:w-full",
-                    activeMainView === item.key ? "bg-[#eeeeee] font-bold" : "hover:bg-black/5",
-                  ].join(" ")}
-                >
-                  <Icon name={item.icon} />
-                  <span className="hidden md:inline">{item.label}</span>
-                </Link>
+                <div key={item.key} className="shrink-0 md:w-full">
+                  <Link
+                    href={bookingAdminRouteByView[item.key]}
+                    title={item.label}
+                    className={[
+                      "flex h-10 items-center gap-3 rounded-lg px-3 text-left text-lg transition md:w-full",
+                      activeMainView === item.key ? "bg-[#eeeeee] font-bold" : "hover:bg-black/5",
+                    ].join(" ")}
+                  >
+                    <Icon name={item.icon} />
+                    <span className="hidden md:inline">{item.label}</span>
+                  </Link>
+
+                  {item.key === "services" && activeMainView === "services" ? (
+                    <div className="mt-1 hidden space-y-1 pl-4 md:block">
+                      {serviceSectionItems.map((sectionItem) => (
+                        <button
+                          key={sectionItem.key}
+                          type="button"
+                          onClick={() => setServiceSection(sectionItem.key)}
+                          className={[
+                            "flex h-9 w-full items-center gap-3 rounded-lg px-3 text-left text-lg transition",
+                            serviceSection === sectionItem.key ? "bg-[#eeeeee] font-bold" : "hover:bg-black/5",
+                          ].join(" ")}
+                        >
+                          <Icon name={sectionItem.icon} className="h-4.5 w-4.5" />
+                          <span>{sectionItem.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               ))}
             </nav>
 
@@ -1606,9 +1631,10 @@ export default function BookingAdminApp({
           {view === "services" ? (
             <ServicesView
               services={state.services}
+              activeSection={serviceSection}
+              onSectionChange={setServiceSection}
               onNew={() => setModal({ type: "service" })}
               onEdit={(id) => setModal({ type: "service", id })}
-              onDelete={(id) => void deleteService(id)}
             />
           ) : null}
           {view === "calendar" ? (
@@ -1855,41 +1881,208 @@ function Pill({ label }: { label: string }) {
 }
 
 function ServicesView({
+  activeSection,
+  onSectionChange,
   services,
   onNew,
   onEdit,
-  onDelete,
 }: {
+  activeSection: ServiceSection;
+  onSectionChange: (section: ServiceSection) => void;
   services: Service[];
   onNew: () => void;
   onEdit: (id: string) => void;
-  onDelete: (id: string) => void;
 }) {
+  const [search, setSearch] = useState("");
+
+  const sectionCopy: Record<ServiceSection, { title: string; subtitle: string }> = {
+    rentals: {
+      title: "Rentals",
+      subtitle: "Let customers rent rooms at your facility.",
+    },
+    lessons: {
+      title: "Lessons",
+      subtitle: "Offer one-on-one and small-group instruction.",
+    },
+    camps: {
+      title: "Camps",
+      subtitle: "Set up camp offerings and seasonal training programs.",
+    },
+    classes: {
+      title: "Classes",
+      subtitle: "Create recurring class offerings for your athletes.",
+    },
+    memberships: {
+      title: "Memberships",
+      subtitle: "Manage membership-based access and recurring offers.",
+    },
+    packages: {
+      title: "Packages",
+      subtitle: "Bundle services together into bookable packages.",
+    },
+  };
+
+  const filteredServices = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+
+    const sectionServices = services.filter((service) => {
+      const name = service.name.toLowerCase();
+
+      switch (activeSection) {
+        case "rentals":
+          return name.includes("rental");
+        case "lessons":
+          return name.includes("lesson");
+        case "camps":
+          return name.includes("camp");
+        case "classes":
+          return name.includes("class");
+        case "memberships":
+          return name.includes("membership");
+        case "packages":
+          return name.includes("package");
+        default:
+          return true;
+      }
+    });
+
+    if (!normalizedSearch) return sectionServices;
+
+    return sectionServices.filter((service) => {
+      const rooms = service.resource.split(",").map((item) => item.trim().toLowerCase());
+      return service.name.toLowerCase().includes(normalizedSearch) || rooms.some((room) => room.includes(normalizedSearch));
+    });
+  }, [activeSection, search, services]);
+
+  const currentCopy = sectionCopy[activeSection];
+
   return (
     <section className="min-h-screen px-6 py-8">
-      <PageHeader title="Services" subtitle="Manage bookable lessons, rentals, and facility offers.">
-        <PrimaryButton icon="plus" onClick={onNew}>
-          New service
-        </PrimaryButton>
-      </PageHeader>
+      <div className="md:hidden">
+        <div className="mb-4 flex gap-2 overflow-x-auto">
+          {serviceSectionItems.map((sectionItem) => (
+            <button
+              key={sectionItem.key}
+              type="button"
+              onClick={() => onSectionChange(sectionItem.key)}
+              className={[
+                "inline-flex h-10 shrink-0 items-center gap-2 rounded-lg px-4 text-sm font-medium",
+                activeSection === sectionItem.key ? "bg-[#eeeeee] text-black" : "bg-white text-black/65",
+              ].join(" ")}
+            >
+              <Icon name={sectionItem.icon} className="h-4 w-4" />
+              {sectionItem.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
-      <DataTable headers={["Service", "Duration", "Price", "Resource", "Status", ""]}>
-        {services.map((service) => (
-          <tr key={service.id}>
-            <Td><strong>{service.name}</strong></Td>
-            <Td>{service.duration} min</Td>
-            <Td>{money(service.price)}</Td>
-            <Td>{service.resource}</Td>
-            <Td><Pill label={service.status} /></Td>
-            <Td align="right">
-              <div className="flex justify-end gap-2">
-                <RowAction icon="edit" label="Edit service" onClick={() => onEdit(service.id)} />
-                <RowAction icon="trash" label="Delete service" onClick={() => onDelete(service.id)} />
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-[22px] font-medium text-black">{currentCopy.title}</h1>
+          <p className="mt-1 text-[13px] text-black/75">{currentCopy.subtitle}</p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            className="grid h-10 w-10 place-items-center rounded-lg border border-black/12 bg-white text-black/55"
+            onClick={() => onSectionChange(activeSection)}
+            aria-label="Service settings"
+          >
+            <Icon name="gear" className="h-4.5 w-4.5" />
+          </button>
+          <button
+            type="button"
+            onClick={onNew}
+            className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#1f1b1b] px-5 text-[15px] font-medium text-white"
+          >
+            <Icon name="plus" className="h-4.5 w-4.5" />
+            New
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-7">
+        <label className="flex min-h-12 items-center gap-3 rounded-lg border border-black/10 bg-white px-4">
+          <Icon name="search" className="h-5 w-5 text-black/35" />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder={`Search ${activeSection}...`}
+            className="w-full bg-transparent text-[15px] outline-none placeholder:text-black/35"
+          />
+        </label>
+      </div>
+
+      <div className="mt-5 overflow-hidden rounded-lg border border-black/10 bg-white">
+        <div className="grid grid-cols-[minmax(0,1.6fr)_180px_240px_76px] gap-4 bg-[#f5f6f8] px-5 py-5 text-[14px] font-semibold text-black">
+          <div>Name</div>
+          <div>Visibility</div>
+          <div>Rooms</div>
+          <div />
+        </div>
+
+        {filteredServices.length ? (
+          filteredServices.map((service, index) => {
+            const rooms = service.resource.split(",").map((item) => item.trim()).filter(Boolean);
+            const visibility = service.status === "Active" ? "Everyone" : "Private";
+
+            return (
+              <div
+                key={service.id}
+                className="grid grid-cols-[minmax(0,1.6fr)_180px_240px_76px] gap-4 border-t border-black/10 px-5 py-8"
+              >
+                <button type="button" onClick={() => onEdit(service.id)} className="text-left text-[17px] font-medium text-black">
+                  {service.name}
+                </button>
+
+                <div>
+                  <span
+                    className={[
+                      "inline-flex rounded-full px-3.5 py-1.5 text-[13px] font-medium",
+                      visibility === "Everyone" ? "bg-emerald-50 text-emerald-700" : "bg-[#f3f4f6] text-[#667085]",
+                    ].join(" ")}
+                  >
+                    {visibility}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {rooms.map((room) => (
+                    <span key={room} className="inline-flex rounded-full bg-[#f1efef] px-3.5 py-1.5 text-[13px] font-medium text-black">
+                      {room}
+                    </span>
+                  ))}
+                </div>
+
+                <div className="flex flex-col items-end gap-2">
+                  <button
+                    type="button"
+                    disabled={index === 0}
+                    className="grid h-10 w-10 place-items-center rounded-lg border border-black/12 text-black/45 disabled:opacity-40"
+                    aria-label="Move service up"
+                  >
+                    <Icon name="chevron" className="h-4.5 w-4.5 rotate-180" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={index === filteredServices.length - 1}
+                    className="grid h-10 w-10 place-items-center rounded-lg border border-black/12 text-black/45 disabled:opacity-40"
+                    aria-label="Move service down"
+                  >
+                    <Icon name="chevron" className="h-4.5 w-4.5" />
+                  </button>
+                </div>
               </div>
-            </Td>
-          </tr>
-        ))}
-      </DataTable>
+            );
+          })
+        ) : (
+          <div className="px-5 py-12 text-[14px] text-black/45">
+            No {activeSection} yet.
+          </div>
+        )}
+      </div>
     </section>
   );
 }
