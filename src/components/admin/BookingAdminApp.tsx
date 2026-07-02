@@ -2883,7 +2883,7 @@ function CustomerDetailView({
         ))}
       </div>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_30rem]">
+      <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
         <DetailPanel title="About">
           <div className="grid gap-5 p-5">
             <div className="grid gap-4 md:grid-cols-[104px_minmax(0,1fr)]">
