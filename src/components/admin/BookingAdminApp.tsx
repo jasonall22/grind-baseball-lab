@@ -2210,7 +2210,7 @@ function CustomersView({
                   />
                 </th>
                 <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Name</th>
-                <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Created At â†“</th>
+                <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Created At ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬Å“</th>
                 <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Email</th>
                 <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Phone Number</th>
                 <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Age</th>
@@ -3093,7 +3093,12 @@ function CustomerDetailView({
                 <div>
                   <div className="text-[14px] font-medium text-black">{customer.emergencyContactName}</div>
                   <div className="mt-1 text-[13px] text-black/55">
-                    {[customer.emergencyContactEmail, customer.emergencyContactPhone].filter(Boolean).join(" Â· ")}
+                    {[
+                      customer.emergencyContactEmail,
+                      customer.emergencyContactPhone ? formatUsPhoneInput(customer.emergencyContactPhone) : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" \u00B7 ")}
                   </div>
                 </div>
                 <div className="flex gap-3 text-black/45">
@@ -3168,7 +3173,7 @@ function CustomerDetailView({
                             familyMemberAgeLabel(member),
                           ]
                             .filter(Boolean)
-                            .join(" · ") || "Member"}
+                            .join(" Ã‚Â· ") || "Member"}
                         </div>
                       </div>
                     </div>
@@ -3816,7 +3821,7 @@ function NotesEditor({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const toolbarButtons = ["â†¶", "â†·", "â‰¡", "B", "I", "U", "S", "<>", "â†”", "â˜°", "â˜·"];
+  const toolbarButtons = ["ÃƒÂ¢Ã¢â‚¬Â Ã‚Â¶", "ÃƒÂ¢Ã¢â‚¬Â Ã‚Â·", "ÃƒÂ¢Ã¢â‚¬Â°Ã‚Â¡", "B", "I", "U", "S", "<>", "ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬Â", "ÃƒÂ¢Ã‹Å“Ã‚Â°", "ÃƒÂ¢Ã‹Å“Ã‚Â·"];
 
   return (
     <div className="mt-2 overflow-hidden rounded-lg border border-black/10">
@@ -4340,7 +4345,7 @@ function CustomerImportModal({
                           {header}
                         </div>
                         <div className="flex justify-center text-[30px] leading-none text-black/55">
-                          <span aria-hidden="true">â†’</span>
+                          <span aria-hidden="true">ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢</span>
                         </div>
                         <div className="pr-4">
                           <select
