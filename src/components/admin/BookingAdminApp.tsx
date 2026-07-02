@@ -2943,16 +2943,13 @@ function CustomerDetailView({
 
                 <label className="grid gap-1.5">
                   <span className="text-[13px] font-medium text-black/85">Phone</span>
-                  <div className="grid grid-cols-[38px_minmax(0,1fr)] gap-2">
-                    <div className="grid min-h-10 place-items-center rounded-md border border-black/15 text-lg">ðŸ‡ºðŸ‡¸</div>
-                    <input
-                      value={profilePhone}
-                      onChange={(event) => setProfilePhone(formatUsPhoneInput(event.target.value))}
-                      inputMode="numeric"
-                      maxLength={14}
-                      className="min-h-10 rounded-md border border-black/15 px-4 text-[14px] outline-none"
-                    />
-                  </div>
+                  <input
+                    value={profilePhone}
+                    onChange={(event) => setProfilePhone(formatUsPhoneInput(event.target.value))}
+                    inputMode="numeric"
+                    maxLength={14}
+                    className="min-h-10 rounded-md border border-black/15 px-4 text-[14px] outline-none"
+                  />
                 </label>
 
                 <ProfileField label="Address" value={customer.address} />
