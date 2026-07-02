@@ -2446,17 +2446,19 @@ function ProfileField({
 }
 
 function FamilyMemberModal({
+  initialMember,
   onClose,
   onSave,
 }: {
+  initialMember?: FamilyMember | null;
   onClose: () => void;
   onSave: (member: FamilyMember) => void;
 }) {
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [relationship, setRelationship] = useState("Unspecified");
-  const [gender, setGender] = useState("Unspecified");
-  const [birthDate, setBirthDate] = useState("");
+  const [firstName, setFirstName] = useState(initialMember?.firstName ?? "");
+  const [lastName, setLastName] = useState(initialMember?.lastName ?? "");
+  const [relationship, setRelationship] = useState(initialMember?.relationship ?? "Unspecified");
+  const [gender, setGender] = useState(initialMember?.gender ?? "Unspecified");
+  const [birthDate, setBirthDate] = useState(initialMember?.birthDate ?? "");
   const [showBirthCalendar, setShowBirthCalendar] = useState(false);
   const [showBirthMonthYearPicker, setShowBirthMonthYearPicker] = useState(false);
   const [visibleBirthMonth, setVisibleBirthMonth] = useState(() => startOfMonth(new Date()));
@@ -2514,7 +2516,7 @@ function FamilyMemberModal({
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/45 p-4">
       <div className="w-full max-w-[604px] overflow-visible rounded-xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-black/10 px-6 py-5">
-          <h3 className="text-[18px] font-medium text-black">Add Member</h3>
+          <h3 className="text-[18px] font-medium text-black">{initialMember ? "Edit Member" : "Add Member"}</h3>
           <button
             type="button"
             onClick={onClose}
@@ -2744,7 +2746,7 @@ function FamilyMemberModal({
             disabled={!canSave}
             onClick={() =>
               onSave({
-                id: makeId("family"),
+                id: initialMember?.id ?? makeId("family"),
                 firstName: firstName.trim(),
                 lastName: lastName.trim(),
                 relationship,
@@ -2772,6 +2774,7 @@ function CustomerDetailView({
   onSaveCustomer: (item: Customer) => void;
 }) {
   const [showFamilyModal, setShowFamilyModal] = useState(false);
+  const [editingFamilyMember, setEditingFamilyMember] = useState<FamilyMember | null>(null);
   const [profilePhone, setProfilePhone] = useState(customer?.phone ?? "");
   const [emergencyDeleted, setEmergencyDeleted] = useState(false);
 
@@ -2817,6 +2820,16 @@ function CustomerDetailView({
       ...currentCustomer,
       familyMembers: nextFamilyMembers,
     });
+  }
+
+  function openNewFamilyMemberModal() {
+    setEditingFamilyMember(null);
+    setShowFamilyModal(true);
+  }
+
+  function openEditFamilyMemberModal(member: FamilyMember) {
+    setEditingFamilyMember(member);
+    setShowFamilyModal(true);
   }
 
   return (
@@ -3020,7 +3033,7 @@ function CustomerDetailView({
             action={
               <button
                 type="button"
-                onClick={() => setShowFamilyModal(true)}
+                onClick={openNewFamilyMemberModal}
                 className="text-2xl leading-none text-black/45"
               >
                 +
@@ -3050,7 +3063,11 @@ function CustomerDetailView({
                       </div>
                     </div>
                     <div className="flex gap-3 text-black/45">
-                      <HoverIconButton icon="edit" label="Edit Member" onClick={() => {}} />
+                      <HoverIconButton
+                        icon="edit"
+                        label="Edit Member"
+                        onClick={() => openEditFamilyMemberModal(member)}
+                      />
                       <HoverIconButton
                         icon="trash"
                         label="Delete"
@@ -3102,10 +3119,18 @@ function CustomerDetailView({
 
       {showFamilyModal ? (
         <FamilyMemberModal
-          onClose={() => setShowFamilyModal(false)}
-          onSave={(member) => {
-            saveFamilyMembers([...familyMembers, member]);
+          initialMember={editingFamilyMember}
+          onClose={() => {
             setShowFamilyModal(false);
+            setEditingFamilyMember(null);
+          }}
+          onSave={(member) => {
+            const nextFamilyMembers = editingFamilyMember
+              ? familyMembers.map((item) => (item.id === member.id ? member : item))
+              : [...familyMembers, member];
+            saveFamilyMembers(nextFamilyMembers);
+            setShowFamilyModal(false);
+            setEditingFamilyMember(null);
           }}
         />
       ) : null}
