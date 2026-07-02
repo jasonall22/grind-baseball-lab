@@ -1576,18 +1576,18 @@ export default function BookingAdminApp({
                   </Link>
 
                   {item.key === "services" && activeMainView === "services" ? (
-                    <div className="mt-1 hidden space-y-1 pl-4 md:block">
+                    <div className="mt-1 hidden space-y-1 pl-5 pr-2 md:block">
                       {serviceSectionItems.map((sectionItem) => (
                         <button
                           key={sectionItem.key}
                           type="button"
                           onClick={() => setServiceSection(sectionItem.key)}
                           className={[
-                            "flex h-9 w-full items-center gap-3 rounded-lg px-3 text-left text-lg transition",
-                            serviceSection === sectionItem.key ? "bg-[#eeeeee] font-bold" : "hover:bg-black/5",
+                            "flex h-10 w-full items-center gap-3 rounded-lg px-4 text-left text-[18px] leading-none transition",
+                            serviceSection === sectionItem.key ? "bg-[#eeeeee] font-semibold text-black" : "text-black hover:bg-black/5",
                           ].join(" ")}
                         >
-                          <Icon name={sectionItem.icon} className="h-4.5 w-4.5" />
+                          <Icon name={sectionItem.icon} className="h-[18px] w-[18px] shrink-0" />
                           <span>{sectionItem.label}</span>
                         </button>
                       ))}
@@ -1970,7 +1970,7 @@ function ServicesView({
                 activeSection === sectionItem.key ? "bg-[#eeeeee] text-black" : "bg-white text-black/65",
               ].join(" ")}
             >
-              <Icon name={sectionItem.icon} className="h-4 w-4" />
+              <Icon name={sectionItem.icon} className="h-4 w-4 shrink-0" />
               {sectionItem.label}
             </button>
           ))}
@@ -1990,14 +1990,14 @@ function ServicesView({
             onClick={() => onSectionChange(activeSection)}
             aria-label="Service settings"
           >
-            <Icon name="gear" className="h-4.5 w-4.5" />
+            <Icon name="gear" className="h-[18px] w-[18px]" />
           </button>
           <button
             type="button"
             onClick={onNew}
             className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#1f1b1b] px-5 text-[15px] font-medium text-white"
           >
-            <Icon name="plus" className="h-4.5 w-4.5" />
+            <Icon name="plus" className="h-[18px] w-[18px]" />
             New
           </button>
         </div>
@@ -2063,7 +2063,7 @@ function ServicesView({
                     className="grid h-10 w-10 place-items-center rounded-lg border border-black/12 text-black/45 disabled:opacity-40"
                     aria-label="Move service up"
                   >
-                    <Icon name="chevron" className="h-4.5 w-4.5 rotate-180" />
+                    <Icon name="chevron" className="h-[18px] w-[18px] rotate-180" />
                   </button>
                   <button
                     type="button"
@@ -2071,7 +2071,7 @@ function ServicesView({
                     className="grid h-10 w-10 place-items-center rounded-lg border border-black/12 text-black/45 disabled:opacity-40"
                     aria-label="Move service down"
                   >
-                    <Icon name="chevron" className="h-4.5 w-4.5" />
+                    <Icon name="chevron" className="h-[18px] w-[18px]" />
                   </button>
                 </div>
               </div>
