@@ -1635,6 +1635,7 @@ export default function BookingAdminApp({
               <CustomerDetailView
                 key={[
                   selectedCustomer?.id ?? "none",
+                  selectedCustomer?.phone ?? "",
                   selectedCustomer?.emergencyContactName ?? "",
                   selectedCustomer?.emergencyContactEmail ?? "",
                   selectedCustomer?.emergencyContactPhone ?? "",
@@ -2775,7 +2776,7 @@ function CustomerDetailView({
 }) {
   const [showFamilyModal, setShowFamilyModal] = useState(false);
   const [editingFamilyMember, setEditingFamilyMember] = useState<FamilyMember | null>(null);
-  const [profilePhone, setProfilePhone] = useState(customer?.phone ?? "");
+  const [profilePhone, setProfilePhone] = useState(formatUsPhoneInput(customer?.phone ?? ""));
   const [emergencyDeleted, setEmergencyDeleted] = useState(false);
 
   if (!customer) {
