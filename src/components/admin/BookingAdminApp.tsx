@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -85,6 +86,32 @@ type ServiceSection =
   | "classes"
   | "memberships"
   | "packages";
+
+type RentalPriceRow = {
+  id: string;
+  duration: string;
+  price: string;
+};
+
+type RentalDraft = {
+  name: string;
+  previewText: string;
+  description: string;
+  mediaUrl: string;
+  defaultPricing: RentalPriceRow[];
+  membershipPricing: RentalPriceRow[];
+  selectedRooms: string[];
+  reserveOnPurchase: "any" | "all";
+  reserveEquipment: boolean;
+  collectTax: boolean;
+  collectFee: boolean;
+  slotRestrictionSummary: string;
+  serviceScheduleEnabled: boolean;
+  emergencyContactInfo: boolean;
+  customFieldsSummary: string;
+  private: boolean;
+  calendarColor: string;
+};
 
 type FacilitySettings = AppState["facility"];
 
@@ -1149,6 +1176,28 @@ function loadInitialState() {
   }
 }
 
+function createRentalDraft(resources: string[]): RentalDraft {
+  return {
+    name: "",
+    previewText: "",
+    description: "",
+    mediaUrl: "",
+    defaultPricing: [{ id: makeId("price"), duration: "", price: "" }],
+    membershipPricing: [],
+    selectedRooms: resources,
+    reserveOnPurchase: "any",
+    reserveEquipment: false,
+    collectTax: false,
+    collectFee: false,
+    slotRestrictionSummary: "No slot restrictions",
+    serviceScheduleEnabled: false,
+    emergencyContactInfo: false,
+    customFieldsSummary: "No custom fields",
+    private: false,
+    calendarColor: "#4e7cb5",
+  };
+}
+
 export default function BookingAdminApp({
   view = "home",
   selectedCustomerId,
@@ -1156,6 +1205,8 @@ export default function BookingAdminApp({
   view?: BookingAdminView;
   selectedCustomerId?: string;
 }) {
+  const pathname = usePathname();
+  const router = useRouter();
   const [state, setState] = useState<AppState>(loadInitialState);
   const [activeDate, setActiveDate] = useState("2026-07-01");
   const [modal, setModal] = useState<ModalState>(null);
@@ -1167,11 +1218,19 @@ export default function BookingAdminApp({
   const [resourceIdsByName, setResourceIdsByName] = useState<Record<string, string>>({});
   const [backToAppHref, setBackToAppHref] = useState(bookingAdminRouteByView.home);
   const [showCustomerImport, setShowCustomerImport] = useState(false);
+  const isRentalAddPage = pathname === "/admin/services/rentals/add";
 
   const showToast = useCallback((message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(""), 2400);
   }, []);
+
+  useEffect(() => {
+    if (!pathname.startsWith("/admin/services")) return;
+    if (pathname.startsWith("/admin/services/rentals")) {
+      setServiceSection("rentals");
+    }
+  }, [pathname]);
 
   const loadFromSupabase = useCallback(async () => {
     if (!hasSupabaseEnv) {
@@ -1440,6 +1499,38 @@ export default function BookingAdminApp({
     }
   }
 
+  async function saveRentalDraft(rentalDraft: RentalDraft) {
+    const firstDefaultPrice = rentalDraft.defaultPricing[0];
+    const item: Service = {
+      id: makeId("svc"),
+      name: rentalDraft.name.trim(),
+      duration: Number(firstDefaultPrice?.duration || 30),
+      price: Number(firstDefaultPrice?.price || 0),
+      resource: rentalDraft.selectedRooms.join(", "),
+      status: rentalDraft.private ? "Off" : "Active",
+    };
+    const next = { ...state, services: upsert(state.services, item) };
+
+    if (dataSource === "local") {
+      saveLocal(next, "Rental saved.");
+      router.push("/admin/services/rentals");
+      return;
+    }
+
+    setState(next);
+
+    try {
+      await upsertModalChange({ type: "service", item }, resourceIdsByName);
+      showToast("Rental saved.");
+      router.push("/admin/services/rentals");
+    } catch (error) {
+      console.error(error);
+      const fallbackMessage = "That change could not be saved.";
+      const errorMessage = getErrorMessage(error, fallbackMessage);
+      showToast(errorMessage === fallbackMessage ? fallbackMessage : `${fallbackMessage} ${errorMessage}`);
+    }
+  }
+
   async function deleteCustomer(id: string) {
     const next = {
       ...state,
@@ -1578,10 +1669,26 @@ export default function BookingAdminApp({
                   {item.key === "services" && activeMainView === "services" ? (
                     <div className="mt-1 hidden space-y-1 pl-5 pr-2 md:block">
                       {serviceSectionItems.map((sectionItem) => (
+                        sectionItem.key === "rentals" ? (
+                        <Link
+                          key={sectionItem.key}
+                          href="/admin/services/rentals"
+                          className={[
+                            "flex h-10 w-full items-center gap-3 rounded-lg px-4 text-left text-[18px] leading-none transition",
+                            serviceSection === sectionItem.key ? "bg-[#eeeeee] font-semibold text-black" : "text-black hover:bg-black/5",
+                          ].join(" ")}
+                        >
+                          <Icon name={sectionItem.icon} className="h-[18px] w-[18px] shrink-0" />
+                          <span>{sectionItem.label}</span>
+                        </Link>
+                        ) : (
                         <button
                           key={sectionItem.key}
                           type="button"
-                          onClick={() => setServiceSection(sectionItem.key)}
+                          onClick={() => {
+                            setServiceSection(sectionItem.key);
+                            router.push("/admin/services");
+                          }}
                           className={[
                             "flex h-10 w-full items-center gap-3 rounded-lg px-4 text-left text-[18px] leading-none transition",
                             serviceSection === sectionItem.key ? "bg-[#eeeeee] font-semibold text-black" : "text-black hover:bg-black/5",
@@ -1590,6 +1697,7 @@ export default function BookingAdminApp({
                           <Icon name={sectionItem.icon} className="h-[18px] w-[18px] shrink-0" />
                           <span>{sectionItem.label}</span>
                         </button>
+                        )
                       ))}
                     </div>
                   ) : null}
@@ -1629,13 +1737,28 @@ export default function BookingAdminApp({
             <HomeView facilityName={state.facility.name} />
           ) : null}
           {view === "services" ? (
-            <ServicesView
-              services={state.services}
-              activeSection={serviceSection}
-              onSectionChange={setServiceSection}
-              onNew={() => setModal({ type: "service" })}
-              onEdit={(id) => setModal({ type: "service", id })}
-            />
+            isRentalAddPage ? (
+              <RentalEditorView
+                facilityName={state.facility.name}
+                resources={state.resources}
+                onCancel={() => router.push("/admin/services/rentals")}
+                onSave={(rentalDraft) => void saveRentalDraft(rentalDraft)}
+              />
+            ) : (
+              <ServicesView
+                services={state.services}
+                activeSection={serviceSection}
+                onSectionChange={setServiceSection}
+                onNew={() => {
+                  if (serviceSection === "rentals") {
+                    router.push("/admin/services/rentals/add");
+                    return;
+                  }
+                  setModal({ type: "service" });
+                }}
+                onEdit={(id) => setModal({ type: "service", id })}
+              />
+            )
           ) : null}
           {view === "calendar" ? (
             <CalendarView
@@ -2084,6 +2207,491 @@ function ServicesView({
         )}
       </div>
     </section>
+  );
+}
+
+function RentalEditorView({
+  facilityName,
+  resources,
+  onCancel,
+  onSave,
+}: {
+  facilityName: string;
+  resources: string[];
+  onCancel: () => void;
+  onSave: (draft: RentalDraft) => void;
+}) {
+  const [draft, setDraft] = useState<RentalDraft>(() => createRentalDraft(resources));
+  const [activePriceTab, setActivePriceTab] = useState<"default" | "membership">("default");
+  const [advancedOpen, setAdvancedOpen] = useState(true);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const priceRows = activePriceTab === "default" ? draft.defaultPricing : draft.membershipPricing;
+  const canSave = Boolean(draft.name.trim());
+
+  function patch(next: Partial<RentalDraft>) {
+    setDraft((current) => ({ ...current, ...next }));
+  }
+
+  function updatePriceRow(targetId: string, key: "duration" | "price", value: string) {
+    const groupKey = activePriceTab === "default" ? "defaultPricing" : "membershipPricing";
+    patch({
+      [groupKey]: priceRows.map((row) => (row.id === targetId ? { ...row, [key]: value.replace(/[^\d.]/g, "") } : row)),
+    } as Partial<RentalDraft>);
+  }
+
+  function addPriceRow() {
+    const groupKey = activePriceTab === "default" ? "defaultPricing" : "membershipPricing";
+    patch({
+      [groupKey]: [...priceRows, { id: makeId("price"), duration: "", price: "" }],
+    } as Partial<RentalDraft>);
+  }
+
+  function removePriceRow(targetId: string) {
+    const groupKey = activePriceTab === "default" ? "defaultPricing" : "membershipPricing";
+    const nextRows = priceRows.filter((row) => row.id !== targetId);
+    patch({
+      [groupKey]: nextRows.length ? nextRows : [{ id: makeId("price"), duration: "", price: "" }],
+    } as Partial<RentalDraft>);
+  }
+
+  function toggleRoom(room: string) {
+    patch({
+      selectedRooms: draft.selectedRooms.includes(room)
+        ? draft.selectedRooms.filter((item) => item !== room)
+        : [...draft.selectedRooms, room],
+    });
+  }
+
+  function onMediaPicked(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        patch({ mediaUrl: reader.result });
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  return (
+    <section className="min-h-screen px-5 py-5 md:px-6 md:py-6">
+      <div className="flex flex-wrap items-center gap-2 text-[14px] text-black/55">
+        <Link href="/admin/services/rentals" className="font-medium text-black/75 hover:text-black">
+          Rentals
+        </Link>
+        <span>/</span>
+        <span className="font-medium text-black">Add Rental</span>
+      </div>
+
+      <h1 className="mt-2 text-[22px] font-medium text-black">Add Rental</h1>
+
+      <div className="mt-4 overflow-hidden rounded-lg border border-black/12 bg-white">
+        <div className="border-t-4 border-t-[#446fbb] px-4 py-4 text-[20px] font-medium text-black">
+          Rental Details
+        </div>
+
+        <div className="border-t border-black/10">
+          <RentalSettingRow
+            title="Basics"
+            description="Set the name and description"
+          >
+            <div className="grid gap-6">
+              <label className="grid gap-1.5">
+                <span className="text-[14px] font-medium text-black/85">Name</span>
+                <input
+                  value={draft.name}
+                  onChange={(event) => patch({ name: event.target.value })}
+                  className="min-h-[38px] rounded-[4px] border border-black/15 px-3 text-[14px] outline-none"
+                />
+              </label>
+
+              <div className="grid gap-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-[14px] font-medium text-black/85">Preview Text</span>
+                  <span className="rounded-full bg-black/[0.06] px-2 py-0.5 text-[11px] font-medium text-black/55">Optional</span>
+                </div>
+                <textarea
+                  value={draft.previewText}
+                  onChange={(event) => patch({ previewText: event.target.value.slice(0, 150) })}
+                  className="min-h-[56px] rounded-[4px] border border-black/15 px-3 py-2 text-[14px] outline-none"
+                />
+                <div className="flex items-center justify-between text-[12px] text-black/45">
+                  <span>This text will be displayed on the booking page.</span>
+                  <span>{draft.previewText.length} / 150 characters</span>
+                </div>
+              </div>
+
+              <div className="grid gap-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-[14px] font-medium text-black/85">Description</span>
+                  <span className="rounded-full bg-black/[0.06] px-2 py-0.5 text-[11px] font-medium text-black/55">Optional</span>
+                </div>
+                <ServiceDescriptionEditor
+                  value={draft.description}
+                  onChange={(value) => patch({ description: value })}
+                />
+              </div>
+
+              <div className="grid gap-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-[14px] font-medium text-black/85">Media</span>
+                  <span className="rounded-full bg-black/[0.06] px-2 py-0.5 text-[11px] font-medium text-black/55">Optional</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="grid min-h-[190px] place-items-center rounded-[10px] border border-black/12 bg-[#fafafa] p-6 text-center"
+                >
+                  {draft.mediaUrl ? (
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={draft.mediaUrl} alt="Rental media preview" className="max-h-[170px] rounded-md object-contain" />
+                    </>
+                  ) : (
+                    <div>
+                      <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-black/[0.08] text-black/45">
+                        <Icon name="camera" className="h-6 w-6" />
+                      </div>
+                      <div className="mt-4 text-[17px] font-medium text-black/85">Click to upload or drag and drop</div>
+                      <div className="mt-2 text-[13px] text-black/45">JPG, PNG, GIF, WEBP, SVG (max: 2MB, 16:9 ratio recommended)</div>
+                    </div>
+                  )}
+                </button>
+                <input ref={fileInputRef} type="file" accept="image/*" onChange={onMediaPicked} className="hidden" />
+              </div>
+            </div>
+          </RentalSettingRow>
+
+          <RentalSettingRow
+            title="Pricing"
+            description="Choose the price that your customers will see for this service"
+          >
+            <div>
+              <div className="mb-4 flex items-center justify-between gap-4">
+                <div className="flex gap-5 border-b border-black/10 text-[14px]">
+                  {[
+                    ["default", "Default Pricing"],
+                    ["membership", "Membership Pricing"],
+                  ].map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setActivePriceTab(key as "default" | "membership")}
+                      className={[
+                        "border-b-2 px-3 py-2",
+                        activePriceTab === key ? "border-black text-black" : "border-transparent text-black/55",
+                      ].join(" ")}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <button type="button" onClick={addPriceRow} className="inline-flex min-h-10 items-center gap-2 rounded bg-[#5c7eae] px-4 text-[14px] font-semibold text-white">
+                  <Icon name="plus" className="h-4 w-4" />
+                  Add Price
+                </button>
+              </div>
+
+              <div className="overflow-hidden rounded-[4px] border border-black/12">
+                <div className="grid grid-cols-[1fr_1fr_90px] gap-4 bg-[#f6f7f9] px-4 py-3 text-[14px] font-medium text-black/75">
+                  <div>Duration</div>
+                  <div>Price</div>
+                  <div className="text-right">Actions</div>
+                </div>
+                {priceRows.map((row) => (
+                  <div key={row.id} className="grid grid-cols-[1fr_1fr_90px] gap-4 border-t border-black/10 px-4 py-3">
+                    <input
+                      value={row.duration}
+                      onChange={(event) => updatePriceRow(row.id, "duration", event.target.value)}
+                      placeholder="30"
+                      className="min-h-[38px] rounded-[4px] border border-black/15 px-3 text-[14px] outline-none"
+                    />
+                    <input
+                      value={row.price}
+                      onChange={(event) => updatePriceRow(row.id, "price", event.target.value)}
+                      placeholder="35"
+                      className="min-h-[38px] rounded-[4px] border border-black/15 px-3 text-[14px] outline-none"
+                    />
+                    <div className="flex justify-end">
+                      <button type="button" onClick={() => removePriceRow(row.id)} className="grid h-10 w-10 place-items-center rounded border border-black/12 text-black/45">
+                        <Icon name="trash" className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </RentalSettingRow>
+
+          <RentalSettingRow
+            title="Rooms"
+            description="Indicate which rooms the service can take place in, and how those rooms are reserved on purchase"
+          >
+            <div className="grid gap-5">
+              <div>
+                <div className="mb-2 text-[14px] font-medium text-black/85">Rooms</div>
+                <div className="grid gap-3 text-[14px]">
+                  <label className="flex items-center gap-3">
+                    <input type="checkbox" checked={false} readOnly className="h-5 w-5 rounded border-black/20" />
+                    <span>{facilityName}</span>
+                  </label>
+                  {resources.map((room) => (
+                    <label key={room} className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={draft.selectedRooms.includes(room)}
+                        onChange={() => toggleRoom(room)}
+                        className="h-5 w-5 rounded border-black/20"
+                      />
+                      <span>{room}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid gap-2 lg:grid-cols-[220px_minmax(0,1fr)] lg:items-start">
+                <div>
+                  <div className="mb-2 text-[14px] font-medium text-black/85">Reserve On Purchase</div>
+                  <select
+                    value={draft.reserveOnPurchase}
+                    onChange={(event) => patch({ reserveOnPurchase: event.target.value as "any" | "all" })}
+                    className="min-h-[42px] w-full rounded-[4px] border border-black/15 px-3 text-[14px] outline-none"
+                  >
+                    <option value="any">Any selected room</option>
+                    <option value="all">All selected rooms</option>
+                  </select>
+                </div>
+                <p className="pt-8 text-[14px] text-black/70">
+                  When a customer buys this rental, Swift will reserve <strong>{draft.reserveOnPurchase === "all" ? "ALL" : "any ONE"}</strong>{" "}
+                  of {draft.selectedRooms.join(", ") || "the selected rooms"} as long as it is available
+                </p>
+              </div>
+            </div>
+          </RentalSettingRow>
+
+          <RentalSettingRow
+            title="Equipment"
+            description="Decide which equipment gets reserved when this rental is booked"
+          >
+            <div className="flex items-center gap-4 pt-1">
+              <ToggleSwitch checked={draft.reserveEquipment} onChange={(checked) => patch({ reserveEquipment: checked })} label="Reserve equipment" />
+              <span className="text-[15px] text-black/85">Reserve equipment</span>
+            </div>
+          </RentalSettingRow>
+
+          <div className="border-t border-black/10 px-4 py-7">
+            <button
+              type="button"
+              onClick={() => setAdvancedOpen((current) => !current)}
+              className="flex w-full items-center justify-between text-left"
+            >
+              <div>
+                <div className="text-[18px] font-medium text-black">Advanced Settings</div>
+                <div className="mt-1 text-[14px] text-black/65">
+                  Add additional requirements like restrictions on time slots and t-shirt size, or hide the service on your booking page
+                </div>
+              </div>
+              <Icon name="chevron" className={`h-5 w-5 transition ${advancedOpen ? "-rotate-90" : "rotate-90"}`} />
+            </button>
+
+            {advancedOpen ? (
+              <div className="mt-6 border-t border-black/10">
+                <AdvancedSettingsRow
+                  title="Tax Rates"
+                  description="Choose the tax rate that applies to this service."
+                >
+                  <InlineToggleChoice checked={draft.collectTax} onChange={(checked) => patch({ collectTax: checked })} label="Collect tax" />
+                </AdvancedSettingsRow>
+
+                <AdvancedSettingsRow
+                  title="Custom Fees"
+                  description="Choose the custom fee that applies to this service."
+                >
+                  <InlineToggleChoice checked={draft.collectFee} onChange={(checked) => patch({ collectFee: checked })} label="Collect fee" />
+                </AdvancedSettingsRow>
+
+                <AdvancedSettingsRow
+                  title="Time Slot Restrictions"
+                  description="Set start & end limits on the time slots shown to clients when booking this service"
+                >
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-[15px] text-black">{draft.slotRestrictionSummary}</span>
+                    <button type="button" className="rounded bg-[#5c7eae] px-4 py-2 text-[14px] font-semibold text-white">
+                      Add restriction
+                    </button>
+                  </div>
+                </AdvancedSettingsRow>
+
+                <AdvancedSettingsRow
+                  title="Schedule"
+                  description="Choose to offer this service only on certain days or times."
+                >
+                  <div>
+                    <div className="flex items-center gap-4">
+                      <ToggleSwitch checked={draft.serviceScheduleEnabled} onChange={(checked) => patch({ serviceScheduleEnabled: checked })} label="Set service schedule" />
+                      <span className="text-[15px] text-black/85">Set service schedule</span>
+                    </div>
+                    <div className="mt-2 text-[14px] text-black/65">Enable this to only allow this service to be booked on certain days or times.</div>
+                  </div>
+                </AdvancedSettingsRow>
+
+                <AdvancedSettingsRow
+                  title="Additional Checkout Details"
+                  description="Request the client to fill out additional details during checkout, like emergency contact information"
+                >
+                  <div className="grid gap-5">
+                    <div className="flex items-center gap-5 text-[15px]">
+                      <span>Emergency Contact Info</span>
+                      <InlineOnOff checked={draft.emergencyContactInfo} onChange={(checked) => patch({ emergencyContactInfo: checked })} />
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-[15px] text-black">{draft.customFieldsSummary}</span>
+                      <button type="button" className="rounded bg-[#5c7eae] px-4 py-2 text-[14px] font-semibold text-white">
+                        Add Custom Field
+                      </button>
+                    </div>
+                  </div>
+                </AdvancedSettingsRow>
+
+                <AdvancedSettingsRow
+                  title="Private"
+                  description="Hide this service from clients on your booking page"
+                >
+                  <InlineOnOff checked={draft.private} onChange={(checked) => patch({ private: checked })} />
+                </AdvancedSettingsRow>
+
+                <AdvancedSettingsRow
+                  title="Calendar Color"
+                  description="The color used to display bookings for this service on the calendar."
+                >
+                  <div className="inline-flex h-[44px] items-center gap-3 rounded-[10px] border border-black/12 px-4">
+                    <span className="h-8 w-8 rounded-full border border-black/10" style={{ backgroundColor: draft.calendarColor }} />
+                    <Icon name="chevron" className="h-4 w-4 -rotate-90 text-black/45" />
+                  </div>
+                </AdvancedSettingsRow>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 border-t border-black/10 bg-[#f6f7f9] px-5 py-5">
+          <button type="button" onClick={onCancel} className="rounded-lg border border-black/10 bg-white px-5 py-2.5 text-[14px] font-semibold text-black">
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={!canSave}
+            onClick={() => onSave(draft)}
+            className="rounded-lg bg-black px-6 py-2.5 text-[14px] font-semibold text-white disabled:bg-black/10 disabled:text-black/35"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function RentalSettingRow({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="grid gap-6 border-t border-black/10 px-4 py-5 lg:grid-cols-[300px_minmax(0,1fr)]">
+      <div>
+        <div className="text-[18px] font-medium text-black">{title}</div>
+        <div className="mt-1 text-[14px] leading-8 text-black/75">{description}</div>
+      </div>
+      <div>{children}</div>
+    </div>
+  );
+}
+
+function AdvancedSettingsRow({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="grid gap-6 border-b border-black/10 py-8 last:border-b-0 lg:grid-cols-[320px_minmax(0,1fr)]">
+      <div>
+        <div className="text-[18px] font-medium text-black">{title}</div>
+        <div className="mt-1 text-[14px] leading-8 text-black/75">{description}</div>
+      </div>
+      <div>{children}</div>
+    </div>
+  );
+}
+
+function ServiceDescriptionEditor({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const toolbar = ["↺", "↻", "Normal", "B", "I", "U", "S", "<>", "↗", "≡", "☰", "☷"];
+
+  return (
+    <div className="overflow-hidden rounded-[4px] border border-black/15">
+      <div className="flex min-h-[42px] flex-wrap items-center gap-2 border-b border-black/10 px-3 py-2 text-black/55">
+        {toolbar.map((item) => (
+          <button key={item} type="button" className="rounded px-2 py-1 text-[14px] hover:bg-black/[0.03]">
+            {item}
+          </button>
+        ))}
+      </div>
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="Enter a description..."
+        className="min-h-[180px] w-full resize-none px-3 py-3 text-[14px] outline-none"
+      />
+    </div>
+  );
+}
+
+function InlineToggleChoice({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label: string;
+}) {
+  return (
+    <div className="flex items-center gap-4">
+      <ToggleSwitch checked={checked} onChange={onChange} label={label} />
+      <span className="text-[15px] text-black">{label}</span>
+    </div>
+  );
+}
+
+function InlineOnOff({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center gap-4 text-[15px] text-black">
+      <span className={!checked ? "text-black" : "text-black/45"}>Off</span>
+      <ToggleSwitch checked={checked} onChange={onChange} label="toggle" />
+      <span className={checked ? "text-black" : "text-black/45"}>On</span>
+    </div>
   );
 }
 
