@@ -1390,6 +1390,7 @@ export default function BookingAdminApp({
   }
 
   async function saveCustomerDetail(item: Customer, message: string) {
+    const previousState = state;
     const next = { ...state, customers: upsert(state.customers, item) };
 
     if (dataSource === "local") {
@@ -1404,7 +1405,12 @@ export default function BookingAdminApp({
       showToast(message);
     } catch (error) {
       console.error(error);
-      showToast("That change could not be saved.");
+      setState(previousState);
+      showToast(
+        error instanceof Error && error.message
+          ? `That change could not be saved: ${error.message}`
+          : "That change could not be saved."
+      );
     }
   }
 
