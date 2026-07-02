@@ -2210,7 +2210,7 @@ function CustomersView({
                   />
                 </th>
                 <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Name</th>
-                <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Created At ↓</th>
+                <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Created At â†“</th>
                 <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Email</th>
                 <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Phone Number</th>
                 <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Age</th>
@@ -2303,6 +2303,20 @@ function customerInitials(customer: Customer) {
 function customerBirthDate(customer: Customer) {
   if (!customer.birthYear || !customer.birthMonth || !customer.birthDay) return "";
   return `${customer.birthMonth.padStart(2, "0")}/${customer.birthDay.padStart(2, "0")}/${customer.birthYear}`;
+}
+
+function familyMemberAgeLabel(member: FamilyMember) {
+  const date = parseUsDateInput(member.birthDate);
+  if (!date) return "";
+
+  const age = calculateAge(
+    String(date.getFullYear()),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0")
+  );
+
+  if (age === "") return "";
+  return `${age} ${age === 1 ? "year" : "years"} old`;
 }
 
 function formatUsDateInput(value: string) {
@@ -2930,7 +2944,7 @@ function CustomerDetailView({
                 <label className="grid gap-1.5">
                   <span className="text-[13px] font-medium text-black/85">Phone</span>
                   <div className="grid grid-cols-[38px_minmax(0,1fr)] gap-2">
-                    <div className="grid min-h-10 place-items-center rounded-md border border-black/15 text-lg">🇺🇸</div>
+                    <div className="grid min-h-10 place-items-center rounded-md border border-black/15 text-lg">ðŸ‡ºðŸ‡¸</div>
                     <input
                       value={profilePhone}
                       onChange={(event) => setProfilePhone(formatUsPhoneInput(event.target.value))}
@@ -2963,7 +2977,7 @@ function CustomerDetailView({
                 <div>
                   <div className="text-[14px] font-medium text-black">{customer.emergencyContactName}</div>
                   <div className="mt-1 text-[13px] text-black/55">
-                    {[customer.emergencyContactEmail, customer.emergencyContactPhone].filter(Boolean).join(" · ")}
+                    {[customer.emergencyContactEmail, customer.emergencyContactPhone].filter(Boolean).join(" Â· ")}
                   </div>
                 </div>
                 <div className="flex gap-3 text-black/45">
@@ -3029,7 +3043,10 @@ function CustomerDetailView({
                           {[member.firstName, member.lastName].filter(Boolean).join(" ")}
                         </div>
                         <div className="mt-0.5 text-[13px] text-black/55">
-                          {[member.gender !== "Unspecified" ? member.gender : "", member.relationship !== "Unspecified" ? member.relationship : ""]
+                          {[
+                            member.gender !== "Unspecified" ? member.gender : "",
+                            familyMemberAgeLabel(member),
+                          ]
                             .filter(Boolean)
                             .join(" · ") || "Member"}
                         </div>
@@ -3657,7 +3674,7 @@ function NotesEditor({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const toolbarButtons = ["↶", "↷", "≡", "B", "I", "U", "S", "<>", "↔", "☰", "☷"];
+  const toolbarButtons = ["â†¶", "â†·", "â‰¡", "B", "I", "U", "S", "<>", "â†”", "â˜°", "â˜·"];
 
   return (
     <div className="mt-2 overflow-hidden rounded-lg border border-black/10">
@@ -4181,7 +4198,7 @@ function CustomerImportModal({
                           {header}
                         </div>
                         <div className="flex justify-center text-[30px] leading-none text-black/55">
-                          <span aria-hidden="true">→</span>
+                          <span aria-hidden="true">â†’</span>
                         </div>
                         <div className="pr-4">
                           <select
