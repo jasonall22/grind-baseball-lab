@@ -1780,6 +1780,40 @@ function RowAction({
   );
 }
 
+function HoverIconButton({
+  icon,
+  label,
+  onClick,
+  tone = "default",
+}: {
+  icon: IconName;
+  label: string;
+  onClick: () => void;
+  tone?: "default" | "danger";
+}) {
+  return (
+    <div className="group relative">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={label}
+        className={[
+          "inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors",
+          tone === "danger"
+            ? "text-black/40 hover:bg-red-50 hover:text-[#ff3b30]"
+            : "text-black/40 hover:bg-black/[0.04] hover:text-black/60",
+        ].join(" ")}
+      >
+        <Icon name={icon} className="h-4 w-4" />
+      </button>
+      <div className="pointer-events-none absolute bottom-[calc(100%+10px)] left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-md bg-[#707070] px-3 py-2 text-[11px] font-medium text-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
+        {label}
+        <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-l-[7px] border-r-[7px] border-t-[7px] border-l-transparent border-r-transparent border-t-[#707070]" />
+      </div>
+    </div>
+  );
+}
+
 function Pill({ label }: { label: string }) {
   return (
     <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${pillClass(label)}`}>
@@ -2903,8 +2937,8 @@ function CustomerDetailView({
                   </div>
                 </div>
                 <div className="flex gap-3 text-black/45">
-                  <button type="button" onClick={() => onEdit(customer.id)}><Icon name="edit" className="h-4 w-4" /></button>
-                  <button type="button" onClick={clearEmergencyContact}><Icon name="trash" className="h-4 w-4" /></button>
+                  <HoverIconButton icon="edit" label="Edit Contact" onClick={() => onEdit(customer.id)} />
+                  <HoverIconButton icon="trash" label="Delete" onClick={clearEmergencyContact} tone="danger" />
                 </div>
               </div>
             ) : (
