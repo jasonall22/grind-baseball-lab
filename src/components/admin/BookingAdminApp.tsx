@@ -16,6 +16,8 @@ type Service = {
   duration: number;
   price: number;
   resource: string;
+  rooms: string[];
+  category: ServiceSection;
   status: "Active" | "Draft" | "Off";
 };
 
@@ -149,6 +151,8 @@ type BookingServiceRow = {
   duration_minutes: number;
   price: number | string;
   resource_id: string | null;
+  resource_names: string[] | null;
+  service_type: ServiceSection | null;
   status: Service["status"];
   sort_order: number;
 };
@@ -391,6 +395,8 @@ const defaultState: AppState = {
       duration: 60,
       price: 85,
       resource: "Cage 1",
+      rooms: ["Cage 1"],
+      category: "lessons",
       status: "Active",
     },
     {
@@ -399,6 +405,8 @@ const defaultState: AppState = {
       duration: 45,
       price: 75,
       resource: "Pitching Lane",
+      rooms: ["Pitching Lane"],
+      category: "lessons",
       status: "Active",
     },
     {
@@ -407,6 +415,8 @@ const defaultState: AppState = {
       duration: 30,
       price: 35,
       resource: "Cage 2",
+      rooms: ["Cage 2"],
+      category: "rentals",
       status: "Active",
     },
   ],
@@ -793,12 +803,15 @@ async function upsertResources(resourceNames: string[]) {
 async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Record<string, string>) {
   if (change.type === "service") {
     const item = change.item;
+    const roomNames = item.rooms?.length ? item.rooms : item.resource ? [item.resource] : [];
     const { error } = await supabase.from("booking_services").upsert({
       id: item.id,
       name: item.name,
       duration_minutes: item.duration,
       price: item.price,
-      resource_id: resourceIdsByName[item.resource] || null,
+      resource_id: resourceIdsByName[roomNames[0] ?? item.resource] || null,
+      resource_names: roomNames,
+      service_type: item.category,
       status: item.status,
     });
     if (error) throw error;
@@ -1198,6 +1211,16 @@ function createRentalDraft(resources: string[]): RentalDraft {
   };
 }
 
+function inferServiceCategory(name: string): ServiceSection {
+  const value = name.toLowerCase();
+  if (value.includes("lesson")) return "lessons";
+  if (value.includes("camp")) return "camps";
+  if (value.includes("class")) return "classes";
+  if (value.includes("membership")) return "memberships";
+  if (value.includes("package")) return "packages";
+  return "rentals";
+}
+
 export default function BookingAdminApp({
   view = "home",
   selectedCustomerId,
@@ -1320,7 +1343,16 @@ export default function BookingAdminApp({
           name: service.name,
           duration: service.duration_minutes,
           price: Number(service.price),
-          resource: service.resource_id ? namesById.get(service.resource_id) ?? "" : "",
+          resource:
+            (service.resource_names && service.resource_names[0]) ||
+            (service.resource_id ? namesById.get(service.resource_id) ?? "" : ""),
+          rooms:
+            service.resource_names && service.resource_names.length
+              ? service.resource_names
+              : service.resource_id
+                ? [namesById.get(service.resource_id) ?? ""].filter(Boolean)
+                : [],
+          category: service.service_type ?? inferServiceCategory(service.name),
           status: service.status,
         })),
         customers: customerRows.map((customer) => ({
@@ -1506,7 +1538,9 @@ export default function BookingAdminApp({
       name: rentalDraft.name.trim(),
       duration: Number(firstDefaultPrice?.duration || 30),
       price: Number(firstDefaultPrice?.price || 0),
-      resource: rentalDraft.selectedRooms.join(", "),
+      resource: rentalDraft.selectedRooms[0] ?? "",
+      rooms: rentalDraft.selectedRooms,
+      category: "rentals",
       status: rentalDraft.private ? "Off" : "Active",
     };
     const next = { ...state, services: upsert(state.services, item) };
@@ -2049,30 +2083,13 @@ function ServicesView({
     const normalizedSearch = search.trim().toLowerCase();
 
     const sectionServices = services.filter((service) => {
-      const name = service.name.toLowerCase();
-
-      switch (activeSection) {
-        case "rentals":
-          return name.includes("rental");
-        case "lessons":
-          return name.includes("lesson");
-        case "camps":
-          return name.includes("camp");
-        case "classes":
-          return name.includes("class");
-        case "memberships":
-          return name.includes("membership");
-        case "packages":
-          return name.includes("package");
-        default:
-          return true;
-      }
+      return (service.category ?? inferServiceCategory(service.name)) === activeSection;
     });
 
     if (!normalizedSearch) return sectionServices;
 
     return sectionServices.filter((service) => {
-      const rooms = service.resource.split(",").map((item) => item.trim().toLowerCase());
+      const rooms = (service.rooms?.length ? service.rooms : [service.resource]).map((item) => item.trim().toLowerCase());
       return service.name.toLowerCase().includes(normalizedSearch) || rooms.some((room) => room.includes(normalizedSearch));
     });
   }, [activeSection, search, services]);
@@ -2148,7 +2165,7 @@ function ServicesView({
 
         {filteredServices.length ? (
           filteredServices.map((service, index) => {
-            const rooms = service.resource.split(",").map((item) => item.trim()).filter(Boolean);
+            const rooms = (service.rooms?.length ? service.rooms : [service.resource]).map((item) => item.trim()).filter(Boolean);
             const visibility = service.status === "Active" ? "Everyone" : "Private";
 
             return (
@@ -5291,6 +5308,8 @@ function EditorModal({
           duration: 60,
           price: 0,
           resource: state.resources[0] ?? "",
+          rooms: state.resources[0] ? [state.resources[0]] : [],
+          category: "rentals" as const,
           status: "Active" as const,
         }
       : null;
@@ -5373,7 +5392,13 @@ function EditorModal({
 
   function save() {
     if (modal.type === "service") {
-      const item = { ...(draft as Service), id: draft.id || makeId("svc") };
+      const serviceDraft = draft as Service;
+      const item = {
+        ...serviceDraft,
+        id: draft.id || makeId("svc"),
+        rooms: serviceDraft.rooms?.length ? serviceDraft.rooms : serviceDraft.resource ? [serviceDraft.resource] : [],
+        category: serviceDraft.category || inferServiceCategory(serviceDraft.name),
+      };
       onSave({ ...state, services: upsert(state.services, item) }, "Service saved.", { type: "service", item });
     }
     if (modal.type === "booking") {
