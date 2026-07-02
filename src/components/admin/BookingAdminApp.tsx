@@ -3006,13 +3006,13 @@ function CustomerDetailView({
                       </div>
                     </div>
                     <div className="flex gap-3 text-black/45">
-                      <button type="button"><Icon name="edit" className="h-4 w-4" /></button>
-                      <button
-                        type="button"
+                      <HoverIconButton icon="edit" label="Edit Member" onClick={() => {}} />
+                      <HoverIconButton
+                        icon="trash"
+                        label="Delete"
                         onClick={() => setFamilyMembers((current) => current.filter((item) => item.id !== member.id))}
-                      >
-                        <Icon name="trash" className="h-4 w-4" />
-                      </button>
+                        tone="danger"
+                      />
                     </div>
                   </div>
                 ))}
