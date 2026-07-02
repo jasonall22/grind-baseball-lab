@@ -141,6 +141,15 @@ type BookingSettingsRow = {
   public_url: string;
   timezone: string;
   address: string | null;
+  organization_name: string | null;
+  country_region: string | null;
+  address_line_1: string | null;
+  address_line_2: string | null;
+  city: string | null;
+  state_region: string | null;
+  postal_code: string | null;
+  phone: string | null;
+  public_calendar_enabled: boolean | null;
   waiver_enabled: boolean | null;
   waiver_document_url: string | null;
   waiver_document_name: string | null;
@@ -225,6 +234,15 @@ type AppState = {
     publicUrl: string;
     timezone: string;
     address: string;
+    organizationName: string;
+    country: string;
+    addressLine1: string;
+    addressLine2: string;
+    city: string;
+    stateRegion: string;
+    postalCode: string;
+    phone: string;
+    publicFacingCalendar: boolean;
   };
   policies: {
     waiverEnabled: boolean;
@@ -310,6 +328,59 @@ const WAIVER_BUCKET_CANDIDATES = Array.from(
   new Set([WAIVER_BUCKET_PRIMARY, "booking-waivers", "booking-waiver", "waivers"].filter(Boolean))
 );
 const MAX_WAIVER_FILE_BYTES = 2 * 1024 * 1024;
+const countryRegionOptions = ["United States"];
+const usStateOptions = [
+  "Alabama",
+  "Alaska",
+  "Arizona",
+  "Arkansas",
+  "California",
+  "Colorado",
+  "Connecticut",
+  "Delaware",
+  "Florida",
+  "Georgia",
+  "Hawaii",
+  "Idaho",
+  "Illinois",
+  "Indiana",
+  "Iowa",
+  "Kansas",
+  "Kentucky",
+  "Louisiana",
+  "Maine",
+  "Maryland",
+  "Massachusetts",
+  "Michigan",
+  "Minnesota",
+  "Mississippi",
+  "Missouri",
+  "Montana",
+  "Nebraska",
+  "Nevada",
+  "New Hampshire",
+  "New Jersey",
+  "New Mexico",
+  "New York",
+  "North Carolina",
+  "North Dakota",
+  "Ohio",
+  "Oklahoma",
+  "Oregon",
+  "Pennsylvania",
+  "Rhode Island",
+  "South Carolina",
+  "South Dakota",
+  "Tennessee",
+  "Texas",
+  "Utah",
+  "Vermont",
+  "Virginia",
+  "Washington",
+  "West Virginia",
+  "Wisconsin",
+  "Wyoming",
+];
 
 const settingsNavGroups: {
   title: string;
@@ -380,7 +451,16 @@ const defaultState: AppState = {
     name: "The Grind Baseball Lab",
     publicUrl: "https://www.grindbaseballlab.com/book",
     timezone: "America/New_York",
-    address: "Venice, FL",
+    address: "613 Cypress Ave, Venice, FL 34285",
+    organizationName: "The Grind Baseball Lab",
+    country: "United States",
+    addressLine1: "613 Cypress Ave",
+    addressLine2: "",
+    city: "Venice",
+    stateRegion: "Florida",
+    postalCode: "34285",
+    phone: "(941) 525-0880",
+    publicFacingCalendar: false,
   },
   policies: {
     waiverEnabled: false,
@@ -681,6 +761,45 @@ function slugifyFileNameStem(fileName: string) {
   return slug || "waiver";
 }
 
+function composeFacilityAddress(facility: AppState["facility"]) {
+  const cityLine = [facility.city, facility.stateRegion].filter(Boolean).join(", ");
+  const finalLine = [cityLine, facility.postalCode].filter(Boolean).join(" ").trim();
+
+  return [facility.addressLine1, facility.addressLine2, finalLine]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(", ");
+}
+
+function parseLegacyFacilityAddress(address: string) {
+  const trimmed = address.trim();
+  if (!trimmed) {
+    return {
+      addressLine1: "",
+      addressLine2: "",
+      city: "",
+      stateRegion: "",
+      postalCode: "",
+    };
+  }
+
+  const parts = trimmed.split(",").map((part) => part.trim()).filter(Boolean);
+  const addressLine1 = parts[0] ?? "";
+  const addressLine2 = parts.length > 3 ? parts[1] ?? "" : "";
+  const locationPart = parts[parts.length > 2 ? parts.length - 2 : 1] ?? "";
+  const city = parts.length > 1 ? locationPart : "";
+  const stateZipPart = parts[parts.length - 1] ?? "";
+  const stateZipMatch = stateZipPart.match(/^(.+?)\s+(\d{5}(?:-\d{4})?)$/);
+
+  return {
+    addressLine1,
+    addressLine2,
+    city,
+    stateRegion: stateZipMatch ? stateZipMatch[1].trim() : stateZipPart,
+    postalCode: stateZipMatch ? stateZipMatch[2].trim() : "",
+  };
+}
+
 function stateToStorage(next: AppState) {
   if (typeof window !== "undefined") {
     window.localStorage.setItem(storageKey, JSON.stringify(next));
@@ -746,7 +865,16 @@ async function upsertFacilitySettings(
     facility_name: facility.name,
     public_url: facility.publicUrl,
     timezone: facility.timezone,
-    address: facility.address,
+    address: composeFacilityAddress(facility),
+    organization_name: facility.organizationName,
+    country_region: facility.country,
+    address_line_1: facility.addressLine1,
+    address_line_2: facility.addressLine2 || null,
+    city: facility.city,
+    state_region: facility.stateRegion,
+    postal_code: facility.postalCode,
+    phone: facility.phone,
+    public_calendar_enabled: facility.publicFacingCalendar,
     waiver_enabled: policies.waiverEnabled,
     waiver_document_url: policies.waiverDocumentUrl || null,
     waiver_document_name: policies.waiverDocumentName || null,
@@ -1393,12 +1521,28 @@ export default function BookingAdminApp({
       const availabilityOrder = new Map(defaultState.availability.map(([day], index) => [day, index]));
 
       setResourceIdsByName(idsByName);
+      const legacyAddress = parseLegacyFacilityAddress(settings?.address ?? defaultState.facility.address);
+      const fallbackAddressLine1 = legacyAddress.addressLine1 || defaultState.facility.addressLine1;
+      const fallbackAddressLine2 = legacyAddress.addressLine2 || defaultState.facility.addressLine2;
+      const fallbackCity = legacyAddress.city || defaultState.facility.city;
+      const fallbackStateRegion = legacyAddress.stateRegion || defaultState.facility.stateRegion;
+      const fallbackPostalCode = legacyAddress.postalCode || defaultState.facility.postalCode;
+
       setState({
         facility: {
           name: settings?.facility_name ?? defaultState.facility.name,
           publicUrl: settings?.public_url ?? defaultState.facility.publicUrl,
           timezone: settings?.timezone ?? defaultState.facility.timezone,
           address: settings?.address ?? defaultState.facility.address,
+          organizationName: settings?.organization_name ?? defaultState.facility.organizationName,
+          country: settings?.country_region ?? defaultState.facility.country,
+          addressLine1: settings?.address_line_1 ?? fallbackAddressLine1,
+          addressLine2: settings?.address_line_2 ?? fallbackAddressLine2,
+          city: settings?.city ?? fallbackCity,
+          stateRegion: settings?.state_region ?? fallbackStateRegion,
+          postalCode: settings?.postal_code ?? fallbackPostalCode,
+          phone: settings?.phone ? formatUsPhoneInput(settings.phone) : defaultState.facility.phone,
+          publicFacingCalendar: settings?.public_calendar_enabled ?? defaultState.facility.publicFacingCalendar,
         },
         policies: {
           waiverEnabled:
@@ -1519,16 +1663,24 @@ export default function BookingAdminApp({
   }
 
   async function saveSettings(next: AppState) {
+    const normalizedNext = {
+      ...next,
+      facility: {
+        ...next.facility,
+        address: composeFacilityAddress(next.facility),
+      },
+    };
+
     if (dataSource === "local") {
-      saveLocal(next, "Settings saved.");
+      saveLocal(normalizedNext, "Settings saved.");
       return;
     }
 
-    setState(next);
+    setState(normalizedNext);
 
     try {
-      await upsertFacilitySettings(next.facility, next.policies);
-      const resources = await upsertResources(next.resources);
+      await upsertFacilitySettings(normalizedNext.facility, normalizedNext.policies);
+      const resources = await upsertResources(normalizedNext.resources);
       setResourceIdsByName(resourceLookup(resources).idsByName);
       showToast("Settings saved.");
     } catch (error) {
@@ -1863,11 +2015,11 @@ export default function BookingAdminApp({
 
   return (
     <div className="min-h-screen bg-white text-black">
-      {!isSettingsView ? <MobileAdminHeader /> : null}
+      <MobileAdminHeader />
       <div
         className={[
           "grid min-h-screen grid-cols-1 bg-white",
-          !isSettingsView ? "pb-[76px] md:pb-0" : "",
+          "pb-[76px] md:pb-0",
           isSettingsView ? "" : "md:grid-cols-[284px_minmax(0,1fr)]",
         ].join(" ")}
       >
@@ -2141,7 +2293,7 @@ export default function BookingAdminApp({
         </div>
       ) : null}
 
-      {!isSettingsView ? <MobileBottomNav activeView={activeMainView} /> : null}
+      <MobileBottomNav activeView={activeMainView} />
     </div>
   );
 }
@@ -4632,6 +4784,33 @@ function SettingsView({
     setDraft(state);
   }, [state]);
 
+  function updateFacility(next: Partial<AppState["facility"]>) {
+    setDraft((current) => {
+      const facility = {
+        ...current.facility,
+        ...next,
+      };
+
+      return {
+        ...current,
+        facility: {
+          ...facility,
+          address: composeFacilityAddress(facility),
+        },
+      };
+    });
+  }
+
+  function updatePolicies(next: Partial<AppState["policies"]>) {
+    setDraft((current) => ({
+      ...current,
+      policies: {
+        ...current.policies,
+        ...next,
+      },
+    }));
+  }
+
   async function handleWaiverFile(file: File) {
     if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
       setWaiverUploadError("File must be a PDF.");
@@ -4664,9 +4843,18 @@ function SettingsView({
     }
   }
 
+  const sectionTitle = isBasics ? "Basics" : "Policies";
+
   return (
     <section className="min-h-screen bg-white">
-      <div className="grid min-h-screen lg:grid-cols-[220px_minmax(0,1fr)]">
+      <div className="px-5 py-4 md:hidden">
+        <Link href={backHref} className="inline-flex items-center gap-2 text-[15px] font-medium text-black">
+          <Icon name="arrow-left" className="h-4 w-4" />
+          {sectionTitle}
+        </Link>
+      </div>
+
+      <div className="hidden min-h-screen md:grid lg:grid-cols-[220px_minmax(0,1fr)]">
         <aside className="border-b border-black/10 bg-[#f7f7f7] px-4 py-5 lg:border-b-0 lg:border-r">
           <Link
             href={backHref}
@@ -4855,15 +5043,7 @@ function SettingsView({
                         <span className="text-[15px] font-medium text-black">Off</span>
                         <ToggleSwitch
                           checked={draft.policies.waiverEnabled}
-                          onChange={(checked) =>
-                            setDraft({
-                              ...draft,
-                              policies: {
-                                ...draft.policies,
-                                waiverEnabled: checked,
-                              },
-                            })
-                          }
+                          onChange={(checked) => updatePolicies({ waiverEnabled: checked })}
                           label="Toggle liability waiver"
                         />
                         <span className="text-[15px] font-medium text-black">On</span>
@@ -4923,15 +5103,7 @@ function SettingsView({
                         <span className="text-sm font-semibold text-black/70">Waiver confirmation text</span>
                         <textarea
                           value={draft.policies.waiverIntro}
-                          onChange={(event) =>
-                            setDraft({
-                              ...draft,
-                              policies: {
-                                ...draft.policies,
-                                waiverIntro: event.target.value,
-                              },
-                            })
-                          }
+                          onChange={(event) => updatePolicies({ waiverIntro: event.target.value })}
                           className="min-h-28 rounded-lg border border-black/10 px-3 py-2 outline-none focus:border-black/30"
                         />
                       </label>
@@ -4939,15 +5111,7 @@ function SettingsView({
                         <input
                           type="checkbox"
                           checked={draft.policies.waiverAllowInPerson}
-                          onChange={(event) =>
-                            setDraft({
-                              ...draft,
-                              policies: {
-                                ...draft.policies,
-                                waiverAllowInPerson: event.target.checked,
-                              },
-                            })
-                          }
+                          onChange={(event) => updatePolicies({ waiverAllowInPerson: event.target.checked })}
                           className="h-5 w-5 accent-[#4866b0]"
                         />
                         Allow staff to collect waiver signatures in person
@@ -4963,6 +5127,211 @@ function SettingsView({
                 </PrimaryButton>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-5 pb-6 md:hidden">
+        <div className="overflow-hidden rounded-[10px] border border-black/12 bg-white shadow-sm">
+          <div className="border-t-4 border-t-[#4866b0]" />
+          {isBasics ? (
+            <>
+              <div className="border-b border-black/10 px-6 py-5 text-[18px] font-medium">Facility Details</div>
+              <div className="px-6 py-6">
+                <div className="text-[16px] font-medium text-black">Basics</div>
+                <p className="mt-1 text-[13px] leading-6 text-black/70">
+                  Set the facility name and booking page URL
+                </p>
+
+                <div className="mt-8 space-y-5">
+                  <label className="grid gap-2">
+                    <span className="text-[14px] font-medium text-black/85">Facility Name</span>
+                    <input
+                      value={draft.facility.name}
+                      onChange={(event) => updateFacility({ name: event.target.value, organizationName: event.target.value })}
+                      className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
+                    />
+                  </label>
+
+                  <div className="grid gap-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[14px] font-medium text-black/85">Facility Booking Page</span>
+                      <button type="button" className="text-[13px] font-medium text-[#6379a5]">
+                        Change
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <input
+                        value={draft.facility.publicUrl}
+                        onChange={(event) => updateFacility({ publicUrl: event.target.value })}
+                        className="min-h-[48px] w-full rounded-[8px] border border-black/12 px-4 pr-12 text-[14px] outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(draft.facility.publicUrl);
+                          showToast("Booking link copied.");
+                        }}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-black/45"
+                        aria-label="Copy booking page URL"
+                      >
+                        <Icon name="copy" className="h-5 w-5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center gap-3">
+                      <ToggleSwitch
+                        checked={draft.facility.publicFacingCalendar}
+                        onChange={(checked) => updateFacility({ publicFacingCalendar: checked })}
+                        label="Public facing calendar"
+                      />
+                      <span className="text-[14px] font-medium text-black">Public Facing Calendar</span>
+                    </div>
+                    <p className="mt-3 text-[13px] leading-6 text-black/70">
+                      Get a public shareable link to the facility calendar
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-black/10 px-6 py-6">
+                <div className="text-[16px] font-medium text-black">Contact Info</div>
+                <p className="mt-1 text-[13px] leading-6 text-black/70">
+                  Add the facility&apos;s location and phone number
+                </p>
+
+                <div className="mt-8 space-y-5">
+                  <label className="grid gap-2">
+                    <span className="text-[14px] font-medium text-black/70">Organization name</span>
+                    <input
+                      value={draft.facility.organizationName}
+                      onChange={(event) => updateFacility({ organizationName: event.target.value })}
+                      className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
+                    />
+                  </label>
+
+                  <label className="grid gap-2">
+                    <span className="text-[14px] font-medium text-black/70">Country or region</span>
+                    <select
+                      value={draft.facility.country}
+                      onChange={(event) => updateFacility({ country: event.target.value })}
+                      className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
+                    >
+                      {countryRegionOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="grid gap-2">
+                    <span className="text-[14px] font-medium text-black/70">Address line 1</span>
+                    <input
+                      value={draft.facility.addressLine1}
+                      onChange={(event) => updateFacility({ addressLine1: event.target.value })}
+                      className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
+                    />
+                  </label>
+
+                  <label className="grid gap-2">
+                    <span className="text-[14px] font-medium text-black/70">Address line 2</span>
+                    <input
+                      value={draft.facility.addressLine2}
+                      placeholder="Apt., suite, unit number, etc. (optional)"
+                      onChange={(event) => updateFacility({ addressLine2: event.target.value })}
+                      className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
+                    />
+                  </label>
+
+                  <label className="grid gap-2">
+                    <span className="text-[14px] font-medium text-black/70">City</span>
+                    <input
+                      value={draft.facility.city}
+                      onChange={(event) => updateFacility({ city: event.target.value })}
+                      className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
+                    />
+                  </label>
+
+                  <label className="grid gap-2">
+                    <span className="text-[14px] font-medium text-black/70">State</span>
+                    <select
+                      value={draft.facility.stateRegion}
+                      onChange={(event) => updateFacility({ stateRegion: event.target.value })}
+                      className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
+                    >
+                      {usStateOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="grid gap-2">
+                    <span className="text-[14px] font-medium text-black/70">ZIP code</span>
+                    <input
+                      value={draft.facility.postalCode}
+                      onChange={(event) => updateFacility({ postalCode: event.target.value.replace(/[^\d-]/g, "").slice(0, 10) })}
+                      className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
+                    />
+                  </label>
+
+                  <label className="grid gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[14px] font-medium text-black/85">Phone</span>
+                      <span className="rounded-full bg-black/[0.06] px-2 py-0.5 text-[11px] font-medium text-black/55">Optional</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="inline-flex min-h-[48px] min-w-[54px] items-center justify-center gap-1 rounded-[8px] border border-black/12 px-2 text-[13px] font-medium text-black/70">
+                        <span aria-hidden="true" className="text-[19px] leading-none">
+                          🇺🇸
+                        </span>
+                        <Icon name="chevron" className="h-3.5 w-3.5 -rotate-90 text-black/45" />
+                      </div>
+                      <input
+                        value={draft.facility.phone}
+                        onChange={(event) => updateFacility({ phone: formatUsPhoneInput(event.target.value) })}
+                        inputMode="numeric"
+                        maxLength={14}
+                        className="min-h-[48px] flex-1 rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
+                      />
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="border-b border-black/10 px-6 py-5 text-[18px] font-medium">Booking Policies</div>
+              <div className="px-6 py-6">
+                <div className="text-[16px] font-medium text-black">Liability Waiver</div>
+                <p className="mt-1 text-[13px] leading-6 text-black/70">
+                  Display and require customers to agree to your liability waiver before they are allowed to make any booking.
+                </p>
+                <div className="mt-6 flex items-center gap-6">
+                  <span className="text-[15px] font-medium text-black">Off</span>
+                  <ToggleSwitch
+                    checked={draft.policies.waiverEnabled}
+                    onChange={(checked) => updatePolicies({ waiverEnabled: checked })}
+                    label="Toggle liability waiver"
+                  />
+                  <span className="text-[15px] font-medium text-black">On</span>
+                </div>
+              </div>
+            </>
+          )}
+
+          <div className="flex justify-end border-t border-black/10 bg-[#f7f8fb] px-6 py-5">
+            <button
+              type="button"
+              onClick={() => onSave(draft)}
+              className="rounded-lg bg-[#1f1b1b] px-6 py-3 text-[15px] font-medium text-white shadow-[0_3px_8px_rgba(0,0,0,0.18)]"
+            >
+              Save
+            </button>
           </div>
         </div>
       </div>
