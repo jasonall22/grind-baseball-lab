@@ -4854,7 +4854,7 @@ function SettingsView({
         </Link>
       </div>
 
-      <div className="hidden min-h-screen md:grid lg:grid-cols-[220px_minmax(0,1fr)]">
+      <div className="hidden min-h-screen md:grid md:grid-cols-[284px_minmax(0,1fr)]">
         <aside className="border-b border-black/10 bg-[#f7f7f7] px-4 py-5 lg:border-b-0 lg:border-r">
           <Link
             href={backHref}
@@ -4903,8 +4903,8 @@ function SettingsView({
           </div>
         </aside>
 
-        <div className="px-6 py-8 lg:px-10">
-          <div className="mx-auto max-w-6xl">
+        <div className="px-7 py-8 lg:px-8">
+          <div className="max-w-[1084px]">
             <PageHeader
               title={isBasics ? "Basics" : "Policies"}
               subtitle={
@@ -4914,7 +4914,7 @@ function SettingsView({
               }
             />
 
-            <div className="overflow-hidden rounded-lg border border-black/10 bg-white shadow-sm">
+            <div className="overflow-hidden rounded-[10px] border border-black/10 bg-white shadow-sm">
               <div className="border-t-4 border-t-[#4866b0]" />
 
               {isBasics ? (
