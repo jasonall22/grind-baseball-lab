@@ -4921,108 +4921,144 @@ function SettingsView({
                 <>
                   <div className="border-b border-black/10 px-5 py-4 text-[18px] font-semibold">Facility Details</div>
                   <div className="divide-y divide-black/10">
-                    <div className="grid gap-6 px-5 py-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+                    <div className="grid gap-6 px-5 py-5 lg:grid-cols-[280px_minmax(0,1fr)]">
                       <div>
                         <div className="text-[18px] font-semibold">Basics</div>
                         <p className="mt-2 text-sm leading-relaxed text-black/65">
-                          Set the facility name, booking page URL, and operating timezone.
+                          Set the facility name and booking page URL
                         </p>
                       </div>
-                      <div className="grid gap-4">
-                        <TextField
-                          label="Facility name"
-                          value={draft.facility.name}
-                          onChange={(value) =>
-                            setDraft({ ...draft, facility: { ...draft.facility, name: value } })
-                          }
-                        />
-                        <TextField
-                          label="Facility booking page"
-                          value={draft.facility.publicUrl}
-                          onChange={(value) =>
-                            setDraft({ ...draft, facility: { ...draft.facility, publicUrl: value } })
-                          }
-                        />
-                        <TextField
-                          label="Timezone"
-                          value={draft.facility.timezone}
-                          onChange={(value) =>
-                            setDraft({ ...draft, facility: { ...draft.facility, timezone: value } })
-                          }
-                        />
+                      <div className="grid gap-6">
+                        <label className="grid max-w-[360px] gap-1.5">
+                          <span className="text-[13px] font-semibold text-black/70">Facility Name</span>
+                          <input
+                            value={draft.facility.name}
+                            onChange={(event) =>
+                              updateFacility({
+                                name: event.target.value,
+                                organizationName: event.target.value,
+                              })
+                            }
+                            className="min-h-12 rounded-lg border border-black/10 px-4 text-[15px] outline-none focus:border-black/30"
+                          />
+                        </label>
+
+                        <div className="grid gap-1.5">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-[13px] font-semibold text-black/70">Facility Booking Page</span>
+                            <button type="button" className="text-[13px] font-medium text-[#6379a5]">
+                              Change
+                            </button>
+                          </div>
+                          <div className="relative">
+                            <input
+                              value={draft.facility.publicUrl}
+                              onChange={(event) => updateFacility({ publicUrl: event.target.value })}
+                              className="min-h-12 w-full rounded-lg border border-black/10 px-4 pr-12 text-[15px] outline-none focus:border-black/30"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void navigator.clipboard.writeText(draft.facility.publicUrl);
+                                showToast("Booking link copied.");
+                              }}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-black/45"
+                              aria-label="Copy booking page URL"
+                            >
+                              <Icon name="copy" className="h-5 w-5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="flex items-center gap-4">
+                            <ToggleSwitch
+                              checked={draft.facility.publicFacingCalendar}
+                              onChange={(checked) => updateFacility({ publicFacingCalendar: checked })}
+                              label="Public facing calendar"
+                            />
+                            <span className="text-[16px] font-medium text-black">Public Facing Calendar</span>
+                          </div>
+                          <p className="mt-2 text-sm leading-relaxed text-black/65">
+                            Get a public shareable link to the facility calendar
+                          </p>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="grid gap-6 px-5 py-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+                    <div className="grid gap-6 px-5 py-5 lg:grid-cols-[280px_minmax(0,1fr)]">
                       <div>
                         <div className="text-[18px] font-semibold">Contact Info</div>
                         <p className="mt-2 text-sm leading-relaxed text-black/65">
-                          Add the facility location details used across your booking flow.
+                          Add the facility&apos;s location and phone number
                         </p>
                       </div>
                       <div className="grid gap-4">
                         <TextField
-                          label="Address"
-                          value={draft.facility.address}
-                          onChange={(value) =>
-                            setDraft({ ...draft, facility: { ...draft.facility, address: value } })
-                          }
+                          label="Organization name"
+                          value={draft.facility.organizationName}
+                          onChange={(value) => updateFacility({ organizationName: value })}
                         />
-                      </div>
-                    </div>
-
-                    <div className="grid gap-6 px-5 py-5 lg:grid-cols-[320px_minmax(0,1fr)]">
-                      <div>
-                        <div className="text-[18px] font-semibold">Rooms & Equipment</div>
-                        <p className="mt-2 text-sm leading-relaxed text-black/65">
-                          Manage the spaces that appear on your calendar and booking pages.
-                        </p>
-                      </div>
-                      <div>
-                        <div className="mb-4 flex items-center justify-between gap-3">
-                          <div className="text-sm font-semibold text-black/70">Resources</div>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setDraft({
-                                ...draft,
-                                resources: [...draft.resources, `Resource ${draft.resources.length + 1}`],
-                              })
+                        <SelectField
+                          label="Country or region"
+                          value={draft.facility.country}
+                          onChange={(value) => updateFacility({ country: value })}
+                          options={countryRegionOptions}
+                        />
+                        <TextField
+                          label="Address line 1"
+                          value={draft.facility.addressLine1}
+                          onChange={(value) => updateFacility({ addressLine1: value })}
+                        />
+                        <TextField
+                          label="Address line 2"
+                          value={draft.facility.addressLine2}
+                          placeholder="Apt., suite, unit number, etc. (optional)"
+                          onChange={(value) => updateFacility({ addressLine2: value })}
+                        />
+                        <TextField
+                          label="City"
+                          value={draft.facility.city}
+                          onChange={(value) => updateFacility({ city: value })}
+                        />
+                        <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_340px]">
+                          <SelectField
+                            label="State"
+                            value={draft.facility.stateRegion}
+                            onChange={(value) => updateFacility({ stateRegion: value })}
+                            options={usStateOptions}
+                          />
+                          <TextField
+                            label="ZIP code"
+                            value={draft.facility.postalCode}
+                            onChange={(value) =>
+                              updateFacility({ postalCode: value.replace(/[^\d-]/g, "").slice(0, 10) })
                             }
-                            className="inline-flex items-center gap-2 rounded-lg border border-black/10 px-3 py-2 text-sm font-semibold"
-                          >
-                            <Icon name="plus" className="h-4 w-4" />
-                            Add
-                          </button>
+                          />
                         </div>
-                        <div className="grid gap-3">
-                          {draft.resources.map((resource, index) => (
-                            <div key={`${resource}-${index}`} className="flex gap-2">
-                              <input
-                                value={resource}
-                                onChange={(event) =>
-                                  setDraft({
-                                    ...draft,
-                                    resources: draft.resources.map((item, itemIndex) =>
-                                      itemIndex === index ? event.target.value : item
-                                    ),
-                                  })
-                                }
-                                className="min-h-10 flex-1 rounded-lg border border-black/10 px-3 outline-none focus:border-black/30"
-                              />
-                              <RowAction
-                                icon="trash"
-                                label="Delete resource"
-                                onClick={() =>
-                                  setDraft({
-                                    ...draft,
-                                    resources: draft.resources.filter((_, itemIndex) => itemIndex !== index),
-                                  })
-                                }
-                              />
+                        <label className="grid gap-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-black/70">Phone</span>
+                            <span className="rounded-full bg-black/[0.06] px-2 py-0.5 text-[11px] font-medium text-black/55">
+                              Optional
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="inline-flex min-h-10 min-w-[52px] items-center justify-center gap-1 rounded-lg border border-black/10 px-2 text-[13px] font-medium text-black/70">
+                              <span aria-hidden="true" className="text-[18px] leading-none">
+                                🇺🇸
+                              </span>
+                              <Icon name="chevron" className="h-3.5 w-3.5 -rotate-90 text-black/45" />
                             </div>
-                          ))}
-                        </div>
+                            <input
+                              value={draft.facility.phone}
+                              onChange={(event) => updateFacility({ phone: formatUsPhoneInput(event.target.value) })}
+                              inputMode="numeric"
+                              maxLength={14}
+                              className="min-h-10 flex-1 rounded-lg border border-black/10 px-3 outline-none focus:border-black/30"
+                            />
+                          </div>
+                        </label>
                       </div>
                     </div>
                   </div>
@@ -5121,7 +5157,7 @@ function SettingsView({
                 </>
               )}
 
-              <div className="flex justify-end border-t border-black/10 px-5 py-4">
+              <div className="flex justify-end border-t border-black/10 bg-[#f7f8fb] px-5 py-4">
                 <PrimaryButton icon="gear" onClick={() => onSave(draft)}>
                   Save
                 </PrimaryButton>
