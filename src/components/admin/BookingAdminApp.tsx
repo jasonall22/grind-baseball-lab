@@ -299,6 +299,12 @@ const storageKey = "grind_booking_admin_v1";
 const lastAppRouteKey = "grind_booking_admin_last_app_route";
 type SettingsSection = "basics" | "rooms" | "policies";
 
+type RoomEditorDraft = {
+  name: string;
+  schedule: string;
+  parentRoom: string;
+};
+
 const navItems: { key: BookingAdminView; label: string; icon: IconName }[] = [
   { key: "home", label: "Home", icon: "home" },
   { key: "services", label: "Services", icon: "link" },
@@ -2273,6 +2279,34 @@ export default function BookingAdminApp({
           ) : null}
           {view === "reports" ? (
             <ReportsView bookings={state.bookings} services={state.services} onExport={() => exportReport(state, showToast)} />
+          ) : null}
+          {view === "settings-rooms-add" ? (
+            <RoomEditorView
+              backHref={backToAppHref}
+              state={state}
+              showToast={showToast}
+              onCancel={() => router.push("/admin/settings/rooms")}
+              onSave={async (draft) => {
+                const name = draft.name.trim();
+                if (!name) {
+                  showToast("Room name is required.");
+                  return;
+                }
+
+                if (state.resources.some((item) => item.trim().toLowerCase() === name.toLowerCase())) {
+                  showToast("That room already exists.");
+                  return;
+                }
+
+                const next = {
+                  ...state,
+                  resources: [...state.resources, name],
+                };
+
+                await saveSettings(next);
+                router.push("/admin/settings/rooms");
+              }}
+            />
           ) : null}
           {view === "settings" || view === "settings-basics" || view === "settings-rooms" || view === "settings-policies" ? (
             <SettingsView
@@ -4790,6 +4824,7 @@ function SettingsView({
   showToast: (message: string) => void;
   onSave: (next: AppState) => void;
 }) {
+  const router = useRouter();
   const [draft, setDraft] = useState(state);
   const isBasics = section === "basics";
   const isRooms = section === "rooms";
@@ -4838,21 +4873,6 @@ function SettingsView({
 
     setDraft(next);
     onSave(next);
-  }
-
-  function addRoom() {
-    if (typeof window === "undefined") return;
-
-    const value = window.prompt("Room name");
-    const name = value?.trim() ?? "";
-
-    if (!name) return;
-    if (draft.resources.some((item) => item.trim().toLowerCase() === name.toLowerCase())) {
-      showToast("That room already exists.");
-      return;
-    }
-
-    persistResources([...draft.resources, name]);
   }
 
   function renameRoom(index: number) {
@@ -4988,7 +5008,7 @@ function SettingsView({
               }
             >
               {isRooms ? (
-                <PrimaryButton icon="plus" onClick={addRoom}>
+                <PrimaryButton icon="plus" onClick={() => router.push("/admin/settings/rooms/add")}>
                   New
                 </PrimaryButton>
               ) : null}
@@ -5562,7 +5582,7 @@ function SettingsView({
                   </div>
                   <button
                     type="button"
-                    onClick={addRoom}
+                    onClick={() => router.push("/admin/settings/rooms/add")}
                     className="inline-flex min-h-12 items-center gap-2 rounded-[10px] bg-[#1f1b1b] px-5 text-[16px] font-medium text-white shadow-[0_3px_8px_rgba(0,0,0,0.18)]"
                   >
                     <Icon name="plus" className="h-4 w-4" />
@@ -5667,6 +5687,255 @@ function SettingsView({
               </button>
             </div>
           ) : null}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function RoomEditorView({
+  backHref,
+  state,
+  showToast,
+  onCancel,
+  onSave,
+}: {
+  backHref: string;
+  state: AppState;
+  showToast: (message: string) => void;
+  onCancel: () => void;
+  onSave: (draft: RoomEditorDraft) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState<RoomEditorDraft>({
+    name: "",
+    schedule: "Working Hours",
+    parentRoom: state.facility.name,
+  });
+
+  const hierarchyOptions = [state.facility.name, ...state.resources];
+
+  return (
+    <section className="min-h-screen bg-white">
+      <div className="px-5 py-4 md:hidden">
+        <Link href="/admin/settings/rooms" className="inline-flex items-center gap-2 text-[15px] font-medium text-black">
+          <Icon name="arrow-left" className="h-4 w-4" />
+          Add Room
+        </Link>
+      </div>
+
+      <div className="hidden min-h-screen md:grid md:grid-cols-[284px_minmax(0,1fr)]">
+        <aside className="border-b border-black/10 bg-[#f7f7f7] px-4 py-5 lg:border-b-0 lg:border-r">
+          <Link
+            href={backHref}
+            className="inline-flex items-center gap-2 text-sm font-semibold text-black/70 transition hover:text-black"
+          >
+            <Icon name="arrow-left" className="h-4 w-4" />
+            Back to app
+          </Link>
+
+          <div className="mt-6 space-y-6">
+            {settingsNavGroups.map((group) => (
+              <div key={group.title}>
+                <div className="mb-2 text-sm font-medium text-black/45">{group.title}</div>
+                <div className="space-y-1">
+                  {group.items.map((item) => {
+                    const isActive = item.section === "rooms";
+                    const className = [
+                      "flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-[15px] transition",
+                      isActive && item.section === "rooms" ? "bg-[#e9e9e9] font-semibold" : "text-black/75 hover:bg-black/5",
+                    ].join(" ");
+
+                    if (item.href) {
+                      return (
+                        <Link key={item.label} href={item.href} className={className}>
+                          <Icon name={item.icon} className="h-4 w-4" />
+                          <span>{item.label}</span>
+                        </Link>
+                      );
+                    }
+
+                    return (
+                      <button
+                        key={item.label}
+                        type="button"
+                        onClick={() => showToast(`${item.label} is next in the Settings build-out.`)}
+                        className={className}
+                      >
+                        <Icon name={item.icon} className="h-4 w-4" />
+                        <span>{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </aside>
+
+        <div className="px-7 py-8 lg:px-8">
+          <div className="max-w-[1084px]">
+            <div className="mb-6">
+              <div className="mb-3 flex items-center gap-3 text-[14px] font-medium text-black/60">
+                <Link href="/admin/settings/rooms" className="text-black/70 hover:text-black">Rooms</Link>
+                <span>/</span>
+                <span className="text-black">Add Room</span>
+              </div>
+              <h1 className="text-[24px] font-semibold text-black">Add Room</h1>
+            </div>
+
+            <div className="overflow-hidden rounded-[10px] border border-black/10 bg-white shadow-sm">
+              <div className="border-t-4 border-t-[#4866b0]" />
+              <div className="border-b border-black/10 px-5 py-4 text-[18px] font-semibold">Room Details</div>
+
+              <div className="divide-y divide-black/10">
+                <div className="grid gap-6 px-5 py-5 lg:grid-cols-[280px_minmax(0,1fr)]">
+                  <div>
+                    <div className="text-[18px] font-semibold">Basics</div>
+                    <p className="mt-2 text-sm leading-relaxed text-black/65">Set the name of this room</p>
+                  </div>
+                  <div className="grid gap-4">
+                    <TextField
+                      label="Name"
+                      value={draft.name}
+                      onChange={(value) => setDraft((current) => ({ ...current, name: value }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-6 px-5 py-5 lg:grid-cols-[280px_minmax(0,1fr)]">
+                  <div>
+                    <div className="text-[18px] font-semibold">Schedule</div>
+                    <p className="mt-2 text-sm leading-relaxed text-black/65">
+                      Assign a schedule to this room to set opening & closing times on the room&apos;s availability
+                    </p>
+                  </div>
+                  <div className="grid gap-4">
+                    <SelectField
+                      label="Schedule"
+                      value={draft.schedule}
+                      onChange={(value) => setDraft((current) => ({ ...current, schedule: value }))}
+                      options={["Working Hours"]}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-6 px-5 py-5 lg:grid-cols-[280px_minmax(0,1fr)]">
+                  <div>
+                    <div className="text-[18px] font-semibold">Hierarchy</div>
+                    <p className="mt-2 text-sm leading-relaxed text-black/65">
+                      Decide where this room should exist inside the setup of your facility
+                    </p>
+                  </div>
+                  <div className="grid gap-3">
+                    <SelectField
+                      label="Room should exist within"
+                      value={draft.parentRoom}
+                      onChange={(value) => setDraft((current) => ({ ...current, parentRoom: value }))}
+                      options={hierarchyOptions}
+                    />
+                    <p className="text-sm text-black/60">Rooms can live inside other rooms - up to 4 levels deep.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end border-t border-black/10 bg-[#f7f8fb] px-5 py-4">
+                <button
+                  type="button"
+                  onClick={() => void onSave(draft)}
+                  className="rounded-lg bg-[#1f1b1b] px-6 py-3 text-[15px] font-medium text-white shadow-[0_3px_8px_rgba(0,0,0,0.18)]"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-5 pb-6 md:hidden">
+        <div className="mb-4 flex items-center gap-3 text-[14px] font-medium text-black/60">
+          <Link href="/admin/settings/rooms" className="text-black/70 hover:text-black">Rooms</Link>
+          <span>/</span>
+          <span className="text-black">Add Room</span>
+        </div>
+        <h1 className="mb-5 text-[28px] font-medium text-black">Add Room</h1>
+
+        <div className="overflow-hidden rounded-[10px] border border-black/12 bg-white shadow-sm">
+          <div className="border-t-4 border-t-[#4866b0]" />
+          <div className="border-b border-black/10 px-6 py-5 text-[18px] font-medium">Room Details</div>
+
+          <div className="divide-y divide-black/10">
+            <div className="px-6 py-6">
+              <div className="text-[16px] font-medium text-black">Basics</div>
+              <p className="mt-1 text-[13px] leading-6 text-black/70">Set the name of this room</p>
+              <div className="mt-6">
+                <label className="grid gap-2">
+                  <span className="text-[14px] font-medium text-black/85">Name</span>
+                  <input
+                    value={draft.name}
+                    onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
+                    className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="px-6 py-6">
+              <div className="text-[16px] font-medium text-black">Schedule</div>
+              <p className="mt-1 text-[13px] leading-6 text-black/70">
+                Assign a schedule to this room to set opening & closing times on the room&apos;s availability
+              </p>
+              <div className="mt-6">
+                <label className="grid gap-2">
+                  <span className="text-[14px] font-medium text-black/85">Schedule</span>
+                  <select
+                    value={draft.schedule}
+                    onChange={(event) => setDraft((current) => ({ ...current, schedule: event.target.value }))}
+                    className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
+                  >
+                    <option value="Working Hours">Working Hours</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div className="px-6 py-6">
+              <div className="text-[16px] font-medium text-black">Hierarchy</div>
+              <p className="mt-1 text-[13px] leading-6 text-black/70">
+                Decide where this room should exist inside the setup of your facility
+              </p>
+              <div className="mt-6 grid gap-2">
+                <span className="text-[14px] font-medium text-black/85">Room should exist within</span>
+                <select
+                  value={draft.parentRoom}
+                  onChange={(event) => setDraft((current) => ({ ...current, parentRoom: event.target.value }))}
+                  className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
+                >
+                  {hierarchyOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[13px] leading-6 text-black/70">
+                  Rooms can live inside other rooms - up to 4 levels deep.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-4 border-t border-black/10 bg-[#f7f8fb] px-6 py-5">
+            <button type="button" onClick={onCancel} className="text-[15px] font-medium text-black/65">
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void onSave(draft)}
+              className="rounded-lg bg-[#1f1b1b] px-6 py-3 text-[15px] font-medium text-white shadow-[0_3px_8px_rgba(0,0,0,0.18)]"
+            >
+              Save
+            </button>
+          </div>
         </div>
       </div>
     </section>
