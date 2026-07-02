@@ -2277,7 +2277,7 @@ function ServicesView({
                     className="grid h-10 w-10 place-items-center rounded-lg border border-black/12 text-black/45 disabled:opacity-40"
                     aria-label="Move service up"
                   >
-                    <Icon name="chevron" className="h-[18px] w-[18px] rotate-180" />
+                    <Icon name="chevron" className="h-[18px] w-[18px] -rotate-90" />
                   </button>
                   <button
                     type="button"
@@ -2285,7 +2285,7 @@ function ServicesView({
                     className="grid h-10 w-10 place-items-center rounded-lg border border-black/12 text-black/45 disabled:opacity-40"
                     aria-label="Move service down"
                   >
-                    <Icon name="chevron" className="h-[18px] w-[18px]" />
+                    <Icon name="chevron" className="h-[18px] w-[18px] rotate-90" />
                   </button>
                 </div>
               </div>
