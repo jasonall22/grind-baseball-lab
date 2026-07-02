@@ -603,6 +603,14 @@ function normalizeTime(value: string | null | undefined) {
 function getErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error && error.message) return error.message;
   if (typeof error === "string" && error.trim()) return error;
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof (error as { message?: unknown }).message === "string"
+  ) {
+    return (error as { message: string }).message;
+  }
   return fallback;
 }
 
@@ -1385,7 +1393,9 @@ export default function BookingAdminApp({
       showToast(message);
     } catch (error) {
       console.error(error);
-      showToast("That change could not be saved.");
+      const fallbackMessage = "That change could not be saved.";
+      const errorMessage = getErrorMessage(error, fallbackMessage);
+      showToast(errorMessage === fallbackMessage ? fallbackMessage : `${fallbackMessage} ${errorMessage}`);
     }
   }
 
@@ -1406,11 +1416,9 @@ export default function BookingAdminApp({
     } catch (error) {
       console.error(error);
       setState(previousState);
-      showToast(
-        error instanceof Error && error.message
-          ? `That change could not be saved: ${error.message}`
-          : "That change could not be saved."
-      );
+      const fallbackMessage = "That change could not be saved.";
+      const errorMessage = getErrorMessage(error, fallbackMessage);
+      showToast(errorMessage === fallbackMessage ? fallbackMessage : `${fallbackMessage} ${errorMessage}`);
     }
   }
 
