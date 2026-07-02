@@ -1221,6 +1221,37 @@ function inferServiceCategory(name: string): ServiceSection {
   return "rentals";
 }
 
+function reorderServicesByVisibleList(
+  services: Service[],
+  visibleServiceIds: string[],
+  serviceId: string,
+  direction: "up" | "down"
+) {
+  const currentIndex = visibleServiceIds.indexOf(serviceId);
+  const targetIndex = currentIndex + (direction === "up" ? -1 : 1);
+
+  if (currentIndex < 0 || targetIndex < 0 || targetIndex >= visibleServiceIds.length) {
+    return services;
+  }
+
+  const nextVisibleIds = [...visibleServiceIds];
+  [nextVisibleIds[currentIndex], nextVisibleIds[targetIndex]] = [
+    nextVisibleIds[targetIndex],
+    nextVisibleIds[currentIndex],
+  ];
+
+  const servicesById = new Map(services.map((service) => [service.id, service]));
+  const visibleSet = new Set(visibleServiceIds);
+  let visibleIndex = 0;
+
+  return services.map((service) => {
+    if (!visibleSet.has(service.id)) return service;
+    const nextService = servicesById.get(nextVisibleIds[visibleIndex]);
+    visibleIndex += 1;
+    return nextService ?? service;
+  });
+}
+
 export default function BookingAdminApp({
   view = "home",
   selectedCustomerId,
@@ -1565,6 +1596,42 @@ export default function BookingAdminApp({
     }
   }
 
+  async function reorderServices(
+    visibleServiceIds: string[],
+    serviceId: string,
+    direction: "up" | "down"
+  ) {
+    const nextServices = reorderServicesByVisibleList(state.services, visibleServiceIds, serviceId, direction);
+    if (nextServices === state.services) return;
+
+    const previousState = state;
+    const next = { ...state, services: nextServices };
+
+    if (dataSource === "local") {
+      saveLocal(next, "Service order updated.");
+      return;
+    }
+
+    setState(next);
+
+    try {
+      const results = await Promise.all(
+        nextServices.map((service, index) =>
+          supabase.from("booking_services").update({ sort_order: index + 1 }).eq("id", service.id)
+        )
+      );
+      const error = results.find((result) => result.error)?.error;
+      if (error) throw error;
+      showToast("Service order updated.");
+    } catch (error) {
+      console.error(error);
+      setState(previousState);
+      const fallbackMessage = "That change could not be saved.";
+      const errorMessage = getErrorMessage(error, fallbackMessage);
+      showToast(errorMessage === fallbackMessage ? fallbackMessage : `${fallbackMessage} ${errorMessage}`);
+    }
+  }
+
   async function deleteCustomer(id: string) {
     const next = {
       ...state,
@@ -1785,6 +1852,9 @@ export default function BookingAdminApp({
                 services={state.services}
                 activeSection={serviceSection}
                 onSectionChange={setServiceSection}
+                onReorder={(visibleServiceIds, serviceId, direction) =>
+                  void reorderServices(visibleServiceIds, serviceId, direction)
+                }
                 onNew={() => {
                   if (serviceSection === "rentals") {
                     router.push("/admin/services/rentals/add");
@@ -2090,12 +2160,14 @@ function ServicesView({
   activeSection,
   onSectionChange,
   services,
+  onReorder,
   onNew,
   onEdit,
 }: {
   activeSection: ServiceSection;
   onSectionChange: (section: ServiceSection) => void;
   services: Service[];
+  onReorder: (visibleServiceIds: string[], serviceId: string, direction: "up" | "down") => void;
   onNew: () => void;
   onEdit: (id: string) => void;
 }) {
@@ -2143,6 +2215,7 @@ function ServicesView({
     });
   }, [activeSection, search, services]);
 
+  const visibleServiceIds = useMemo(() => filteredServices.map((service) => service.id), [filteredServices]);
   const currentCopy = sectionCopy[activeSection];
 
   return (
@@ -2273,6 +2346,7 @@ function ServicesView({
                 <div className="flex flex-col items-end gap-2">
                   <button
                     type="button"
+                    onClick={() => onReorder(visibleServiceIds, service.id, "up")}
                     disabled={index === 0}
                     className="grid h-10 w-10 place-items-center rounded-lg border border-black/12 text-black/45 disabled:opacity-40"
                     aria-label="Move service up"
@@ -2281,6 +2355,7 @@ function ServicesView({
                   </button>
                   <button
                     type="button"
+                    onClick={() => onReorder(visibleServiceIds, service.id, "down")}
                     disabled={index === filteredServices.length - 1}
                     className="grid h-10 w-10 place-items-center rounded-lg border border-black/12 text-black/45 disabled:opacity-40"
                     aria-label="Move service down"
