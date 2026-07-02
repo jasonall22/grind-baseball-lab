@@ -1236,6 +1236,25 @@ function createRentalDraftFromService(service: Service): RentalDraft {
   };
 }
 
+function getRentalDeleteGuard(service: Service, state: AppState) {
+  const hasBookings = state.bookings.some(
+    (booking) => booking.serviceId === service.id && booking.status !== "Cancelled"
+  );
+  if (hasBookings) {
+    return "This rental can't be deleted because it's tied to existing bookings.";
+  }
+
+  const normalizedName = service.name.trim().toLowerCase();
+  const hasAvailableCredits = state.customers.some((customer) =>
+    customer.memberships.some((membership) => membership.trim().toLowerCase() === normalizedName)
+  );
+  if (hasAvailableCredits) {
+    return "This rental can't be deleted because it's tied to available credits.";
+  }
+
+  return null;
+}
+
 function inferServiceCategory(name: string): ServiceSection {
   const value = name.toLowerCase();
   if (value.includes("lesson")) return "lessons";
@@ -1656,6 +1675,44 @@ export default function BookingAdminApp({
     }
   }
 
+  async function deleteRental(service: Service) {
+    const guardMessage = getRentalDeleteGuard(service, state);
+    if (guardMessage) {
+      showToast(guardMessage);
+      return;
+    }
+
+    const confirmed = window.confirm("Delete this rental? This cannot be undone.");
+    if (!confirmed) return;
+
+    const previousState = state;
+    const next = {
+      ...state,
+      services: state.services.filter((item) => item.id !== service.id),
+    };
+
+    if (dataSource === "local") {
+      saveLocal(next, "Rental deleted.");
+      router.push("/admin/services/rentals");
+      return;
+    }
+
+    setState(next);
+
+    try {
+      const { error } = await supabase.from("booking_services").delete().eq("id", service.id);
+      if (error) throw error;
+      showToast("Rental deleted.");
+      router.push("/admin/services/rentals");
+    } catch (error) {
+      console.error(error);
+      setState(previousState);
+      const fallbackMessage = "That change could not be saved.";
+      const errorMessage = getErrorMessage(error, fallbackMessage);
+      showToast(errorMessage === fallbackMessage ? fallbackMessage : `${fallbackMessage} ${errorMessage}`);
+    }
+  }
+
   async function copyRentalBookingLink() {
     try {
       await navigator.clipboard.writeText(state.facility.publicUrl);
@@ -1927,10 +1984,16 @@ export default function BookingAdminApp({
                   }
                 }}
                 service={selectedService}
+                deleteGuardMessage={selectedService ? getRentalDeleteGuard(selectedService, state) : null}
                 onCopyBookingLink={() => void copyRentalBookingLink()}
                 onDuplicate={() => {
                   if (selectedService) {
                     void duplicateRental(selectedService);
+                  }
+                }}
+                onDelete={() => {
+                  if (selectedService) {
+                    void deleteRental(selectedService);
                   }
                 }}
                 onSave={(rentalDraft) => void saveRentalDraft(rentalDraft, selectedService)}
@@ -2477,8 +2540,10 @@ function RentalEditorView({
   activeSection,
   onSectionChange,
   service,
+  deleteGuardMessage,
   onCopyBookingLink,
   onDuplicate,
+  onDelete,
   onCancel,
   onSave,
 }: {
@@ -2488,8 +2553,10 @@ function RentalEditorView({
   activeSection: ServiceSection;
   onSectionChange: (section: ServiceSection) => void;
   service?: Service | null;
+  deleteGuardMessage: string | null;
   onCopyBookingLink: () => void;
   onDuplicate: () => void;
+  onDelete: () => void;
   onCancel: () => void;
   onSave: (draft: RentalDraft) => void;
 }) {
@@ -2926,18 +2993,49 @@ function RentalEditorView({
           </div>
         </div>
 
-        <div className="flex justify-end gap-3 border-t border-black/10 bg-[#f6f7f9] px-5 py-5">
-          <button type="button" onClick={onCancel} className="rounded-lg border border-black/10 bg-white px-5 py-2.5 text-[14px] font-semibold text-black">
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={!canSave}
-            onClick={() => onSave(draft)}
-            className="rounded-lg bg-black px-6 py-2.5 text-[14px] font-semibold text-white disabled:bg-black/10 disabled:text-black/35"
-          >
-            Save
-          </button>
+        <div className="flex items-center justify-between gap-3 border-t border-black/10 bg-[#f6f7f9] px-5 py-5">
+          <div>
+            {isEditMode ? (
+              deleteGuardMessage ? (
+                <div className="group relative inline-flex items-center gap-3">
+                  <button
+                    type="button"
+                    disabled
+                    className="rounded-lg border border-black/10 bg-white px-5 py-2.5 text-[14px] font-semibold text-black/25"
+                  >
+                    Delete
+                  </button>
+                  <div className="pointer-events-none absolute left-[calc(100%+16px)] top-1/2 z-20 w-max max-w-[340px] -translate-y-1/2 rounded-md bg-[#707070] px-3 py-2 text-[11px] font-medium text-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
+                    {deleteGuardMessage}
+                    <div className="absolute right-full top-1/2 h-0 w-0 -translate-y-1/2 border-b-[7px] border-r-[7px] border-t-[7px] border-b-transparent border-r-[#707070] border-t-transparent" />
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onDelete}
+                  className="rounded-lg border border-[#e7c3bf] bg-white px-5 py-2.5 text-[14px] font-semibold text-[#b33a30] transition hover:bg-[#fff3f1]"
+                >
+                  Delete
+                </button>
+              )
+            ) : (
+              <div />
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={onCancel} className="rounded-lg border border-black/10 bg-white px-5 py-2.5 text-[14px] font-semibold text-black">
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={!canSave}
+              onClick={() => onSave(draft)}
+              className="rounded-lg bg-black px-6 py-2.5 text-[14px] font-semibold text-white disabled:bg-black/10 disabled:text-black/35"
+            >
+              Save
+            </button>
+          </div>
         </div>
       </div>
     </section>
