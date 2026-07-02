@@ -1667,14 +1667,16 @@ export default function BookingAdminApp({
 
   return (
     <div className="min-h-screen bg-white text-black">
+      {!isSettingsView ? <MobileAdminHeader /> : null}
       <div
         className={[
           "grid min-h-screen grid-cols-1 bg-white",
+          !isSettingsView ? "pb-[76px] md:pb-0" : "",
           isSettingsView ? "" : "md:grid-cols-[284px_minmax(0,1fr)]",
         ].join(" ")}
       >
         {!isSettingsView ? (
-          <aside className="flex bg-[#f5f5f5] p-3 md:min-h-screen md:flex-col md:px-6 md:py-6">
+          <aside className="hidden bg-[#f5f5f5] p-3 md:flex md:min-h-screen md:flex-col md:px-6 md:py-6">
             <div className="hidden items-center justify-between md:flex">
               <div className="flex items-center gap-2 text-2xl font-extrabold">
                 <span className="block h-6 w-4 -skew-x-12 rounded-sm bg-black" />
@@ -1911,6 +1913,8 @@ export default function BookingAdminApp({
           {toast}
         </div>
       ) : null}
+
+      {!isSettingsView ? <MobileBottomNav activeView={activeMainView} /> : null}
     </div>
   );
 }
@@ -1929,6 +1933,51 @@ function HomeView({ facilityName }: { facilityName: string }) {
         <h1 className="text-[23px] font-medium">{facilityName}</h1>
       </div>
     </section>
+  );
+}
+
+function MobileAdminHeader() {
+  return (
+    <header className="sticky top-0 z-30 flex h-[84px] items-center justify-between border-b border-black/15 bg-[#f7f7f7] px-7 shadow-[0_1px_4px_rgba(0,0,0,0.18)] md:hidden">
+      <div className="flex items-center gap-2 text-[26px] font-extrabold">
+        <span className="block h-6 w-4 -skew-x-12 rounded-sm bg-black" />
+        Swift
+      </div>
+      <div className="grid h-12 w-12 place-items-center rounded-full bg-black/20 text-white">
+        <Icon name="user" className="h-7 w-7" />
+      </div>
+    </header>
+  );
+}
+
+function MobileBottomNav({ activeView }: { activeView: BookingAdminView }) {
+  const items: Array<{ key: BookingAdminView; label: string; icon: IconName; href: string }> = [
+    { key: "services", label: "Services", icon: "link", href: "/admin/services/rentals" },
+    { key: "calendar", label: "Calendar", icon: "calendar", href: bookingAdminRouteByView.calendar },
+    { key: "availability", label: "Availability", icon: "clock", href: bookingAdminRouteByView.availability },
+    { key: "customers", label: "Customers", icon: "user", href: bookingAdminRouteByView.customers },
+    { key: "settings", label: "More", icon: "bar", href: bookingAdminRouteByView.settings },
+  ];
+
+  return (
+    <nav className="fixed inset-x-0 bottom-0 z-40 grid h-[76px] grid-cols-5 border-t border-black/10 bg-white/95 px-1 shadow-[0_-2px_12px_rgba(0,0,0,0.08)] backdrop-blur md:hidden">
+      {items.map((item) => {
+        const active = activeView === item.key;
+        return (
+          <Link
+            key={item.key}
+            href={item.href}
+            className={[
+              "grid place-items-center gap-1 py-2 text-[12px] leading-none",
+              active ? "font-semibold text-black" : "text-black/55",
+            ].join(" ")}
+          >
+            <Icon name={item.icon} className="h-5 w-5" />
+            <span>{item.label}</span>
+          </Link>
+        );
+      })}
+    </nav>
   );
 }
 
@@ -2097,17 +2146,22 @@ function ServicesView({
   const currentCopy = sectionCopy[activeSection];
 
   return (
-    <section className="min-h-screen px-6 py-8">
-      <div className="md:hidden">
-        <div className="mb-4 flex gap-2 overflow-x-auto">
+    <section className="min-h-screen px-[22px] py-6 md:px-6 md:py-8">
+      <div className="-mx-[22px] -mt-6 mb-7 flex h-16 items-center border-b border-black/15 bg-white px-4 md:hidden">
+        <button type="button" className="grid h-10 w-8 shrink-0 place-items-center text-black/35" aria-label="Previous service type">
+          <Icon name="chevron" className="h-4 w-4 rotate-180" />
+        </button>
+        <div className="flex h-full min-w-0 flex-1 gap-1 overflow-x-auto">
           {serviceSectionItems.map((sectionItem) => (
             <button
               key={sectionItem.key}
               type="button"
               onClick={() => onSectionChange(sectionItem.key)}
               className={[
-                "inline-flex h-10 shrink-0 items-center gap-2 rounded-lg px-4 text-sm font-medium",
-                activeSection === sectionItem.key ? "bg-[#eeeeee] text-black" : "bg-white text-black/65",
+                "inline-flex h-full shrink-0 items-center gap-2 border-b-2 px-4 text-[15px] font-medium",
+                activeSection === sectionItem.key
+                  ? "border-black text-black"
+                  : "border-transparent text-black/60",
               ].join(" ")}
             >
               <Icon name={sectionItem.icon} className="h-4 w-4 shrink-0" />
@@ -2115,6 +2169,9 @@ function ServicesView({
             </button>
           ))}
         </div>
+        <button type="button" className="grid h-10 w-8 shrink-0 place-items-center text-black/55" aria-label="Next service type">
+          <Icon name="chevron" className="h-4 w-4" />
+        </button>
       </div>
 
       <div className="flex items-start justify-between gap-4">
@@ -2156,7 +2213,7 @@ function ServicesView({
       </div>
 
       <div className="mt-5 overflow-hidden rounded-lg border border-black/10 bg-white">
-        <div className="hidden grid-cols-[minmax(0,1.6fr)_180px_240px_76px] gap-4 bg-[#f5f6f8] px-5 py-5 text-[14px] font-semibold text-black md:grid">
+        <div className="grid grid-cols-[minmax(0,1fr)_92px_minmax(82px,1fr)_46px] gap-2 bg-[#f5f6f8] px-3 py-5 text-[15px] font-semibold text-black md:grid-cols-[minmax(0,1.6fr)_180px_240px_76px] md:gap-4 md:px-5 md:text-[14px]">
           <div>Name</div>
           <div>Visibility</div>
           <div>Rooms</div>
@@ -2171,17 +2228,16 @@ function ServicesView({
             return (
               <div
                 key={service.id}
-                className="grid gap-4 border-t border-black/10 px-5 py-6 md:grid-cols-[minmax(0,1.6fr)_180px_240px_76px] md:py-8"
+                className="grid grid-cols-[minmax(0,1fr)_92px_minmax(82px,1fr)_46px] items-center gap-2 border-t border-black/10 px-3 py-7 md:grid-cols-[minmax(0,1.6fr)_180px_240px_76px] md:items-start md:gap-4 md:px-5 md:py-8"
               >
-                <button type="button" onClick={() => onEdit(service.id)} className="break-words text-left text-[17px] font-medium leading-6 text-black">
+                <button type="button" onClick={() => onEdit(service.id)} className="break-words text-left text-[16px] font-medium leading-6 text-black md:text-[17px]">
                   {service.name}
                 </button>
 
-                <div className="grid gap-1.5 md:block">
-                  <div className="text-[12px] font-semibold uppercase text-black/45 md:hidden">Visibility</div>
+                <div>
                   <span
                     className={[
-                      "inline-flex rounded-full px-3.5 py-1.5 text-[13px] font-medium",
+                      "inline-flex rounded-full px-2.5 py-1.5 text-[13px] font-medium md:px-3.5",
                       visibility === "Everyone" ? "bg-emerald-50 text-emerald-700" : "bg-[#f3f4f6] text-[#667085]",
                     ].join(" ")}
                   >
@@ -2189,22 +2245,32 @@ function ServicesView({
                   </span>
                 </div>
 
-                <div className="grid gap-1.5 md:block">
-                  <div className="text-[12px] font-semibold uppercase text-black/45 md:hidden">Rooms</div>
+                <div>
                   <div className="flex flex-wrap gap-2">
                     {rooms.length ? (
-                      rooms.map((room) => (
-                        <span key={room} className="inline-flex rounded-full bg-[#f1efef] px-3.5 py-1.5 text-[13px] font-medium text-black">
+                      rooms.map((room, roomIndex) => (
+                        <span
+                          key={room}
+                          className={[
+                            "rounded-full bg-[#f1efef] px-3.5 py-1.5 text-[13px] font-medium text-black",
+                            roomIndex > 1 ? "hidden md:inline-flex" : "inline-flex",
+                          ].join(" ")}
+                        >
                           {room}
                         </span>
                       ))
                     ) : (
                       <span className="text-[13px] text-black/40">No rooms</span>
                     )}
+                    {rooms.length > 2 ? (
+                      <span className="inline-flex rounded-full bg-[#f1efef] px-3.5 py-1.5 text-[13px] font-medium text-black md:hidden">
+                        +{rooms.length - 2} more
+                      </span>
+                    ) : null}
                   </div>
                 </div>
 
-                <div className="hidden flex-col items-end gap-2 md:flex">
+                <div className="flex flex-col items-end gap-2">
                   <button
                     type="button"
                     disabled={index === 0}
