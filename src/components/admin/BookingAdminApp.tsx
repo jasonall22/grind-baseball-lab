@@ -19,6 +19,9 @@ type Service = {
   rooms: string[];
   category: ServiceSection;
   status: "Active" | "Draft" | "Off";
+  previewText?: string;
+  description?: string;
+  mediaUrl?: string;
 };
 
 type FamilyMember = {
@@ -1211,6 +1214,28 @@ function createRentalDraft(resources: string[]): RentalDraft {
   };
 }
 
+function createRentalDraftFromService(service: Service): RentalDraft {
+  return {
+    name: service.name,
+    previewText: service.previewText ?? "",
+    description: service.description ?? "",
+    mediaUrl: service.mediaUrl ?? "",
+    defaultPricing: [{ id: makeId("price"), duration: String(service.duration || 30), price: String(service.price || 0) }],
+    membershipPricing: [],
+    selectedRooms: service.rooms?.length ? service.rooms : service.resource ? [service.resource] : [],
+    reserveOnPurchase: "any",
+    reserveEquipment: false,
+    collectTax: false,
+    collectFee: false,
+    slotRestrictionSummary: "No slot restrictions",
+    serviceScheduleEnabled: false,
+    emergencyContactInfo: false,
+    customFieldsSummary: "No custom fields",
+    private: service.status !== "Active",
+    calendarColor: "#4e7cb5",
+  };
+}
+
 function inferServiceCategory(name: string): ServiceSection {
   const value = name.toLowerCase();
   if (value.includes("lesson")) return "lessons";
@@ -1255,9 +1280,11 @@ function reorderServicesByVisibleList(
 export default function BookingAdminApp({
   view = "home",
   selectedCustomerId,
+  selectedServiceId,
 }: {
   view?: BookingAdminView;
   selectedCustomerId?: string;
+  selectedServiceId?: string;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -1273,6 +1300,7 @@ export default function BookingAdminApp({
   const [backToAppHref, setBackToAppHref] = useState(bookingAdminRouteByView.home);
   const [showCustomerImport, setShowCustomerImport] = useState(false);
   const isRentalAddPage = pathname === "/admin/services/rentals/add";
+  const isRentalEditPage = Boolean(selectedServiceId && /^\/admin\/services\/rentals\/[^/]+$/.test(pathname));
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -1562,22 +1590,26 @@ export default function BookingAdminApp({
     }
   }
 
-  async function saveRentalDraft(rentalDraft: RentalDraft) {
+  async function saveRentalDraft(rentalDraft: RentalDraft, existingService?: Service | null) {
     const firstDefaultPrice = rentalDraft.defaultPricing[0];
     const item: Service = {
-      id: makeId("svc"),
+      id: existingService?.id ?? makeId("svc"),
       name: rentalDraft.name.trim(),
       duration: Number(firstDefaultPrice?.duration || 30),
       price: Number(firstDefaultPrice?.price || 0),
       resource: rentalDraft.selectedRooms[0] ?? "",
       rooms: rentalDraft.selectedRooms,
-      category: "rentals",
-      status: rentalDraft.private ? "Off" : "Active",
+      category: existingService?.category ?? "rentals",
+      status: rentalDraft.private ? "Off" : existingService?.status === "Draft" ? "Draft" : "Active",
+      previewText: rentalDraft.previewText,
+      description: rentalDraft.description,
+      mediaUrl: rentalDraft.mediaUrl,
     };
     const next = { ...state, services: upsert(state.services, item) };
+    const successMessage = existingService ? "Rental updated." : "Rental saved.";
 
     if (dataSource === "local") {
-      saveLocal(next, "Rental saved.");
+      saveLocal(next, successMessage);
       router.push("/admin/services/rentals");
       return;
     }
@@ -1586,13 +1618,51 @@ export default function BookingAdminApp({
 
     try {
       await upsertModalChange({ type: "service", item }, resourceIdsByName);
-      showToast("Rental saved.");
+      showToast(successMessage);
       router.push("/admin/services/rentals");
     } catch (error) {
       console.error(error);
       const fallbackMessage = "That change could not be saved.";
       const errorMessage = getErrorMessage(error, fallbackMessage);
       showToast(errorMessage === fallbackMessage ? fallbackMessage : `${fallbackMessage} ${errorMessage}`);
+    }
+  }
+
+  async function duplicateRental(service: Service) {
+    const duplicate: Service = {
+      ...service,
+      id: makeId("svc"),
+      name: `${service.name} Copy`,
+    };
+    const next = { ...state, services: upsert(state.services, duplicate) };
+
+    if (dataSource === "local") {
+      saveLocal(next, "Rental duplicated.");
+      router.push(`/admin/services/rentals/${duplicate.id}`);
+      return;
+    }
+
+    setState(next);
+
+    try {
+      await upsertModalChange({ type: "service", item: duplicate }, resourceIdsByName);
+      showToast("Rental duplicated.");
+      router.push(`/admin/services/rentals/${duplicate.id}`);
+    } catch (error) {
+      console.error(error);
+      const fallbackMessage = "That change could not be saved.";
+      const errorMessage = getErrorMessage(error, fallbackMessage);
+      showToast(errorMessage === fallbackMessage ? fallbackMessage : `${fallbackMessage} ${errorMessage}`);
+    }
+  }
+
+  async function copyRentalBookingLink() {
+    try {
+      await navigator.clipboard.writeText(state.facility.publicUrl);
+      showToast("Booking link copied.");
+    } catch (error) {
+      console.error(error);
+      showToast("Booking link could not be copied.");
     }
   }
 
@@ -1708,6 +1778,8 @@ export default function BookingAdminApp({
   );
   const selectedCustomer =
     selectedCustomerId ? state.customers.find((customer) => customer.id === selectedCustomerId) ?? null : null;
+  const selectedService =
+    selectedServiceId ? state.services.find((service) => service.id === selectedServiceId) ?? null : null;
 
   const servicesById = useMemo(
     () => new Map(state.services.map((service) => [service.id, service])),
@@ -1840,12 +1912,28 @@ export default function BookingAdminApp({
             <HomeView facilityName={state.facility.name} />
           ) : null}
           {view === "services" ? (
-            isRentalAddPage ? (
+            isRentalAddPage || isRentalEditPage ? (
               <RentalEditorView
+                key={selectedService?.id ?? "new-rental"}
+                mode={isRentalEditPage ? "edit" : "add"}
                 facilityName={state.facility.name}
                 resources={state.resources}
                 onCancel={() => router.push("/admin/services/rentals")}
-                onSave={(rentalDraft) => void saveRentalDraft(rentalDraft)}
+                activeSection={serviceSection}
+                onSectionChange={(section) => {
+                  setServiceSection(section);
+                  if (section !== "rentals" || isRentalEditPage) {
+                    router.push("/admin/services");
+                  }
+                }}
+                service={selectedService}
+                onCopyBookingLink={() => void copyRentalBookingLink()}
+                onDuplicate={() => {
+                  if (selectedService) {
+                    void duplicateRental(selectedService);
+                  }
+                }}
+                onSave={(rentalDraft) => void saveRentalDraft(rentalDraft, selectedService)}
               />
             ) : (
               <ServicesView
@@ -1862,7 +1950,13 @@ export default function BookingAdminApp({
                   }
                   setModal({ type: "service" });
                 }}
-                onEdit={(id) => setModal({ type: "service", id })}
+                onEdit={(id) => {
+                  if (serviceSection === "rentals") {
+                    router.push(`/admin/services/rentals/${id}`);
+                    return;
+                  }
+                  setModal({ type: "service", id });
+                }}
               />
             )
           ) : null}
@@ -2377,20 +2471,37 @@ function ServicesView({
 }
 
 function RentalEditorView({
+  mode,
   facilityName,
   resources,
+  activeSection,
+  onSectionChange,
+  service,
+  onCopyBookingLink,
+  onDuplicate,
   onCancel,
   onSave,
 }: {
+  mode: "add" | "edit";
   facilityName: string;
   resources: string[];
+  activeSection: ServiceSection;
+  onSectionChange: (section: ServiceSection) => void;
+  service?: Service | null;
+  onCopyBookingLink: () => void;
+  onDuplicate: () => void;
   onCancel: () => void;
   onSave: (draft: RentalDraft) => void;
 }) {
-  const [draft, setDraft] = useState<RentalDraft>(() => createRentalDraft(resources));
+  const [draft, setDraft] = useState<RentalDraft>(() =>
+    service ? createRentalDraftFromService(service) : createRentalDraft(resources)
+  );
   const [activePriceTab, setActivePriceTab] = useState<"default" | "membership">("default");
   const [advancedOpen, setAdvancedOpen] = useState(true);
+  const [showActions, setShowActions] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const isEditMode = mode === "edit";
+  const rentalName = service?.name || draft.name.trim() || "Rental";
 
   const priceRows = activePriceTab === "default" ? draft.defaultPricing : draft.membershipPricing;
   const canSave = Boolean(draft.name.trim());
@@ -2443,15 +2554,88 @@ function RentalEditorView({
 
   return (
     <section className="min-h-screen px-5 py-5 md:px-6 md:py-6">
+      <div className="-mx-5 -mt-5 mb-7 flex h-16 items-center border-b border-black/15 bg-white px-4 md:hidden">
+        <button type="button" className="grid h-10 w-8 shrink-0 place-items-center text-black/35" aria-label="Previous service type">
+          <Icon name="chevron" className="h-4 w-4 rotate-180" />
+        </button>
+        <div className="flex h-full min-w-0 flex-1 gap-1 overflow-x-auto">
+          {serviceSectionItems.map((sectionItem) => (
+            <button
+              key={sectionItem.key}
+              type="button"
+              onClick={() => onSectionChange(sectionItem.key)}
+              className={[
+                "inline-flex h-full shrink-0 items-center gap-2 border-b-2 px-4 text-[15px] font-medium",
+                activeSection === sectionItem.key
+                  ? "border-black text-black"
+                  : "border-transparent text-black/60",
+              ].join(" ")}
+            >
+              <Icon name={sectionItem.icon} className="h-4 w-4 shrink-0" />
+              {sectionItem.label}
+            </button>
+          ))}
+        </div>
+        <button type="button" className="grid h-10 w-8 shrink-0 place-items-center text-black/55" aria-label="Next service type">
+          <Icon name="chevron" className="h-4 w-4" />
+        </button>
+      </div>
+
       <div className="flex flex-wrap items-center gap-2 text-[14px] text-black/55">
         <Link href="/admin/services/rentals" className="font-medium text-black/75 hover:text-black">
           Rentals
         </Link>
         <span>/</span>
-        <span className="font-medium text-black">Add Rental</span>
+        <span className="font-medium text-black">{isEditMode ? rentalName : "Add Rental"}</span>
       </div>
 
-      <h1 className="mt-2 text-[22px] font-medium text-black">Add Rental</h1>
+      <div className="mt-2 flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-[22px] font-medium leading-8 text-black md:text-[26px]">
+            {isEditMode ? rentalName : "Add Rental"}
+          </h1>
+        </div>
+        <div className="relative shrink-0">
+          {isEditMode ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowActions((current) => !current)}
+                className="grid h-12 w-12 place-items-center rounded-xl bg-[#efeff5] text-black/75"
+                aria-label="Rental actions"
+              >
+                <span className="text-[24px] leading-none">...</span>
+              </button>
+              {showActions ? (
+                <div className="absolute right-0 top-[56px] z-20 min-w-[220px] overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_10px_30px_rgba(0,0,0,0.16)]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowActions(false);
+                      onCopyBookingLink();
+                    }}
+                    className="flex w-full items-center gap-3 px-4 py-4 text-left text-[15px] font-medium text-black hover:bg-black/[0.03]"
+                  >
+                    <Icon name="link" className="h-5 w-5" />
+                    Copy booking link
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowActions(false);
+                      onDuplicate();
+                    }}
+                    className="flex w-full items-center gap-3 border-t border-black/8 px-4 py-4 text-left text-[15px] font-medium text-black hover:bg-black/[0.03]"
+                  >
+                    <Icon name="copy" className="h-5 w-5" />
+                    Duplicate rental
+                  </button>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      </div>
 
       <div className="mt-4 overflow-hidden rounded-lg border border-black/12 bg-white">
         <div className="border-t-4 border-t-[#446fbb] px-4 py-4 text-[20px] font-medium text-black">
