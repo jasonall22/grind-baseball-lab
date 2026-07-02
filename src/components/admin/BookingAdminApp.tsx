@@ -18,6 +18,15 @@ type Service = {
   status: "Active" | "Draft" | "Off";
 };
 
+type FamilyMember = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  relationship: string;
+  gender: string;
+  birthDate: string;
+};
+
 type Customer = {
   id: string;
   name: string;
@@ -36,6 +45,7 @@ type Customer = {
   emergencyContactName: string;
   emergencyContactEmail: string;
   emergencyContactPhone: string;
+  familyMembers: FamilyMember[];
   notes: string;
   createdAt: string;
 };
@@ -126,6 +136,7 @@ type BookingCustomerRow = {
   emergency_contact_name: string | null;
   emergency_contact_email: string | null;
   emergency_contact_phone: string | null;
+  family_members: FamilyMember[] | null;
   notes: string | null;
   created_at: string;
 };
@@ -374,6 +385,7 @@ const defaultState: AppState = {
       emergencyContactName: "",
       emergencyContactEmail: "",
       emergencyContactPhone: "",
+      familyMembers: [],
       notes: "Varsity middle infielder",
       createdAt: "2026-07-01",
     },
@@ -395,6 +407,7 @@ const defaultState: AppState = {
       emergencyContactName: "",
       emergencyContactEmail: "",
       emergencyContactPhone: "",
+      familyMembers: [],
       notes: "Pitching package",
       createdAt: "2026-07-01",
     },
@@ -778,6 +791,7 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
       emergency_contact_name: item.emergencyContactName,
       emergency_contact_email: item.emergencyContactEmail || null,
       emergency_contact_phone: item.emergencyContactPhone,
+      family_members: item.familyMembers,
       notes: item.notes,
     });
     if (error) throw error;
@@ -1077,6 +1091,7 @@ function buildImportedCustomers(
         emergencyContactName,
         emergencyContactEmail,
         emergencyContactPhone,
+        familyMembers: [],
         notes,
         createdAt: new Date().toISOString().slice(0, 10),
       };
@@ -1248,6 +1263,7 @@ export default function BookingAdminApp({
           emergencyContactName: customer.emergency_contact_name ?? "",
           emergencyContactEmail: customer.emergency_contact_email ?? "",
           emergencyContactPhone: customer.emergency_contact_phone ?? "",
+          familyMembers: customer.family_members ?? [],
           notes: customer.notes ?? "",
           createdAt: customer.created_at,
         })),
@@ -1459,6 +1475,7 @@ export default function BookingAdminApp({
           emergency_contact_name: item.emergencyContactName,
           emergency_contact_email: item.emergencyContactEmail || null,
           emergency_contact_phone: item.emergencyContactPhone,
+          family_members: item.familyMembers,
           notes: item.notes,
         }))
       );
@@ -1607,10 +1624,11 @@ export default function BookingAdminApp({
                   selectedCustomer?.emergencyContactName ?? "",
                   selectedCustomer?.emergencyContactEmail ?? "",
                   selectedCustomer?.emergencyContactPhone ?? "",
+                  JSON.stringify(selectedCustomer?.familyMembers ?? []),
                 ].join(":")}
                 customer={selectedCustomer}
                 onEdit={(id) => setModal({ type: "customer", id })}
-                onSaveCustomer={(item) => void saveCustomerDetail(item, "Emergency contact saved.")}
+                onSaveCustomer={(item) => void saveCustomerDetail(item, "Customer updated.")}
               />
             ) : (
               <CustomersView
@@ -2399,15 +2417,6 @@ function ProfileField({
   );
 }
 
-type FamilyMember = {
-  id: string;
-  firstName: string;
-  lastName: string;
-  relationship: string;
-  gender: string;
-  birthDate: string;
-};
-
 function FamilyMemberModal({
   onClose,
   onSave,
@@ -2734,7 +2743,6 @@ function CustomerDetailView({
   onEdit: (id: string) => void;
   onSaveCustomer: (item: Customer) => void;
 }) {
-  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
   const [showFamilyModal, setShowFamilyModal] = useState(false);
   const [profilePhone, setProfilePhone] = useState(customer?.phone ?? "");
   const [emergencyDeleted, setEmergencyDeleted] = useState(false);
@@ -2755,6 +2763,7 @@ function CustomerDetailView({
   const initials = customerInitials(customer);
   const birthDate = customerBirthDate(customer);
   const age = calculateAge(customer.birthYear, customer.birthMonth, customer.birthDay);
+  const familyMembers = customer.familyMembers;
   const hasEmergencyContact = !emergencyDeleted && Boolean(
     customer.emergencyContactName.trim() ||
     customer.emergencyContactEmail.trim() ||
@@ -2773,6 +2782,13 @@ function CustomerDetailView({
       emergencyContactPhone: "",
     });
     setEmergencyDeleted(false);
+  }
+
+  function saveFamilyMembers(nextFamilyMembers: FamilyMember[]) {
+    onSaveCustomer({
+      ...currentCustomer,
+      familyMembers: nextFamilyMembers,
+    });
   }
 
   return (
@@ -3010,7 +3026,7 @@ function CustomerDetailView({
                       <HoverIconButton
                         icon="trash"
                         label="Delete"
-                        onClick={() => setFamilyMembers((current) => current.filter((item) => item.id !== member.id))}
+                        onClick={() => saveFamilyMembers(familyMembers.filter((item) => item.id !== member.id))}
                         tone="danger"
                       />
                     </div>
@@ -3060,7 +3076,7 @@ function CustomerDetailView({
         <FamilyMemberModal
           onClose={() => setShowFamilyModal(false)}
           onSave={(member) => {
-            setFamilyMembers((current) => [...current, member]);
+            saveFamilyMembers([...familyMembers, member]);
             setShowFamilyModal(false);
           }}
         />
@@ -4335,6 +4351,7 @@ function EditorModal({
           emergencyContactName: "",
           emergencyContactEmail: "",
           emergencyContactPhone: "",
+          familyMembers: [],
           notes: "",
           createdAt: new Date().toISOString(),
         }
