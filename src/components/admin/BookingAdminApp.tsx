@@ -1642,7 +1642,6 @@ export default function BookingAdminApp({
                   JSON.stringify(selectedCustomer?.familyMembers ?? []),
                 ].join(":")}
                 customer={selectedCustomer}
-                onEdit={(id) => setModal({ type: "customer", id })}
                 onSaveCustomer={(item) => void saveCustomerDetail(item, "Customer updated.")}
               />
             ) : (
@@ -2765,16 +2764,107 @@ function FamilyMemberModal({
   );
 }
 
+function EmergencyContactModal({
+  initialEmail,
+  initialName,
+  initialPhone,
+  onClose,
+  onSave,
+}: {
+  initialEmail: string;
+  initialName: string;
+  initialPhone: string;
+  onClose: () => void;
+  onSave: (contact: { name: string; email: string; phone: string }) => void;
+}) {
+  const [name, setName] = useState(initialName);
+  const [email, setEmail] = useState(initialEmail);
+  const [phone, setPhone] = useState(formatUsPhoneInput(initialPhone));
+
+  const canSave = Boolean(name.trim() || email.trim() || phone.trim());
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/45 p-4">
+      <div className="w-full max-w-[900px] overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-black/10 px-8 py-7">
+          <h3 className="text-[18px] font-medium text-black">
+            {initialName || initialEmail || initialPhone ? "Edit Emergency Contact" : "Add Emergency Contact"}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-8 w-8 place-items-center rounded-lg text-black/45 hover:bg-black/[0.03]"
+            aria-label="Close"
+          >
+            <Icon name="x" className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="grid gap-9 px-8 py-9">
+          <label className="grid gap-2.5">
+            <span className="text-[13px] font-medium text-black/85">Name</span>
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              className="min-h-12 rounded-md border border-black/15 px-4 text-[15px] outline-none"
+            />
+          </label>
+
+          <label className="grid gap-2.5">
+            <span className="text-[13px] font-medium text-black/85">Email</span>
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              className="min-h-12 rounded-md border border-black/15 px-4 text-[15px] outline-none"
+            />
+          </label>
+
+          <label className="grid gap-2.5">
+            <span className="text-[13px] font-medium text-black/85">Phone</span>
+            <input
+              value={phone}
+              onChange={(event) => setPhone(formatUsPhoneInput(event.target.value))}
+              inputMode="numeric"
+              maxLength={14}
+              className="min-h-12 rounded-md border border-black/15 px-4 text-[15px] outline-none"
+            />
+          </label>
+        </div>
+
+        <div className="flex items-center justify-end gap-6 border-t border-black/10 px-8 py-5">
+          <button type="button" onClick={onClose} className="text-[15px] font-medium text-black/65">
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={!canSave}
+            onClick={() =>
+              onSave({
+                name: name.trim(),
+                email: email.trim(),
+                phone: phone.trim(),
+              })
+            }
+            className="rounded-md bg-black px-6 py-3 text-[15px] font-medium text-white disabled:bg-black/10 disabled:text-black/30"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CustomerDetailView({
   customer,
-  onEdit,
   onSaveCustomer,
 }: {
   customer: Customer | null;
-  onEdit: (id: string) => void;
   onSaveCustomer: (item: Customer) => void;
 }) {
   const [showFamilyModal, setShowFamilyModal] = useState(false);
+  const [showEmergencyContactModal, setShowEmergencyContactModal] = useState(false);
   const [editingFamilyMember, setEditingFamilyMember] = useState<FamilyMember | null>(null);
   const [profilePhone, setProfilePhone] = useState(formatUsPhoneInput(customer?.phone ?? ""));
   const [emergencyDeleted, setEmergencyDeleted] = useState(false);
@@ -2814,6 +2904,17 @@ function CustomerDetailView({
       emergencyContactPhone: "",
     });
     setEmergencyDeleted(false);
+  }
+
+  function saveEmergencyContactValues(contact: { name: string; email: string; phone: string }) {
+    onSaveCustomer({
+      ...currentCustomer,
+      emergencyContactName: contact.name,
+      emergencyContactEmail: contact.email,
+      emergencyContactPhone: contact.phone,
+    });
+    setEmergencyDeleted(false);
+    setShowEmergencyContactModal(false);
   }
 
   function saveFamilyMembers(nextFamilyMembers: FamilyMember[]) {
@@ -2977,7 +3078,11 @@ function CustomerDetailView({
             title="Emergency Contact"
             action={
               !hasEmergencyContact ? (
-                <button type="button" onClick={() => onEdit(customer.id)} className="text-2xl leading-none text-black/45">
+                <button
+                  type="button"
+                  onClick={() => setShowEmergencyContactModal(true)}
+                  className="text-2xl leading-none text-black/45"
+                >
                   +
                 </button>
               ) : undefined
@@ -2992,7 +3097,11 @@ function CustomerDetailView({
                   </div>
                 </div>
                 <div className="flex gap-3 text-black/45">
-                  <HoverIconButton icon="edit" label="Edit Contact" onClick={() => onEdit(customer.id)} />
+                  <HoverIconButton
+                    icon="edit"
+                    label="Edit Contact"
+                    onClick={() => setShowEmergencyContactModal(true)}
+                  />
                   <HoverIconButton icon="trash" label="Delete" onClick={clearEmergencyContact} tone="danger" />
                 </div>
               </div>
@@ -3133,6 +3242,16 @@ function CustomerDetailView({
             setShowFamilyModal(false);
             setEditingFamilyMember(null);
           }}
+        />
+      ) : null}
+
+      {showEmergencyContactModal ? (
+        <EmergencyContactModal
+          initialName={customer.emergencyContactName}
+          initialEmail={customer.emergencyContactEmail}
+          initialPhone={customer.emergencyContactPhone}
+          onClose={() => setShowEmergencyContactModal(false)}
+          onSave={saveEmergencyContactValues}
         />
       ) : null}
     </section>
