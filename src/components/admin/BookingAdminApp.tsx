@@ -2156,7 +2156,7 @@ function ServicesView({
       </div>
 
       <div className="mt-5 overflow-hidden rounded-lg border border-black/10 bg-white">
-        <div className="grid grid-cols-[minmax(0,1.6fr)_180px_240px_76px] gap-4 bg-[#f5f6f8] px-5 py-5 text-[14px] font-semibold text-black">
+        <div className="hidden grid-cols-[minmax(0,1.6fr)_180px_240px_76px] gap-4 bg-[#f5f6f8] px-5 py-5 text-[14px] font-semibold text-black md:grid">
           <div>Name</div>
           <div>Visibility</div>
           <div>Rooms</div>
@@ -2171,13 +2171,14 @@ function ServicesView({
             return (
               <div
                 key={service.id}
-                className="grid grid-cols-[minmax(0,1.6fr)_180px_240px_76px] gap-4 border-t border-black/10 px-5 py-8"
+                className="grid gap-4 border-t border-black/10 px-5 py-6 md:grid-cols-[minmax(0,1.6fr)_180px_240px_76px] md:py-8"
               >
-                <button type="button" onClick={() => onEdit(service.id)} className="text-left text-[17px] font-medium text-black">
+                <button type="button" onClick={() => onEdit(service.id)} className="break-words text-left text-[17px] font-medium leading-6 text-black">
                   {service.name}
                 </button>
 
-                <div>
+                <div className="grid gap-1.5 md:block">
+                  <div className="text-[12px] font-semibold uppercase text-black/45 md:hidden">Visibility</div>
                   <span
                     className={[
                       "inline-flex rounded-full px-3.5 py-1.5 text-[13px] font-medium",
@@ -2188,15 +2189,22 @@ function ServicesView({
                   </span>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
-                  {rooms.map((room) => (
-                    <span key={room} className="inline-flex rounded-full bg-[#f1efef] px-3.5 py-1.5 text-[13px] font-medium text-black">
-                      {room}
-                    </span>
-                  ))}
+                <div className="grid gap-1.5 md:block">
+                  <div className="text-[12px] font-semibold uppercase text-black/45 md:hidden">Rooms</div>
+                  <div className="flex flex-wrap gap-2">
+                    {rooms.length ? (
+                      rooms.map((room) => (
+                        <span key={room} className="inline-flex rounded-full bg-[#f1efef] px-3.5 py-1.5 text-[13px] font-medium text-black">
+                          {room}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-[13px] text-black/40">No rooms</span>
+                    )}
+                  </div>
                 </div>
 
-                <div className="flex flex-col items-end gap-2">
+                <div className="hidden flex-col items-end gap-2 md:flex">
                   <button
                     type="button"
                     disabled={index === 0}
