@@ -1373,6 +1373,25 @@ export default function BookingAdminApp({
     }
   }
 
+  async function saveCustomerDetail(item: Customer, message: string) {
+    const next = { ...state, customers: upsert(state.customers, item) };
+
+    if (dataSource === "local") {
+      saveLocal(next, message);
+      return;
+    }
+
+    setState(next);
+
+    try {
+      await upsertModalChange({ type: "customer", item }, resourceIdsByName);
+      showToast(message);
+    } catch (error) {
+      console.error(error);
+      showToast("That change could not be saved.");
+    }
+  }
+
   async function deleteService(id: string) {
     const next = { ...state, services: state.services.filter((service) => service.id !== id) };
 
@@ -1583,8 +1602,15 @@ export default function BookingAdminApp({
           {view === "customers" ? (
             selectedCustomerId ? (
               <CustomerDetailView
+                key={[
+                  selectedCustomer?.id ?? "none",
+                  selectedCustomer?.emergencyContactName ?? "",
+                  selectedCustomer?.emergencyContactEmail ?? "",
+                  selectedCustomer?.emergencyContactPhone ?? "",
+                ].join(":")}
                 customer={selectedCustomer}
                 onEdit={(id) => setModal({ type: "customer", id })}
+                onSaveCustomer={(item) => void saveCustomerDetail(item, "Emergency contact saved.")}
               />
             ) : (
               <CustomersView
@@ -2668,13 +2694,16 @@ function FamilyMemberModal({
 function CustomerDetailView({
   customer,
   onEdit,
+  onSaveCustomer,
 }: {
   customer: Customer | null;
   onEdit: (id: string) => void;
+  onSaveCustomer: (item: Customer) => void;
 }) {
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
   const [showFamilyModal, setShowFamilyModal] = useState(false);
   const [profilePhone, setProfilePhone] = useState(customer?.phone ?? "");
+  const [emergencyDeleted, setEmergencyDeleted] = useState(false);
 
   if (!customer) {
     return (
@@ -2686,11 +2715,31 @@ function CustomerDetailView({
     );
   }
 
+  const currentCustomer: Customer = customer;
   const { first, last } = splitName(customer.name);
   const joinedLabel = customerJoinedLabel(customer.createdAt);
   const initials = customerInitials(customer);
   const birthDate = customerBirthDate(customer);
   const age = calculateAge(customer.birthYear, customer.birthMonth, customer.birthDay);
+  const hasEmergencyContact = !emergencyDeleted && Boolean(
+    customer.emergencyContactName.trim() ||
+    customer.emergencyContactEmail.trim() ||
+    customer.emergencyContactPhone.trim()
+  );
+
+  function clearEmergencyContact() {
+    setEmergencyDeleted(true);
+  }
+
+  function saveEmergencyContact() {
+    onSaveCustomer({
+      ...currentCustomer,
+      emergencyContactName: "",
+      emergencyContactEmail: "",
+      emergencyContactPhone: "",
+    });
+    setEmergencyDeleted(false);
+  }
 
   return (
     <section className="min-h-screen px-5 py-6">
@@ -2838,14 +2887,14 @@ function CustomerDetailView({
           <DetailPanel
             title="Emergency Contact"
             action={
-              !customer.emergencyContactName ? (
-                <button type="button" className="text-2xl leading-none text-black/45">
+              !hasEmergencyContact ? (
+                <button type="button" onClick={() => onEdit(customer.id)} className="text-2xl leading-none text-black/45">
                   +
                 </button>
               ) : undefined
             }
           >
-            {customer.emergencyContactName ? (
+            {hasEmergencyContact ? (
               <div className="flex items-center justify-between gap-4 p-4">
                 <div>
                   <div className="text-[14px] font-medium text-black">{customer.emergencyContactName}</div>
@@ -2855,11 +2904,25 @@ function CustomerDetailView({
                 </div>
                 <div className="flex gap-3 text-black/45">
                   <button type="button" onClick={() => onEdit(customer.id)}><Icon name="edit" className="h-4 w-4" /></button>
-                  <button type="button"><Icon name="trash" className="h-4 w-4" /></button>
+                  <button type="button" onClick={clearEmergencyContact}><Icon name="trash" className="h-4 w-4" /></button>
                 </div>
               </div>
             ) : (
-              <div className="p-4 text-sm text-black/45">No emergency contact yet.</div>
+              <>
+                <div className="px-4 py-10 text-center text-[14px] text-black/45">No emergency contact added.</div>
+                {emergencyDeleted ? (
+                  <div className="flex items-center justify-end gap-6 border-t border-black/10 bg-black/[0.02] px-4 py-3">
+                    <span className="text-[14px] font-medium text-[#d4571d]">Changes made</span>
+                    <button
+                      type="button"
+                      onClick={saveEmergencyContact}
+                      className="inline-flex min-h-10 items-center rounded-lg bg-black px-6 text-[14px] font-semibold text-white"
+                    >
+                      Save
+                    </button>
+                  </div>
+                ) : null}
+              </>
             )}
           </DetailPanel>
 
