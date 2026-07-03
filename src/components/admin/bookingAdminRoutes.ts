@@ -4,6 +4,7 @@ export type BookingAdminView =
   | "calendar"
   | "availability"
   | "customers"
+  | "more"
   | "marketing"
   | "retail"
   | "reports"
@@ -19,10 +20,11 @@ export const bookingAdminRouteByView: Record<BookingAdminView, string> = {
   calendar: "/admin/calendar",
   availability: "/admin/availability",
   customers: "/admin/customers",
+  more: "/admin/more",
   marketing: "/admin/marketing",
   retail: "/admin/retail",
   reports: "/admin/reports",
-  settings: "/admin/more",
+  settings: "/admin/settings",
   "settings-basics": "/admin/settings/basics",
   "settings-rooms": "/admin/settings/rooms",
   "settings-rooms-add": "/admin/settings/rooms/add",
@@ -38,6 +40,7 @@ export function bookingAdminViewFromSection(
     case "calendar":
     case "availability":
     case "customers":
+    case "more":
     case "marketing":
     case "retail":
     case "reports":

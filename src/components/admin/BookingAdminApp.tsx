@@ -2120,7 +2120,7 @@ export default function BookingAdminApp({
   );
 
   const dayBookings = state.bookings.filter((booking) => booking.date === activeDate);
-  const activeMainView = view.startsWith("settings") ? "settings" : view;
+  const activeMainView = view === "more" || view.startsWith("settings") ? "settings" : view;
   const isSettingsView = activeMainView === "settings";
   const searchParamsKey = searchParams.toString();
   const isPreviewEmbed = searchParams.get("preview-embed") === "1";
@@ -2491,11 +2491,12 @@ export default function BookingAdminApp({
               <section className="min-h-screen px-6 py-8 text-[16px] text-black/60">Loading room...</section>
             )
           ) : null}
-          {!isRoomEditPage && (view === "settings" || view === "settings-basics" || view === "settings-rooms" || view === "settings-policies") ? (
+          {!isRoomEditPage && (view === "more" || view === "settings" || view === "settings-basics" || view === "settings-rooms" || view === "settings-policies") ? (
             <SettingsView
               backHref={backToAppHref}
               section={view === "settings-policies" ? "policies" : view === "settings-rooms" ? "rooms" : "basics"}
-              showMobileMenu={view === "settings"}
+              showMobileMenu={view === "more"}
+              showMobileSettingsIndex={view === "settings"}
               state={state}
               showToast={showToast}
               onSave={(next) => void saveSettings(next)}
@@ -2599,7 +2600,7 @@ function MobileBottomNav({ activeView }: { activeView: BookingAdminView }) {
     { key: "calendar", label: "Calendar", icon: "calendar", href: bookingAdminRouteByView.calendar },
     { key: "availability", label: "Availability", icon: "clock", href: bookingAdminRouteByView.availability },
     { key: "customers", label: "Customers", icon: "user", href: bookingAdminRouteByView.customers },
-    { key: "settings", label: "More", icon: "bar", href: bookingAdminRouteByView.settings },
+    { key: "settings", label: "More", icon: "bar", href: bookingAdminRouteByView.more },
   ];
 
   return (
@@ -5157,6 +5158,7 @@ function SettingsView({
   backHref,
   section,
   showMobileMenu = false,
+  showMobileSettingsIndex = false,
   state,
   showToast,
   onSave,
@@ -5165,6 +5167,7 @@ function SettingsView({
   backHref: string;
   section: SettingsSection;
   showMobileMenu?: boolean;
+  showMobileSettingsIndex?: boolean;
   state: AppState;
   showToast: (message: string) => void;
   onSave: (next: AppState) => void;
@@ -5270,14 +5273,14 @@ function SettingsView({
     { label: "Marketing", icon: "send", href: bookingAdminRouteByView.marketing },
     { label: "Retail", icon: "bag", href: bookingAdminRouteByView.retail },
     { label: "Reports", icon: "bar", href: bookingAdminRouteByView.reports },
-    { label: "Settings", icon: "gear", href: bookingAdminRouteByView["settings-basics"] },
+    { label: "Settings", icon: "gear", href: bookingAdminRouteByView.settings },
     { label: "Help Center", icon: "help", action: () => showToast("Help Center is ready for the next pass.") },
     { label: "Contact Us", icon: "message", action: () => showToast("Contact Us is ready for the next pass.") },
   ];
 
   return (
     <section className="min-h-screen bg-white">
-      <div className={`px-5 py-4 xl:hidden ${showMobileMenu ? "hidden" : ""}`}>
+      <div className={`px-5 py-4 xl:hidden ${showMobileMenu || showMobileSettingsIndex ? "hidden" : ""}`}>
         <Link href={backHref} className="inline-flex items-center gap-2 text-[15px] font-medium text-black">
           <Icon name="arrow-left" className="h-4 w-4" />
           {sectionTitle}
@@ -5767,6 +5770,54 @@ function SettingsView({
                 </button>
               )
             )}
+          </div>
+        ) : showMobileSettingsIndex ? (
+          <div className="pt-2">
+            <div className="px-1 text-[26px] font-medium text-black">Settings</div>
+            <div className="mt-10 space-y-9 px-1">
+              {settingsNavGroups.map((group) => (
+                <div key={group.title}>
+                  <div className="text-[14px] font-semibold uppercase tracking-[0.04em] text-black/55">
+                    {group.title}
+                  </div>
+                  <div className="mt-4 border-b border-black/10">
+                    {group.items.map((item) => {
+                      const rowClassName =
+                        "flex min-h-[72px] items-center justify-between gap-4 text-left text-black";
+
+                      const content = (
+                        <>
+                          <div className="flex items-center gap-6">
+                            <Icon name={item.icon} className="h-5 w-5 text-black/50" />
+                            <span className="text-[18px] font-medium text-black">{item.label}</span>
+                          </div>
+                          <Icon name="chevron" className="h-5 w-5 rotate-180 text-black/35" />
+                        </>
+                      );
+
+                      if (item.href) {
+                        return (
+                          <Link key={item.label} href={item.href} className={rowClassName}>
+                            {content}
+                          </Link>
+                        );
+                      }
+
+                      return (
+                        <button
+                          key={item.label}
+                          type="button"
+                          onClick={() => showToast(`${item.label} is next in the Settings build-out.`)}
+                          className={`${rowClassName} w-full`}
+                        >
+                          {content}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         ) : (
         <div className="overflow-hidden rounded-[10px] border border-black/12 bg-white shadow-sm">
