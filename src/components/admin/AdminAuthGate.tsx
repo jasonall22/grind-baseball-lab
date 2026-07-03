@@ -23,7 +23,8 @@ function isBookingAdminPath(pathname: string) {
     pathname === "/admin/marketing" ||
     pathname === "/admin/retail" ||
     pathname === "/admin/reports" ||
-    pathname === "/admin/settings"
+    pathname === "/admin/settings" ||
+    pathname === "/admin/more"
   );
 }
 

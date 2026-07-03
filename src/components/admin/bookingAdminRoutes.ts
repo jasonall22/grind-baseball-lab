@@ -22,7 +22,7 @@ export const bookingAdminRouteByView: Record<BookingAdminView, string> = {
   marketing: "/admin/marketing",
   retail: "/admin/retail",
   reports: "/admin/reports",
-  settings: "/admin/settings",
+  settings: "/admin/more",
   "settings-basics": "/admin/settings/basics",
   "settings-rooms": "/admin/settings/rooms",
   "settings-rooms-add": "/admin/settings/rooms/add",
