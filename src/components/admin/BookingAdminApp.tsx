@@ -2574,7 +2574,7 @@ function AdminBrandLogo({ size = "desktop" }: { size?: "desktop" | "mobile" }) {
 
 function MobileAdminHeader() {
   return (
-    <header className="sticky top-0 z-30 flex h-[84px] items-center justify-between border-b border-black/15 bg-[#f7f7f7] px-7 shadow-[0_1px_4px_rgba(0,0,0,0.18)] xl:hidden">
+    <header className="sticky top-0 z-30 flex h-[84px] items-center justify-between border-b border-white/10 bg-black px-7 shadow-[0_1px_4px_rgba(0,0,0,0.28)] xl:hidden">
       <AdminBrandLogo size="mobile" />
       <div className="grid h-12 w-12 place-items-center rounded-full bg-black/20 text-white">
         <Icon name="user" className="h-7 w-7" />
