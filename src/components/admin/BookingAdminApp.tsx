@@ -5738,7 +5738,7 @@ function SettingsView({
 
       <div className="px-5 pb-6 xl:hidden">
         {showMobileMenu ? (
-          <div className="space-y-3 pt-1">
+          <div className="space-y-3 pt-4">
             {mobileMoreItems.map((item) =>
               item.href ? (
                 <Link
