@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -303,6 +303,17 @@ type RoomEditorDraft = {
   name: string;
   schedule: string;
   parentRoom: string;
+};
+
+type PreviewDevice = "mobile" | "tablet" | "desktop";
+
+const previewDevicePresets: Record<
+  PreviewDevice,
+  { label: string; width: number; height: number }
+> = {
+  mobile: { label: "Mobile", width: 430, height: 932 },
+  tablet: { label: "Tablet", width: 820, height: 1180 },
+  desktop: { label: "Desktop", width: 1280, height: 900 },
 };
 
 const navItems: { key: BookingAdminView; label: string; icon: IconName }[] = [
@@ -1482,12 +1493,14 @@ export default function BookingAdminApp({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [state, setState] = useState<AppState>(loadInitialState);
   const [activeDate, setActiveDate] = useState("2026-07-01");
   const [modal, setModal] = useState<ModalState>(null);
   const [toast, setToast] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
   const [serviceSection, setServiceSection] = useState<ServiceSection>("rentals");
+  const [previewDevice, setPreviewDevice] = useState<PreviewDevice | null>(null);
   const [dataSource, setDataSource] = useState<"local" | "supabase">("local");
   const [isRemoteLoading, setIsRemoteLoading] = useState(hasSupabaseEnv);
   const [resourceIdsByName, setResourceIdsByName] = useState<Record<string, string>>({});
@@ -2106,6 +2119,16 @@ export default function BookingAdminApp({
   const dayBookings = state.bookings.filter((booking) => booking.date === activeDate);
   const activeMainView = view.startsWith("settings") ? "settings" : view;
   const isSettingsView = activeMainView === "settings";
+  const searchParamsKey = searchParams.toString();
+  const isPreviewEmbed = searchParams.get("preview-embed") === "1";
+  const previewHref = useMemo(() => {
+    if (!previewDevice || typeof window === "undefined") return null;
+
+    const url = new URL(window.location.href);
+    url.searchParams.set("preview-embed", "1");
+    url.searchParams.set("preview-device", previewDevice);
+    return url.toString();
+  }, [previewDevice, pathname, searchParamsKey]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2120,6 +2143,11 @@ export default function BookingAdminApp({
     const saved = window.localStorage.getItem(lastAppRouteKey);
     setBackToAppHref(saved || bookingAdminRouteByView.home);
   }, [isSettingsView, view]);
+
+  useEffect(() => {
+    if (!isPreviewEmbed) return;
+    setPreviewDevice(null);
+  }, [isPreviewEmbed]);
 
   return (
     <div className="min-h-screen bg-white text-black">
@@ -2500,6 +2528,14 @@ export default function BookingAdminApp({
       ) : null}
 
       <MobileBottomNav activeView={activeMainView} />
+      {!isPreviewEmbed ? (
+        <AdminViewportPreview
+          previewDevice={previewDevice}
+          previewHref={previewHref}
+          onSelect={setPreviewDevice}
+          onClose={() => setPreviewDevice(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -2563,6 +2599,105 @@ function MobileBottomNav({ activeView }: { activeView: BookingAdminView }) {
         );
       })}
     </nav>
+  );
+}
+
+function AdminViewportPreview({
+  previewDevice,
+  previewHref,
+  onSelect,
+  onClose,
+}: {
+  previewDevice: PreviewDevice | null;
+  previewHref: string | null;
+  onSelect: (device: PreviewDevice | null) => void;
+  onClose: () => void;
+}) {
+  const devices: PreviewDevice[] = ["mobile", "tablet", "desktop"];
+
+  return (
+    <>
+      <div className="fixed bottom-24 right-4 z-40 hidden items-center gap-2 rounded-full border border-black/10 bg-white/95 px-3 py-2 shadow-[0_12px_28px_rgba(0,0,0,0.12)] backdrop-blur md:flex">
+        <span className="pr-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-black/45">
+          Preview
+        </span>
+        <button
+          type="button"
+          onClick={() => onSelect(null)}
+          className={[
+            "rounded-full px-3 py-1.5 text-sm font-medium transition",
+            previewDevice === null ? "bg-black text-white" : "text-black/65 hover:bg-black/5",
+          ].join(" ")}
+        >
+          Auto
+        </button>
+        {devices.map((device) => (
+          <button
+            key={device}
+            type="button"
+            onClick={() => onSelect(device)}
+            className={[
+              "rounded-full px-3 py-1.5 text-sm font-medium transition",
+              previewDevice === device ? "bg-black text-white" : "text-black/65 hover:bg-black/5",
+            ].join(" ")}
+          >
+            {previewDevicePresets[device].label}
+          </button>
+        ))}
+      </div>
+
+      {previewDevice && previewHref ? (
+        <div className="fixed inset-0 z-[80] bg-black/40 backdrop-blur-[2px]">
+          <div className="flex h-full flex-col">
+            <div className="flex items-center justify-between gap-3 px-4 py-3 md:px-6">
+              <div className="rounded-full border border-white/20 bg-black/55 px-4 py-2 text-sm font-medium text-white">
+                {previewDevicePresets[previewDevice].label} preview · {previewDevicePresets[previewDevice].width} x{" "}
+                {previewDevicePresets[previewDevice].height}
+              </div>
+
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {devices.map((device) => (
+                  <button
+                    key={device}
+                    type="button"
+                    onClick={() => onSelect(device)}
+                    className={[
+                      "rounded-full border px-3 py-1.5 text-sm font-medium transition",
+                      previewDevice === device
+                        ? "border-white/50 bg-white text-black"
+                        : "border-white/20 bg-black/40 text-white hover:bg-black/55",
+                    ].join(" ")}
+                  >
+                    {previewDevicePresets[device].label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-full border border-white/20 bg-black/40 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-black/55"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-auto px-4 pb-6 md:px-6">
+              <div className="mx-auto w-fit rounded-[28px] border border-black/15 bg-[#dfe4eb] p-3 shadow-[0_24px_48px_rgba(0,0,0,0.26)]">
+                <iframe
+                  title={`${previewDevicePresets[previewDevice].label} admin preview`}
+                  src={previewHref}
+                  className="block rounded-[18px] border border-black/10 bg-white"
+                  style={{
+                    width: previewDevicePresets[previewDevice].width,
+                    height: previewDevicePresets[previewDevice].height,
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
 
