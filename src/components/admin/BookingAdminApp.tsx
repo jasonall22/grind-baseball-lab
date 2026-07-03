@@ -2154,7 +2154,7 @@ export default function BookingAdminApp({
 
   return (
     <div className="min-h-screen bg-white text-black">
-      <MobileAdminHeader />
+      <MobileAdminHeader variant={isSettingsView ? "light" : "dark"} />
       <div
         className={[
           "grid min-h-screen grid-cols-1 bg-white",
@@ -2573,9 +2573,18 @@ function AdminBrandLogo({ size = "desktop" }: { size?: "desktop" | "mobile" }) {
   );
 }
 
-function MobileAdminHeader() {
+function MobileAdminHeader({ variant = "dark" }: { variant?: "dark" | "light" }) {
+  const isLight = variant === "light";
+
   return (
-    <header className="sticky top-0 z-30 flex h-[84px] items-center justify-between border-b border-white/10 bg-black px-7 shadow-[0_1px_4px_rgba(0,0,0,0.28)] xl:hidden">
+    <header
+      className={[
+        "sticky top-0 z-30 flex h-[84px] items-center justify-between px-7 xl:hidden",
+        isLight
+          ? "border-b border-black/10 bg-white shadow-[0_1px_4px_rgba(0,0,0,0.16)]"
+          : "border-b border-white/10 bg-black shadow-[0_1px_4px_rgba(0,0,0,0.28)]",
+      ].join(" ")}
+    >
       <AdminBrandLogo size="mobile" />
       <div className="grid h-12 w-12 place-items-center rounded-full bg-black/20 text-white">
         <Icon name="user" className="h-7 w-7" />
@@ -5729,13 +5738,13 @@ function SettingsView({
 
       <div className="px-5 pb-6 xl:hidden">
         {showMobileMenu ? (
-          <div className="space-y-3">
+          <div className="space-y-3 pt-1">
             {mobileMoreItems.map((item) =>
               item.href ? (
                 <Link
                   key={item.label}
                   href={item.href}
-                  className="flex min-h-[74px] items-center justify-between rounded-[14px] border border-black/12 bg-white px-6 shadow-[0_1px_2px_rgba(0,0,0,0.03)]"
+                  className="flex min-h-[78px] items-center justify-between rounded-[16px] border border-black/12 bg-white px-5 shadow-[0_1px_2px_rgba(0,0,0,0.03)]"
                 >
                   <div className="flex items-center gap-5">
                     <Icon name={item.icon} className="h-5 w-5 text-black" />
@@ -5748,7 +5757,7 @@ function SettingsView({
                   key={item.label}
                   type="button"
                   onClick={item.action}
-                  className="flex min-h-[74px] w-full items-center justify-between rounded-[14px] border border-black/12 bg-white px-6 text-left shadow-[0_1px_2px_rgba(0,0,0,0.03)]"
+                  className="flex min-h-[78px] w-full items-center justify-between rounded-[16px] border border-black/12 bg-white px-5 text-left shadow-[0_1px_2px_rgba(0,0,0,0.03)]"
                 >
                   <div className="flex items-center gap-5">
                     <Icon name={item.icon} className="h-5 w-5 text-black" />
