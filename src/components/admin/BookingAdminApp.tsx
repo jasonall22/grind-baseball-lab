@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -2164,10 +2165,7 @@ export default function BookingAdminApp({
         {!isSettingsView ? (
           <aside className="hidden bg-[#f5f5f5] p-3 xl:flex xl:min-h-screen xl:flex-col xl:px-6 xl:py-6">
             <div className="hidden items-center justify-between xl:flex">
-              <div className="flex items-center gap-2 text-2xl font-extrabold">
-                <span className="block h-6 w-4 -skew-x-12 rounded-sm bg-black" />
-                Swift
-              </div>
+              <AdminBrandLogo size="desktop" />
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-black/20 text-white">
                 <Icon name="user" className="h-5 w-5" />
               </div>
@@ -2559,13 +2557,25 @@ function HomeView({ facilityName }: { facilityName: string }) {
   );
 }
 
+function AdminBrandLogo({ size = "desktop" }: { size?: "desktop" | "mobile" }) {
+  return (
+    <div className={size === "mobile" ? "w-[146px]" : "w-[126px]"}>
+      <Image
+        src="/logo.png"
+        alt="The Grind Baseball Lab"
+        width={305}
+        height={119}
+        priority
+        className="h-auto w-full object-contain"
+      />
+    </div>
+  );
+}
+
 function MobileAdminHeader() {
   return (
     <header className="sticky top-0 z-30 flex h-[84px] items-center justify-between border-b border-black/15 bg-[#f7f7f7] px-7 shadow-[0_1px_4px_rgba(0,0,0,0.18)] xl:hidden">
-      <div className="flex items-center gap-2 text-[26px] font-extrabold">
-        <span className="block h-6 w-4 -skew-x-12 rounded-sm bg-black" />
-        Swift
-      </div>
+      <AdminBrandLogo size="mobile" />
       <div className="grid h-12 w-12 place-items-center rounded-full bg-black/20 text-white">
         <Icon name="user" className="h-7 w-7" />
       </div>
