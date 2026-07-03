@@ -2127,13 +2127,13 @@ export default function BookingAdminApp({
       <div
         className={[
           "grid min-h-screen grid-cols-1 bg-white",
-          "pb-[76px] md:pb-0",
-          isSettingsView ? "" : "md:grid-cols-[284px_minmax(0,1fr)]",
+          "pb-[76px] xl:pb-0",
+          isSettingsView ? "" : "xl:grid-cols-[284px_minmax(0,1fr)]",
         ].join(" ")}
       >
         {!isSettingsView ? (
-          <aside className="hidden bg-[#f5f5f5] p-3 md:flex md:min-h-screen md:flex-col md:px-6 md:py-6">
-            <div className="hidden items-center justify-between md:flex">
+          <aside className="hidden bg-[#f5f5f5] p-3 xl:flex xl:min-h-screen xl:flex-col xl:px-6 xl:py-6">
+            <div className="hidden items-center justify-between xl:flex">
               <div className="flex items-center gap-2 text-2xl font-extrabold">
                 <span className="block h-6 w-4 -skew-x-12 rounded-sm bg-black" />
                 Swift
@@ -2143,23 +2143,23 @@ export default function BookingAdminApp({
               </div>
             </div>
 
-            <nav className="flex w-full gap-1 overflow-x-auto md:mt-8 md:grid md:overflow-visible">
+            <nav className="flex w-full gap-1 overflow-x-auto xl:mt-8 xl:grid xl:overflow-visible">
               {navItems.map((item) => (
-                <div key={item.key} className="shrink-0 md:w-full">
+                <div key={item.key} className="shrink-0 xl:w-full">
                   <Link
                     href={bookingAdminRouteByView[item.key]}
                     title={item.label}
                     className={[
-                      "flex h-10 items-center gap-3 rounded-lg px-3 text-left text-lg transition md:w-full",
+                      "flex h-10 items-center gap-3 rounded-lg px-3 text-left text-lg transition xl:w-full",
                       activeMainView === item.key ? "bg-[#eeeeee] font-bold" : "hover:bg-black/5",
                     ].join(" ")}
                   >
                     <Icon name={item.icon} />
-                    <span className="hidden md:inline">{item.label}</span>
+                    <span className="hidden xl:inline">{item.label}</span>
                   </Link>
 
                   {item.key === "services" && activeMainView === "services" ? (
-                    <div className="mt-1 hidden space-y-1 pl-5 pr-2 md:block">
+                    <div className="mt-1 hidden space-y-1 pl-5 pr-2 xl:block">
                       {serviceSectionItems.map((sectionItem) => (
                         sectionItem.key === "rentals" ? (
                         <Link
@@ -2197,7 +2197,7 @@ export default function BookingAdminApp({
               ))}
             </nav>
 
-            <div className="mt-auto hidden space-y-1 md:block">
+            <div className="mt-auto hidden space-y-1 xl:block">
               {[
                 ["message", "Contact Us"],
                 ["help", "Help Center"],
@@ -2523,7 +2523,7 @@ function HomeView({ facilityName }: { facilityName: string }) {
 
 function MobileAdminHeader() {
   return (
-    <header className="sticky top-0 z-30 flex h-[84px] items-center justify-between border-b border-black/15 bg-[#f7f7f7] px-7 shadow-[0_1px_4px_rgba(0,0,0,0.18)] md:hidden">
+    <header className="sticky top-0 z-30 flex h-[84px] items-center justify-between border-b border-black/15 bg-[#f7f7f7] px-7 shadow-[0_1px_4px_rgba(0,0,0,0.18)] xl:hidden">
       <div className="flex items-center gap-2 text-[26px] font-extrabold">
         <span className="block h-6 w-4 -skew-x-12 rounded-sm bg-black" />
         Swift
@@ -2545,7 +2545,7 @@ function MobileBottomNav({ activeView }: { activeView: BookingAdminView }) {
   ];
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 grid h-[76px] grid-cols-5 border-t border-black/10 bg-white/95 px-1 shadow-[0_-2px_12px_rgba(0,0,0,0.08)] backdrop-blur md:hidden">
+    <nav className="fixed inset-x-0 bottom-0 z-40 grid h-[76px] grid-cols-5 border-t border-black/10 bg-white/95 px-1 shadow-[0_-2px_12px_rgba(0,0,0,0.08)] backdrop-blur xl:hidden">
       {items.map((item) => {
         const active = activeView === item.key;
         return (
@@ -2734,8 +2734,8 @@ function ServicesView({
   const currentCopy = sectionCopy[activeSection];
 
   return (
-    <section className="min-h-screen px-[22px] py-6 md:px-6 md:py-8">
-      <div className="-mx-[22px] -mt-6 mb-7 flex h-16 items-center border-b border-black/15 bg-white px-4 md:hidden">
+    <section className="min-h-screen px-[22px] py-6 xl:px-6 xl:py-8">
+      <div className="-mx-[22px] -mt-6 mb-7 flex h-16 items-center border-b border-black/15 bg-white px-4 xl:hidden">
         <button type="button" className="grid h-10 w-8 shrink-0 place-items-center text-black/35" aria-label="Previous service type">
           <Icon name="chevron" className="h-4 w-4 rotate-180" />
         </button>
@@ -2800,92 +2800,98 @@ function ServicesView({
         </label>
       </div>
 
-      <div className="mt-5 overflow-hidden rounded-lg border border-black/10 bg-white">
-        <div className="grid grid-cols-[minmax(0,1fr)_92px_minmax(82px,1fr)_46px] gap-2 bg-[#f5f6f8] px-3 py-5 text-[15px] font-semibold text-black md:grid-cols-[minmax(0,1.6fr)_180px_240px_76px] md:gap-4 md:px-5 md:text-[14px]">
-          <div>Name</div>
-          <div>Visibility</div>
-          <div>Rooms</div>
-          <div />
-        </div>
+      <div className="mt-5 overflow-x-auto rounded-lg border border-black/10 bg-white">
+        <div className="min-w-[620px]">
+          <div className="grid grid-cols-[minmax(180px,1.5fr)_140px_minmax(170px,1fr)_56px] gap-3 bg-[#f5f6f8] px-4 py-5 text-[15px] font-semibold text-black xl:grid-cols-[minmax(0,1.6fr)_180px_240px_76px] xl:gap-4 xl:px-5 xl:text-[14px]">
+            <div>Name</div>
+            <div>Visibility</div>
+            <div>Rooms</div>
+            <div />
+          </div>
 
-        {filteredServices.length ? (
-          filteredServices.map((service, index) => {
-            const rooms = (service.rooms?.length ? service.rooms : [service.resource]).map((item) => item.trim()).filter(Boolean);
-            const visibility = service.status === "Active" ? "Everyone" : "Private";
+          {filteredServices.length ? (
+            filteredServices.map((service, index) => {
+              const rooms = (service.rooms?.length ? service.rooms : [service.resource]).map((item) => item.trim()).filter(Boolean);
+              const visibility = service.status === "Active" ? "Everyone" : "Private";
 
-            return (
-              <div
-                key={service.id}
-                className="grid grid-cols-[minmax(0,1fr)_92px_minmax(82px,1fr)_46px] items-center gap-2 border-t border-black/10 px-3 py-7 md:grid-cols-[minmax(0,1.6fr)_180px_240px_76px] md:items-start md:gap-4 md:px-5 md:py-8"
-              >
-                <button type="button" onClick={() => onEdit(service.id)} className="break-words text-left text-[16px] font-medium leading-6 text-black md:text-[17px]">
-                  {service.name}
-                </button>
-
-                <div>
-                  <span
-                    className={[
-                      "inline-flex rounded-full px-2.5 py-1.5 text-[13px] font-medium md:px-3.5",
-                      visibility === "Everyone" ? "bg-emerald-50 text-emerald-700" : "bg-[#f3f4f6] text-[#667085]",
-                    ].join(" ")}
+              return (
+                <div
+                  key={service.id}
+                  className="grid min-w-[620px] grid-cols-[minmax(180px,1.5fr)_140px_minmax(170px,1fr)_56px] items-start gap-3 border-t border-black/10 px-4 py-7 xl:grid-cols-[minmax(0,1.6fr)_180px_240px_76px] xl:gap-4 xl:px-5 xl:py-8"
+                >
+                  <button
+                    type="button"
+                    onClick={() => onEdit(service.id)}
+                    className="text-left text-[16px] font-medium leading-6 text-black xl:text-[17px]"
                   >
-                    {visibility}
-                  </span>
-                </div>
+                    <span className="block break-words">{service.name}</span>
+                  </button>
 
-                <div>
-                  <div className="flex flex-wrap gap-2">
-                    {rooms.length ? (
-                      rooms.map((room, roomIndex) => (
-                        <span
-                          key={room}
-                          className={[
-                            "rounded-full bg-[#f1efef] px-3.5 py-1.5 text-[13px] font-medium text-black",
-                            roomIndex > 1 ? "hidden md:inline-flex" : "inline-flex",
-                          ].join(" ")}
-                        >
-                          {room}
+                  <div className="min-w-0">
+                    <span
+                      className={[
+                        "inline-flex rounded-full px-2.5 py-1.5 text-[13px] font-medium xl:px-3.5",
+                        visibility === "Everyone" ? "bg-emerald-50 text-emerald-700" : "bg-[#f3f4f6] text-[#667085]",
+                      ].join(" ")}
+                    >
+                      {visibility}
+                    </span>
+                  </div>
+
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap gap-2">
+                      {rooms.length ? (
+                        rooms.map((room, roomIndex) => (
+                          <span
+                            key={room}
+                            className={[
+                              "rounded-full bg-[#f1efef] px-3.5 py-1.5 text-[13px] font-medium text-black",
+                              roomIndex > 1 ? "hidden xl:inline-flex" : "inline-flex",
+                            ].join(" ")}
+                          >
+                            {room}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-[13px] text-black/40">No rooms</span>
+                      )}
+                      {rooms.length > 2 ? (
+                        <span className="inline-flex rounded-full bg-[#f1efef] px-3.5 py-1.5 text-[13px] font-medium text-black xl:hidden">
+                          +{rooms.length - 2} more
                         </span>
-                      ))
-                    ) : (
-                      <span className="text-[13px] text-black/40">No rooms</span>
-                    )}
-                    {rooms.length > 2 ? (
-                      <span className="inline-flex rounded-full bg-[#f1efef] px-3.5 py-1.5 text-[13px] font-medium text-black md:hidden">
-                        +{rooms.length - 2} more
-                      </span>
-                    ) : null}
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col items-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onReorder(visibleServiceIds, service.id, "up")}
+                      disabled={index === 0}
+                      className="grid h-10 w-10 place-items-center rounded-lg border border-black/12 text-black/45 disabled:opacity-40"
+                      aria-label="Move service up"
+                    >
+                      <Icon name="chevron" className="h-[18px] w-[18px] -rotate-90" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onReorder(visibleServiceIds, service.id, "down")}
+                      disabled={index === filteredServices.length - 1}
+                      className="grid h-10 w-10 place-items-center rounded-lg border border-black/12 text-black/45 disabled:opacity-40"
+                      aria-label="Move service down"
+                    >
+                      <Icon name="chevron" className="h-[18px] w-[18px] rotate-90" />
+                    </button>
                   </div>
                 </div>
-
-                <div className="flex flex-col items-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => onReorder(visibleServiceIds, service.id, "up")}
-                    disabled={index === 0}
-                    className="grid h-10 w-10 place-items-center rounded-lg border border-black/12 text-black/45 disabled:opacity-40"
-                    aria-label="Move service up"
-                  >
-                    <Icon name="chevron" className="h-[18px] w-[18px] -rotate-90" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onReorder(visibleServiceIds, service.id, "down")}
-                    disabled={index === filteredServices.length - 1}
-                    className="grid h-10 w-10 place-items-center rounded-lg border border-black/12 text-black/45 disabled:opacity-40"
-                    aria-label="Move service down"
-                  >
-                    <Icon name="chevron" className="h-[18px] w-[18px] rotate-90" />
-                  </button>
-                </div>
-              </div>
-            );
-          })
-        ) : (
-          <div className="px-5 py-12 text-[14px] text-black/45">
-            No {activeSection} yet.
-          </div>
-        )}
+              );
+            })
+          ) : (
+            <div className="px-5 py-12 text-[14px] text-black/45">
+              No {activeSection} yet.
+            </div>
+          )}
+        </div>
       </div>
     </section>
   );
@@ -2978,8 +2984,8 @@ function RentalEditorView({
   }
 
   return (
-    <section className="min-h-screen px-5 py-5 md:px-6 md:py-6">
-      <div className="-mx-5 -mt-5 mb-7 flex h-16 items-center border-b border-black/15 bg-white px-4 md:hidden">
+    <section className="min-h-screen px-5 py-5 xl:px-6 xl:py-6">
+      <div className="-mx-5 -mt-5 mb-7 flex h-16 items-center border-b border-black/15 bg-white px-4 xl:hidden">
         <button type="button" className="grid h-10 w-8 shrink-0 place-items-center text-black/35" aria-label="Previous service type">
           <Icon name="chevron" className="h-4 w-4 rotate-180" />
         </button>
@@ -5076,14 +5082,14 @@ function SettingsView({
 
   return (
     <section className="min-h-screen bg-white">
-      <div className="px-5 py-4 md:hidden">
+      <div className="px-5 py-4 xl:hidden">
         <Link href={backHref} className="inline-flex items-center gap-2 text-[15px] font-medium text-black">
           <Icon name="arrow-left" className="h-4 w-4" />
           {sectionTitle}
         </Link>
       </div>
 
-      <div className="hidden min-h-screen md:grid md:grid-cols-[284px_minmax(0,1fr)]">
+      <div className="hidden min-h-screen xl:grid xl:grid-cols-[284px_minmax(0,1fr)]">
         <aside className="border-b border-black/10 bg-[#f7f7f7] px-4 py-5 lg:border-b-0 lg:border-r">
           <Link
             href={backHref}
@@ -5535,7 +5541,7 @@ function SettingsView({
         </div>
       </div>
 
-      <div className="px-5 pb-6 md:hidden">
+      <div className="px-5 pb-6 xl:hidden">
         <div className="overflow-hidden rounded-[10px] border border-black/12 bg-white shadow-sm">
           <div className="border-t-4 border-t-[#4866b0]" />
           {isBasics ? (
@@ -5869,14 +5875,14 @@ function RoomEditorView({
 
   return (
     <section className="min-h-screen bg-white">
-      <div className="px-5 py-4 md:hidden">
+      <div className="px-5 py-4 xl:hidden">
         <Link href="/admin/settings/rooms" className="inline-flex items-center gap-2 text-[15px] font-medium text-black">
           <Icon name="arrow-left" className="h-4 w-4" />
           {pageTitle}
         </Link>
       </div>
 
-      <div className="hidden min-h-screen md:grid md:grid-cols-[284px_minmax(0,1fr)]">
+      <div className="hidden min-h-screen xl:grid xl:grid-cols-[284px_minmax(0,1fr)]">
         <aside className="border-b border-black/10 bg-[#f7f7f7] px-4 py-5 lg:border-b-0 lg:border-r">
           <Link
             href={backHref}
@@ -6017,7 +6023,7 @@ function RoomEditorView({
         </div>
       </div>
 
-      <div className="px-5 pb-6 md:hidden">
+      <div className="px-5 pb-6 xl:hidden">
         <div className="mb-4 flex items-center gap-3 text-[14px] font-medium text-black/60">
           <Link href="/admin/settings/rooms" className="text-black/70 hover:text-black">Rooms</Link>
           <span>/</span>
