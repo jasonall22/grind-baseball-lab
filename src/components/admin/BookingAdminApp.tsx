@@ -2495,6 +2495,7 @@ export default function BookingAdminApp({
             <SettingsView
               backHref={backToAppHref}
               section={view === "settings-policies" ? "policies" : view === "settings-rooms" ? "rooms" : "basics"}
+              showMobileMenu={view === "settings"}
               state={state}
               showToast={showToast}
               onSave={(next) => void saveSettings(next)}
@@ -5146,6 +5147,7 @@ function MetricPanel({ title, rows }: { title: string; rows: [string, React.Reac
 function SettingsView({
   backHref,
   section,
+  showMobileMenu = false,
   state,
   showToast,
   onSave,
@@ -5153,6 +5155,7 @@ function SettingsView({
 }: {
   backHref: string;
   section: SettingsSection;
+  showMobileMenu?: boolean;
   state: AppState;
   showToast: (message: string) => void;
   onSave: (next: AppState) => void;
@@ -5249,10 +5252,23 @@ function SettingsView({
   const filteredRooms = draft.resources.filter((resource) =>
     resource.toLowerCase().includes(roomSearch.trim().toLowerCase())
   );
+  const mobileMoreItems: Array<{
+    label: string;
+    icon: IconName;
+    href?: string;
+    action?: () => void;
+  }> = [
+    { label: "Marketing", icon: "send", href: bookingAdminRouteByView.marketing },
+    { label: "Retail", icon: "bag", href: bookingAdminRouteByView.retail },
+    { label: "Reports", icon: "bar", href: bookingAdminRouteByView.reports },
+    { label: "Settings", icon: "gear", href: bookingAdminRouteByView["settings-basics"] },
+    { label: "Help Center", icon: "help", action: () => showToast("Help Center is ready for the next pass.") },
+    { label: "Contact Us", icon: "message", action: () => showToast("Contact Us is ready for the next pass.") },
+  ];
 
   return (
     <section className="min-h-screen bg-white">
-      <div className="px-5 py-4 xl:hidden">
+      <div className={`px-5 py-4 xl:hidden ${showMobileMenu ? "hidden" : ""}`}>
         <Link href={backHref} className="inline-flex items-center gap-2 text-[15px] font-medium text-black">
           <Icon name="arrow-left" className="h-4 w-4" />
           {sectionTitle}
@@ -5712,6 +5728,38 @@ function SettingsView({
       </div>
 
       <div className="px-5 pb-6 xl:hidden">
+        {showMobileMenu ? (
+          <div className="space-y-3">
+            {mobileMoreItems.map((item) =>
+              item.href ? (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  className="flex min-h-[74px] items-center justify-between rounded-[14px] border border-black/12 bg-white px-6 shadow-[0_1px_2px_rgba(0,0,0,0.03)]"
+                >
+                  <div className="flex items-center gap-5">
+                    <Icon name={item.icon} className="h-5 w-5 text-black" />
+                    <span className="text-[17px] font-medium text-black">{item.label}</span>
+                  </div>
+                  <Icon name="chevron" className="h-5 w-5 rotate-180 text-black" />
+                </Link>
+              ) : (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={item.action}
+                  className="flex min-h-[74px] w-full items-center justify-between rounded-[14px] border border-black/12 bg-white px-6 text-left shadow-[0_1px_2px_rgba(0,0,0,0.03)]"
+                >
+                  <div className="flex items-center gap-5">
+                    <Icon name={item.icon} className="h-5 w-5 text-black" />
+                    <span className="text-[17px] font-medium text-black">{item.label}</span>
+                  </div>
+                  <Icon name="chevron" className="h-5 w-5 rotate-180 text-black" />
+                </button>
+              )
+            )}
+          </div>
+        ) : (
         <div className="overflow-hidden rounded-[10px] border border-black/12 bg-white shadow-sm">
           <div className="border-t-4 border-t-[#4866b0]" />
           {isBasics ? (
@@ -6005,6 +6053,7 @@ function SettingsView({
             </div>
           ) : null}
         </div>
+        )}
       </div>
     </section>
   );
