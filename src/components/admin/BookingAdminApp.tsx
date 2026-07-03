@@ -316,6 +316,8 @@ const previewDevicePresets: Record<
   desktop: { label: "Desktop", width: 1280, height: 900 },
 };
 
+const rentalDurationOptions = Array.from({ length: 32 }, (_, index) => String((index + 1) * 15));
+
 const navItems: { key: BookingAdminView; label: string; icon: IconName }[] = [
   { key: "home", label: "Home", icon: "home" },
   { key: "services", label: "Services", icon: "link" },
@@ -3079,7 +3081,11 @@ function RentalEditorView({
   function updatePriceRow(targetId: string, key: "duration" | "price", value: string) {
     const groupKey = activePriceTab === "default" ? "defaultPricing" : "membershipPricing";
     patch({
-      [groupKey]: priceRows.map((row) => (row.id === targetId ? { ...row, [key]: value.replace(/[^\d.]/g, "") } : row)),
+      [groupKey]: priceRows.map((row) =>
+        row.id === targetId
+          ? { ...row, [key]: key === "duration" ? value.replace(/[^\d]/g, "") : value.replace(/[^\d.]/g, "") }
+          : row
+      ),
     } as Partial<RentalDraft>);
   }
 
@@ -3318,18 +3324,37 @@ function RentalEditorView({
                 </div>
                 {priceRows.map((row) => (
                   <div key={row.id} className="grid grid-cols-[1fr_1fr_90px] gap-4 border-t border-black/10 px-4 py-3">
-                    <input
-                      value={row.duration}
-                      onChange={(event) => updatePriceRow(row.id, "duration", event.target.value)}
-                      placeholder="30"
-                      className="min-h-[38px] rounded-[4px] border border-black/15 px-3 text-[14px] outline-none"
-                    />
-                    <input
-                      value={row.price}
-                      onChange={(event) => updatePriceRow(row.id, "price", event.target.value)}
-                      placeholder="35"
-                      className="min-h-[38px] rounded-[4px] border border-black/15 px-3 text-[14px] outline-none"
-                    />
+                    <div className="relative">
+                      <select
+                        value={row.duration}
+                        onChange={(event) => updatePriceRow(row.id, "duration", event.target.value)}
+                        className="min-h-[38px] w-full appearance-none rounded-[4px] border border-black/15 bg-white px-3 pr-10 text-[14px] outline-none"
+                      >
+                        <option value="">Select</option>
+                        {row.duration && !rentalDurationOptions.includes(row.duration) ? (
+                          <option value={row.duration}>{row.duration} min</option>
+                        ) : null}
+                        {rentalDurationOptions.map((option) => (
+                          <option key={option} value={option}>
+                            {option} min
+                          </option>
+                        ))}
+                      </select>
+                      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-black/45">
+                        <Icon name="chevron" className="h-4 w-4 rotate-90" />
+                      </span>
+                    </div>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-[14px] text-black/55">
+                        $
+                      </span>
+                      <input
+                        value={row.price}
+                        onChange={(event) => updatePriceRow(row.id, "price", event.target.value)}
+                        placeholder="45"
+                        className="min-h-[38px] w-full rounded-[4px] border border-black/15 pl-8 pr-3 text-[14px] outline-none"
+                      />
+                    </div>
                     <div className="flex justify-end">
                       <button type="button" onClick={() => removePriceRow(row.id)} className="grid h-10 w-10 place-items-center rounded border border-black/12 text-black/45">
                         <Icon name="trash" className="h-4 w-4" />
