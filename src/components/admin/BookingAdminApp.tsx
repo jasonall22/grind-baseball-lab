@@ -824,6 +824,29 @@ function resourceLookup(resources: BookingResourceRow[]) {
   };
 }
 
+function getRoomEditorHref(roomName: string, resourceIdsByName: Record<string, string>) {
+  const roomId = resourceIdsByName[roomName];
+  return `/admin/settings/rooms/${roomId ?? encodeURIComponent(roomName)}`;
+}
+
+function renameRoomReferences(state: AppState, currentName: string, nextName: string): AppState {
+  if (currentName === nextName) return state;
+
+  return {
+    ...state,
+    resources: state.resources.map((resource) => (resource === currentName ? nextName : resource)),
+    services: state.services.map((service) => ({
+      ...service,
+      resource: service.resource === currentName ? nextName : service.resource,
+      rooms: service.rooms.map((room) => (room === currentName ? nextName : room)),
+    })),
+    bookings: state.bookings.map((booking) => ({
+      ...booking,
+      resource: booking.resource === currentName ? nextName : booking.resource,
+    })),
+  };
+}
+
 async function uploadWaiverPdf(file: File) {
   if (!hasSupabaseEnv) {
     throw new Error("Supabase is not configured for file uploads.");
@@ -1450,10 +1473,12 @@ export default function BookingAdminApp({
   view = "home",
   selectedCustomerId,
   selectedServiceId,
+  selectedRoomId,
 }: {
   view?: BookingAdminView;
   selectedCustomerId?: string;
   selectedServiceId?: string;
+  selectedRoomId?: string;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -1470,6 +1495,21 @@ export default function BookingAdminApp({
   const [showCustomerImport, setShowCustomerImport] = useState(false);
   const isRentalAddPage = pathname === "/admin/services/rentals/add";
   const isRentalEditPage = Boolean(selectedServiceId && /^\/admin\/services\/rentals\/[^/]+$/.test(pathname));
+  const isRoomEditPage = Boolean(selectedRoomId && /^\/admin\/settings\/rooms\/[^/]+$/.test(pathname) && !pathname.endsWith("/add"));
+
+  const roomNamesById = useMemo(
+    () => new Map(Object.entries(resourceIdsByName).map(([name, id]) => [id, name])),
+    [resourceIdsByName]
+  );
+  const selectedRoomName = useMemo(() => {
+    if (!selectedRoomId) return null;
+
+    const matchedById = roomNamesById.get(selectedRoomId);
+    if (matchedById) return matchedById;
+
+    const decodedId = decodeURIComponent(selectedRoomId);
+    return state.resources.find((resource) => resource === decodedId) ?? null;
+  }, [roomNamesById, selectedRoomId, state.resources]);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -1709,6 +1749,52 @@ export default function BookingAdminApp({
       console.error(error);
       showToast("Settings could not be saved.");
     }
+  }
+
+  async function renameRoomInSupabase(currentName: string, nextName: string) {
+    const resourceId = resourceIdsByName[currentName];
+    if (!resourceId) {
+      throw new Error("Could not find the selected room in Supabase.");
+    }
+
+    const renamedResource = await supabase
+      .from("booking_resources")
+      .update({ name: nextName })
+      .eq("id", resourceId);
+
+    if (renamedResource.error) throw renamedResource.error;
+
+    const servicesResult = await supabase
+      .from("booking_services")
+      .select("id,resource_names")
+      .contains("resource_names", [currentName]);
+
+    if (servicesResult.error) throw servicesResult.error;
+
+    const changedRows = ((servicesResult.data ?? []) as Array<{ id: string; resource_names: string[] | null }>)
+      .filter((row) => row.resource_names?.includes(currentName))
+      .map((row) => ({
+        id: row.id,
+        resource_names: (row.resource_names ?? []).map((name) => (name === currentName ? nextName : name)),
+      }));
+
+    if (changedRows.length) {
+      const updateResults = await Promise.all(
+        changedRows.map((row) =>
+          supabase.from("booking_services").update({ resource_names: row.resource_names }).eq("id", row.id)
+        )
+      );
+
+      const failedUpdate = updateResults.find((result) => result.error);
+      if (failedUpdate?.error) throw failedUpdate.error;
+    }
+
+    setResourceIdsByName((current) => {
+      const next = { ...current };
+      delete next[currentName];
+      next[nextName] = resourceId;
+      return next;
+    });
   }
 
   async function saveAvailability(rows: AppState["availability"]) {
@@ -2308,13 +2394,83 @@ export default function BookingAdminApp({
               }}
             />
           ) : null}
-          {view === "settings" || view === "settings-basics" || view === "settings-rooms" || view === "settings-policies" ? (
+          {isRoomEditPage ? (
+            selectedRoomName ? (
+              <RoomEditorView
+                backHref={backToAppHref}
+                state={state}
+                showToast={showToast}
+                roomName={selectedRoomName}
+                canDelete={
+                  !state.services.some((service) =>
+                    [service.resource, ...(service.rooms ?? [])].includes(selectedRoomName)
+                  ) && !state.bookings.some((booking) => booking.resource === selectedRoomName)
+                }
+                onCancel={() => router.push("/admin/settings/rooms")}
+                onDelete={async () => {
+                  const next = {
+                    ...state,
+                    resources: state.resources.filter((resource) => resource !== selectedRoomName),
+                  };
+
+                  await saveSettings(next);
+                  router.push("/admin/settings/rooms");
+                }}
+                onSave={async (draft) => {
+                  const name = draft.name.trim();
+                  if (!name) {
+                    showToast("Room name is required.");
+                    return;
+                  }
+
+                  if (
+                    state.resources.some(
+                      (item) => item.trim().toLowerCase() === name.toLowerCase() && item !== selectedRoomName
+                    )
+                  ) {
+                    showToast("That room already exists.");
+                    return;
+                  }
+
+                  const next = renameRoomReferences(state, selectedRoomName, name);
+
+                  if (dataSource === "local") {
+                    setState(next);
+                    stateToStorage(next);
+                    showToast("Settings saved.");
+                    router.replace(getRoomEditorHref(name, resourceIdsByName));
+                    return;
+                  }
+
+                  setState(next);
+                  stateToStorage(next);
+
+                  try {
+                    if (name !== selectedRoomName) {
+                      await renameRoomInSupabase(selectedRoomName, name);
+                    }
+
+                    showToast("Settings saved.");
+                    router.replace(getRoomEditorHref(name, resourceIdsByName));
+                  } catch (error) {
+                    console.error(error);
+                    showToast("Settings could not be saved.");
+                    void loadFromSupabase();
+                  }
+                }}
+              />
+            ) : (
+              <section className="min-h-screen px-6 py-8 text-[16px] text-black/60">Loading room...</section>
+            )
+          ) : null}
+          {!isRoomEditPage && (view === "settings" || view === "settings-basics" || view === "settings-rooms" || view === "settings-policies") ? (
             <SettingsView
               backHref={backToAppHref}
               section={view === "settings-policies" ? "policies" : view === "settings-rooms" ? "rooms" : "basics"}
               state={state}
               showToast={showToast}
               onSave={(next) => void saveSettings(next)}
+              resourceIdsByName={resourceIdsByName}
             />
           ) : null}
         </main>
@@ -4817,12 +4973,14 @@ function SettingsView({
   state,
   showToast,
   onSave,
+  resourceIdsByName,
 }: {
   backHref: string;
   section: SettingsSection;
   state: AppState;
   showToast: (message: string) => void;
   onSave: (next: AppState) => void;
+  resourceIdsByName: Record<string, string>;
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState(state);
@@ -4873,27 +5031,6 @@ function SettingsView({
 
     setDraft(next);
     onSave(next);
-  }
-
-  function renameRoom(index: number) {
-    if (typeof window === "undefined") return;
-
-    const current = draft.resources[index] ?? "";
-    const value = window.prompt("Edit room name", current);
-    const name = value?.trim() ?? "";
-
-    if (!name || name === current) return;
-    if (
-      draft.resources.some(
-        (item, itemIndex) => itemIndex !== index && item.trim().toLowerCase() === name.toLowerCase()
-      )
-    ) {
-      showToast("That room already exists.");
-      return;
-    }
-
-    const nextResources = draft.resources.map((item, itemIndex) => (itemIndex === index ? name : item));
-    persistResources(nextResources);
   }
 
   function moveRoom(index: number, direction: "up" | "down") {
@@ -5250,7 +5387,7 @@ function SettingsView({
                                     <div className="flex items-center justify-end gap-6">
                                       <button
                                         type="button"
-                                        onClick={() => renameRoom(sourceIndex)}
+                                        onClick={() => router.push(getRoomEditorHref(room, resourceIdsByName))}
                                         className="text-black/45 transition hover:text-black"
                                         aria-label={`Edit ${room}`}
                                       >
@@ -5625,7 +5762,11 @@ function SettingsView({
                           </td>
                           <td className="px-4 py-4 align-middle">
                             <div className="flex items-center justify-end gap-4 text-black/45">
-                              <button type="button" onClick={() => renameRoom(sourceIndex)} aria-label={`Edit ${room}`}>
+                              <button
+                                type="button"
+                                onClick={() => router.push(getRoomEditorHref(room, resourceIdsByName))}
+                                aria-label={`Edit ${room}`}
+                              >
                                 <Icon name="edit" className="h-4 w-4" />
                               </button>
                               <button
@@ -5697,29 +5838,41 @@ function RoomEditorView({
   backHref,
   state,
   showToast,
+  roomName,
+  canDelete = false,
   onCancel,
+  onDelete,
   onSave,
 }: {
   backHref: string;
   state: AppState;
   showToast: (message: string) => void;
+  roomName?: string;
+  canDelete?: boolean;
   onCancel: () => void;
+  onDelete?: () => Promise<void>;
   onSave: (draft: RoomEditorDraft) => Promise<void>;
 }) {
-  const [draft, setDraft] = useState<RoomEditorDraft>({
-    name: "",
+  const initialDraft = useMemo<RoomEditorDraft>(() => ({
+    name: roomName ?? "",
     schedule: "Working Hours",
     parentRoom: state.facility.name,
-  });
+  }), [roomName, state.facility.name]);
+  const [draft, setDraft] = useState<RoomEditorDraft>(initialDraft);
+
+  useEffect(() => {
+    setDraft(initialDraft);
+  }, [initialDraft]);
 
   const hierarchyOptions = [state.facility.name, ...state.resources];
+  const pageTitle = roomName ?? "Add Room";
 
   return (
     <section className="min-h-screen bg-white">
       <div className="px-5 py-4 md:hidden">
         <Link href="/admin/settings/rooms" className="inline-flex items-center gap-2 text-[15px] font-medium text-black">
           <Icon name="arrow-left" className="h-4 w-4" />
-          Add Room
+          {pageTitle}
         </Link>
       </div>
 
@@ -5778,9 +5931,9 @@ function RoomEditorView({
               <div className="mb-3 flex items-center gap-3 text-[14px] font-medium text-black/60">
                 <Link href="/admin/settings/rooms" className="text-black/70 hover:text-black">Rooms</Link>
                 <span>/</span>
-                <span className="text-black">Add Room</span>
+                <span className="text-black">{pageTitle}</span>
               </div>
-              <h1 className="text-[24px] font-semibold text-black">Add Room</h1>
+              <h1 className="text-[24px] font-semibold text-black">{pageTitle}</h1>
             </div>
 
             <div className="overflow-hidden rounded-[10px] border border-black/10 bg-white shadow-sm">
@@ -5838,7 +5991,19 @@ function RoomEditorView({
                 </div>
               </div>
 
-              <div className="flex justify-end border-t border-black/10 bg-[#f7f8fb] px-5 py-4">
+              <div className="flex items-center justify-between border-t border-black/10 bg-[#f7f8fb] px-5 py-4">
+                {roomName ? (
+                  <button
+                    type="button"
+                    disabled={!canDelete}
+                    onClick={() => void onDelete?.()}
+                    className="rounded-lg border border-black/10 bg-white px-5 py-2.5 text-[15px] font-medium text-black/30 disabled:cursor-not-allowed"
+                  >
+                    Delete
+                  </button>
+                ) : (
+                  <div />
+                )}
                 <button
                   type="button"
                   onClick={() => void onSave(draft)}
@@ -5856,9 +6021,9 @@ function RoomEditorView({
         <div className="mb-4 flex items-center gap-3 text-[14px] font-medium text-black/60">
           <Link href="/admin/settings/rooms" className="text-black/70 hover:text-black">Rooms</Link>
           <span>/</span>
-          <span className="text-black">Add Room</span>
+          <span className="text-black">{pageTitle}</span>
         </div>
-        <h1 className="mb-5 text-[28px] font-medium text-black">Add Room</h1>
+        <h1 className="mb-5 text-[28px] font-medium text-black">{pageTitle}</h1>
 
         <div className="overflow-hidden rounded-[10px] border border-black/12 bg-white shadow-sm">
           <div className="border-t-4 border-t-[#4866b0]" />
