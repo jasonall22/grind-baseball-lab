@@ -2869,8 +2869,8 @@ function ServicesView({
   const currentCopy = sectionCopy[activeSection];
 
   return (
-    <section className="min-h-screen px-[22px] py-6 xl:px-6 xl:py-8">
-      <div className="-mx-[22px] -mt-6 mb-7 flex h-16 items-center border-b border-black/15 bg-white px-4 xl:hidden">
+    <section className="min-h-screen px-[18px] py-6 xl:px-6 xl:py-8">
+      <div className="-mx-[18px] -mt-6 mb-7 flex h-16 items-center border-b border-black/15 bg-white px-4 xl:hidden">
         <button type="button" className="grid h-10 w-8 shrink-0 place-items-center text-black/35" aria-label="Previous service type">
           <Icon name="chevron" className="h-4 w-4 rotate-180" />
         </button>
@@ -2937,7 +2937,7 @@ function ServicesView({
 
       <div className="mt-5 overflow-hidden rounded-lg border border-black/10 bg-white">
         <div>
-          <div className="grid grid-cols-[minmax(0,1.35fr)_92px_96px_40px] gap-2 bg-[#f5f6f8] px-4 py-5 text-[13px] font-semibold text-black md:grid-cols-[minmax(150px,1.35fr)_120px_minmax(140px,1fr)_48px] md:gap-3 md:text-[14px] xl:grid-cols-[minmax(0,1.6fr)_180px_240px_76px] xl:gap-4">
+          <div className="grid grid-cols-[minmax(0,1.2fr)_86px_88px_40px] gap-2 bg-[#f5f6f8] px-4 py-5 text-[14px] font-semibold text-black md:grid-cols-[minmax(150px,1.35fr)_120px_minmax(140px,1fr)_48px] md:gap-3 xl:grid-cols-[minmax(0,1.6fr)_180px_240px_76px] xl:gap-4">
             <div>Name</div>
             <div>Visibility</div>
             <div>Rooms</div>
@@ -2952,7 +2952,7 @@ function ServicesView({
               return (
                 <div
                   key={service.id}
-                  className="grid grid-cols-[minmax(0,1.35fr)_92px_96px_40px] items-start gap-2 border-t border-black/10 px-4 py-6 md:grid-cols-[minmax(150px,1.35fr)_120px_minmax(140px,1fr)_48px] md:gap-3 md:py-7 xl:grid-cols-[minmax(0,1.6fr)_180px_240px_76px] xl:gap-4 xl:px-5 xl:py-8"
+                  className="grid grid-cols-[minmax(0,1.2fr)_86px_88px_40px] items-start gap-2 border-t border-black/10 px-4 py-6 md:grid-cols-[minmax(150px,1.35fr)_120px_minmax(140px,1fr)_48px] md:gap-3 md:py-7 xl:grid-cols-[minmax(0,1.6fr)_180px_240px_76px] xl:gap-4 xl:px-5 xl:py-8"
                 >
                   <button
                     type="button"
@@ -2962,7 +2962,7 @@ function ServicesView({
                     <span className="block break-words">{service.name}</span>
                   </button>
 
-                  <div className="min-w-0">
+                  <div className="min-w-0 pt-1">
                     <span
                       className={[
                         "inline-flex rounded-full px-2 py-1 text-[11px] font-medium md:px-2.5 md:py-1.5 md:text-[13px] xl:px-3.5",
@@ -2973,8 +2973,8 @@ function ServicesView({
                     </span>
                   </div>
 
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap gap-1.5 md:gap-2">
+                  <div className="min-w-0 pt-1">
+                    <div className="flex flex-col items-start gap-2 md:flex-row md:flex-wrap md:gap-2">
                       {rooms.length ? (
                         rooms.map((room, roomIndex) => (
                           <span
@@ -2998,7 +2998,7 @@ function ServicesView({
                     </div>
                   </div>
 
-                  <div className="flex flex-col items-end gap-2">
+                  <div className="flex flex-col items-end gap-3 pt-1">
                     <button
                       type="button"
                       onClick={() => onReorder(visibleServiceIds, service.id, "up")}
