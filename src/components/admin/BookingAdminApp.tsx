@@ -1194,6 +1194,10 @@ function findServiceForCalendarSlot(services: Service[], resource: string, durat
   });
 }
 
+function bookingDurationMinutes(booking: Pick<Booking, "start" | "end">) {
+  return Math.max(30, timeToMinutes(booking.end) - timeToMinutes(booking.start));
+}
+
 type MobileCalendarTimelineSegment =
   | { type: "closed"; start: number; end: number }
   | { type: "available"; start: number; end: number }
@@ -7836,6 +7840,14 @@ function EditorModal({
   const title = `${modal.id ? "Edit" : "New"} ${modal.type}`;
   const customerDraft = draft as Customer;
   const customerName = modal.type === "customer" ? splitName(customerDraft.name) : { first: "", last: "" };
+  const bookingDraft = modal.type === "booking" ? (draft as Booking) : null;
+  const matchedBookingService =
+    bookingDraft
+      ? findServiceForCalendarSlot(state.services, bookingDraft.resource, bookingDurationMinutes(bookingDraft))
+      : null;
+  const selectedBookingService =
+    bookingDraft ? state.services.find((item) => item.id === bookingDraft.serviceId) ?? null : null;
+  const effectiveBookingService = selectedBookingService ?? matchedBookingService;
   const canSave =
     modal.type !== "customer" ||
     Boolean(customerName.first.trim() && customerName.last.trim() && customerDraft.email.trim());
@@ -7873,6 +7885,29 @@ function EditorModal({
     setDraft((current) => ({ ...current, ...next }) as typeof draft);
   }
 
+  function patchBooking(next: Partial<Booking>) {
+    if (modal.type !== "booking") return;
+
+    const current = draft as Booking;
+    const merged = { ...current, ...next };
+    const nextService = findServiceForCalendarSlot(
+      state.services,
+      merged.resource,
+      bookingDurationMinutes(merged)
+    );
+
+    setDraft({
+      ...merged,
+      serviceId: next.serviceId ?? nextService?.id ?? merged.serviceId,
+    } as typeof draft);
+  }
+
+  function cancelBooking() {
+    if (modal.type !== "booking") return;
+    const item = { ...(draft as Booking), status: "Cancelled" as const };
+    onSave({ ...state, bookings: upsert(state.bookings, item) }, "Booking cancelled.", { type: "booking", item });
+  }
+
   function toggleCustomerSection(section: string) {
     setOpenCustomerSections((current) =>
       current.includes(section) ? current.filter((item) => item !== section) : [...current, section]
@@ -7902,32 +7937,51 @@ function EditorModal({
 
           {modal.type === "booking" ? (
             <>
-              <TextField label="Date" type="date" value={(draft as Booking).date} onChange={(value) => patch({ date: value })} />
-              <SelectField label="Status" value={(draft as Booking).status} onChange={(value) => patch({ status: value as Booking["status"] })} options={["Confirmed", "Pending", "Cancelled"]} />
-              <TextField label="Start" type="time" value={(draft as Booking).start} onChange={(value) => patch({ start: value })} />
-              <TextField label="End" type="time" value={(draft as Booking).end} onChange={(value) => patch({ end: value })} />
+              <TextField label="Date" type="date" value={(draft as Booking).date} onChange={(value) => patchBooking({ date: value })} />
+              <SelectField label="Status" value={(draft as Booking).status} onChange={(value) => patchBooking({ status: value as Booking["status"] })} options={["Confirmed", "Pending", "Cancelled"]} />
+              <TextField label="Start" type="time" value={(draft as Booking).start} onChange={(value) => patchBooking({ start: value })} />
+              <TextField label="End" type="time" value={(draft as Booking).end} onChange={(value) => patchBooking({ end: value })} />
               <SelectField
                 label="Customer"
                 value={(draft as Booking).customerId}
-                onChange={(value) => patch({ customerId: value })}
+                onChange={(value) => patchBooking({ customerId: value })}
                 options={state.customers.map((item): [string, string] => [item.id, `${item.player} (${item.name})`])}
               />
               <SelectField
                 label="Service"
                 value={(draft as Booking).serviceId}
-                onChange={(value) => patch({ serviceId: value })}
+                onChange={(value) => patchBooking({ serviceId: value })}
                 options={state.services.map((item): [string, string] => [item.id, item.name])}
               />
-              <SelectField label="Resource" value={(draft as Booking).resource} onChange={(value) => patch({ resource: value })} options={state.resources} />
+              <SelectField label="Resource" value={(draft as Booking).resource} onChange={(value) => patchBooking({ resource: value })} options={state.resources} />
               <SelectField
                 label="Payment"
                 value={String((draft as Booking).paid)}
-                onChange={(value) => patch({ paid: value === "true" })}
+                onChange={(value) => patchBooking({ paid: value === "true" })}
                 options={[
                   ["true", "Paid"],
                   ["false", "Unpaid"],
                 ]}
               />
+              <div className="sm:col-span-2 rounded-xl border border-black/10 bg-black/[0.02] px-4 py-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-semibold text-black/70">Booking Summary</div>
+                    <div className="mt-2 text-base font-semibold text-black">
+                      {effectiveBookingService?.name || "No matching service selected"}
+                    </div>
+                    <div className="mt-1 text-sm text-black/55">
+                      {bookingDraft ? `${bookingDurationMinutes(bookingDraft)} minutes • ${bookingDraft.resource || "No room selected"}` : ""}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-semibold text-black/55">Price</div>
+                    <div className="mt-2 text-xl font-semibold text-black">
+                      {effectiveBookingService ? money(effectiveBookingService.price) : "--"}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </>
           ) : null}
 
@@ -8165,18 +8219,31 @@ function EditorModal({
           ) : null}
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-black/10 px-5 py-4">
-          <button type="button" onClick={onClose} className="rounded-lg border border-black/10 px-4 py-2 text-sm font-semibold">
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={save}
-            disabled={!canSave}
-            className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white disabled:bg-black/15 disabled:text-black/35"
-          >
-            Save
-          </button>
+        <div className="flex items-center justify-between gap-3 border-t border-black/10 px-5 py-4">
+          <div>
+            {modal.type === "booking" && modal.id && (draft as Booking).status !== "Cancelled" ? (
+              <button
+                type="button"
+                onClick={cancelBooking}
+                className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"
+              >
+                Cancel Booking
+              </button>
+            ) : null}
+          </div>
+          <div className="flex gap-2">
+            <button type="button" onClick={onClose} className="rounded-lg border border-black/10 px-4 py-2 text-sm font-semibold">
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              disabled={!canSave}
+              className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white disabled:bg-black/15 disabled:text-black/35"
+            >
+              Save
+            </button>
+          </div>
         </div>
       </div>
 
