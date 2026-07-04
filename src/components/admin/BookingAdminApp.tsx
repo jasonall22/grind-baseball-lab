@@ -8262,25 +8262,58 @@ function EditorModal({
 
     const current = draft as Booking;
     const merged = { ...current, ...next };
+    const didChangeService = Object.prototype.hasOwnProperty.call(next, "serviceId");
+    const didChangeStart = Object.prototype.hasOwnProperty.call(next, "start");
+    const didChangeEnd = Object.prototype.hasOwnProperty.call(next, "end");
+    const selectedServiceFromChange =
+      didChangeService && next.serviceId
+        ? state.services.find((item) => item.id === next.serviceId) ?? null
+        : null;
+    const selectedServiceFromDraft =
+      !didChangeService && merged.serviceId
+        ? state.services.find((item) => item.id === merged.serviceId) ?? null
+        : null;
+
+    const durationSource = selectedServiceFromChange ?? selectedServiceFromDraft;
+    let normalizedBooking: Booking = { ...merged };
+
+    if (selectedServiceFromChange) {
+      const preferredRooms =
+        selectedServiceFromChange.rooms?.length
+          ? selectedServiceFromChange.rooms
+          : selectedServiceFromChange.resource
+            ? [selectedServiceFromChange.resource]
+            : [];
+
+      if (preferredRooms.length) {
+        normalizedBooking.resource =
+          preferredRooms.find((room) => room === normalizedBooking.resource) ?? preferredRooms[0];
+      }
+
+      normalizedBooking.end = minutesToTime(
+        timeToMinutes(normalizedBooking.start) + selectedServiceFromChange.duration
+      );
+    } else if (durationSource && didChangeStart && !didChangeEnd) {
+      normalizedBooking.end = minutesToTime(
+        timeToMinutes(normalizedBooking.start) + durationSource.duration
+      );
+    }
+
     const nextService = findServiceForCalendarSlot(
       state.services,
-      merged.resource,
-      bookingDurationMinutes(merged)
+      normalizedBooking.resource,
+      bookingDurationMinutes(normalizedBooking)
     );
+    const resolvedService =
+      (didChangeService && next.serviceId
+        ? state.services.find((item) => item.id === next.serviceId) ?? null
+        : null) ?? nextService;
 
     setDraft({
-      ...merged,
-      serviceId: next.serviceId ?? nextService?.id ?? merged.serviceId,
-      serviceName:
-        (next.serviceId
-          ? state.services.find((item) => item.id === next.serviceId)?.name
-          : nextService?.name) ??
-        merged.serviceName,
-      calendarColor:
-        (next.serviceId
-          ? state.services.find((item) => item.id === next.serviceId)?.calendarColor
-          : nextService?.calendarColor) ??
-        merged.calendarColor,
+      ...normalizedBooking,
+      serviceId: resolvedService?.id ?? normalizedBooking.serviceId,
+      serviceName: resolvedService?.name ?? normalizedBooking.serviceName,
+      calendarColor: resolvedService?.calendarColor ?? normalizedBooking.calendarColor,
     } as typeof draft);
   }
 
