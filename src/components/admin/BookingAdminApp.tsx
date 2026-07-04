@@ -65,6 +65,8 @@ type Booking = {
   end: string;
   customerId: string;
   serviceId: string;
+  serviceName?: string;
+  calendarColor?: string;
   resource: string;
   status: "Confirmed" | "Pending" | "Cancelled";
   paid: boolean;
@@ -818,6 +820,18 @@ function normalizeServices(services: Service[]) {
   return services.map(normalizeService);
 }
 
+function normalizeBookings(bookings: Booking[], services: Service[]) {
+  const servicesById = new Map(normalizeServices(services).map((service) => [service.id, service]));
+  return bookings.map((booking) => {
+    const service = servicesById.get(booking.serviceId);
+    return {
+      ...booking,
+      serviceName: service?.name ?? booking.serviceName ?? "",
+      calendarColor: normalizeCalendarColor(service?.calendarColor ?? booking.calendarColor),
+    };
+  });
+}
+
 function slugifyFileNameStem(fileName: string) {
   const stem = fileName.replace(/\.[^.]+$/, "").toLowerCase();
   const slug = stem
@@ -1221,17 +1235,7 @@ function bookingTonePresentation(booking: Booking, service?: Service | null) {
     };
   }
 
-  if (!booking.paid) {
-    return {
-      containerClass: "bg-[#2f3742] text-white",
-      timeClass: "text-white/80",
-      subClass: "text-white/85",
-      borderClass: "border-black/20",
-      style: undefined,
-    };
-  }
-
-  const backgroundColor = normalizeCalendarColor(service?.calendarColor);
+  const backgroundColor = normalizeCalendarColor(service?.calendarColor ?? booking.calendarColor);
   const isLight = isLightCalendarColor(backgroundColor);
 
   return {
@@ -1649,9 +1653,11 @@ function loadInitialState() {
     const raw = window.localStorage.getItem(storageKey);
     if (!raw) return defaultState;
     const parsed = { ...defaultState, ...JSON.parse(raw) } as AppState;
+    const services = normalizeServices(parsed.services ?? defaultState.services);
     return {
       ...parsed,
-      services: normalizeServices(parsed.services ?? defaultState.services),
+      services,
+      bookings: normalizeBookings(parsed.bookings ?? defaultState.bookings, services),
     };
   } catch {
     return defaultState;
@@ -1886,6 +1892,15 @@ export default function BookingAdminApp({
         is_active: true,
       }));
       const { idsByName, namesById } = resourceLookup(resourceRows.length ? resourceRows : resources);
+      const serviceMetaById = new Map(
+        serviceRows.map((service) => [
+          service.id,
+          {
+            name: service.name,
+            calendarColor: normalizeCalendarColor(service.calendar_color),
+          },
+        ])
+      );
       const availabilityOrder = new Map(defaultState.availability.map(([day], index) => [day, index]));
 
       setResourceIdsByName(idsByName);
@@ -1982,6 +1997,10 @@ export default function BookingAdminApp({
           end: normalizeTime(booking.end_time),
           customerId: booking.customer_id ?? "",
           serviceId: booking.service_id ?? "",
+          serviceName: booking.service_id ? serviceMetaById.get(booking.service_id)?.name ?? "" : "",
+          calendarColor: booking.service_id
+            ? serviceMetaById.get(booking.service_id)?.calendarColor ?? DEFAULT_SERVICE_CALENDAR_COLOR
+            : DEFAULT_SERVICE_CALENDAR_COLOR,
           resource: booking.resource_id ? namesById.get(booking.resource_id) ?? "" : "",
           status: booking.status,
           paid: booking.paid,
@@ -4138,6 +4157,8 @@ function CalendarView({
       start: minutesToTime(startMinutes),
       end: minutesToTime(endMinutes),
       serviceId: matchedService?.id,
+      serviceName: matchedService?.name,
+      calendarColor: matchedService?.calendarColor ?? DEFAULT_SERVICE_CALENDAR_COLOR,
     });
   }
 
@@ -4325,7 +4346,7 @@ function CalendarView({
                       <div className="mt-1 text-[20px] font-semibold leading-tight">
                         {customer?.player || customer?.name || "Customer"}
                       </div>
-                      <div className={`mt-1 text-[13px] ${tone.subClass}`}>{service?.name || "Service"}</div>
+                      <div className={`mt-1 text-[13px] ${tone.subClass}`}>{service?.name || booking.serviceName || "Service"}</div>
                     </button>
                   );
                 })
@@ -4429,7 +4450,7 @@ function CalendarView({
                               {customer?.player || customer?.name || "Customer"}
                             </div>
                             <div className={`truncate font-medium leading-[1.05] ${tone.subClass} ${isCompactBooking ? "mt-0.5 text-[10px]" : "mt-0.5 text-[11px]"}`}>
-                              {service?.name || "Service"}
+                              {service?.name || booking.serviceName || "Service"}
                             </div>
                           </button>
                         );
@@ -4497,7 +4518,7 @@ function CalendarView({
                             <div className="mt-1 text-[18px] font-semibold leading-tight">
                               {customer?.player || customer?.name || "Customer"}
                             </div>
-                            <div className={`mt-1 text-[13px] ${tone.subClass}`}>{service?.name || "Service"}</div>
+                            <div className={`mt-1 text-[13px] ${tone.subClass}`}>{service?.name || booking.serviceName || "Service"}</div>
                           </button>
                         );
                       })
@@ -4556,7 +4577,7 @@ function CalendarView({
                               {customer?.player || customer?.name || "Customer"}
                             </div>
                             <div className={`mt-1 text-[12px] ${tone.subClass}`}>
-                              {(service?.name || "Service")} · {booking.resource}
+                              {(service?.name || booking.serviceName || "Service")} · {booking.resource}
                             </div>
                           </button>
                         );
@@ -7974,6 +7995,8 @@ function EditorModal({
           end: modal.seed?.end ?? "10:00",
           customerId: modal.seed?.customerId ?? state.customers[0]?.id ?? "",
           serviceId: modal.seed?.serviceId ?? state.services[0]?.id ?? "",
+          serviceName: state.services[0]?.name ?? "",
+          calendarColor: state.services[0]?.calendarColor ?? DEFAULT_SERVICE_CALENDAR_COLOR,
           resource: modal.seed?.resource ?? state.resources[0] ?? "",
           status: modal.seed?.status ?? ("Confirmed" as const),
           paid: modal.seed?.paid ?? false,
@@ -8096,6 +8119,16 @@ function EditorModal({
     setDraft({
       ...merged,
       serviceId: next.serviceId ?? nextService?.id ?? merged.serviceId,
+      serviceName:
+        (next.serviceId
+          ? state.services.find((item) => item.id === next.serviceId)?.name
+          : nextService?.name) ??
+        merged.serviceName,
+      calendarColor:
+        (next.serviceId
+          ? state.services.find((item) => item.id === next.serviceId)?.calendarColor
+          : nextService?.calendarColor) ??
+        merged.calendarColor,
     } as typeof draft);
   }
 
