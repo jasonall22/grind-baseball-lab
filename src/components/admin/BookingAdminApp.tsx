@@ -2154,7 +2154,7 @@ export default function BookingAdminApp({
 
   return (
     <div className="min-h-screen bg-white text-black">
-      <MobileAdminHeader variant={isSettingsView ? "light" : "dark"} />
+      <MobileAdminHeader variant={view === "more" ? "light" : "dark"} />
       <div
         className={[
           "grid min-h-screen grid-cols-1 bg-white",
