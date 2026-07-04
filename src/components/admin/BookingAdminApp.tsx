@@ -4176,6 +4176,8 @@ function CalendarView({
   const [calendarMode, setCalendarMode] = useState<"day" | "week">("day");
   const [mobileResource, setMobileResource] = useState<string>(allMobileResourcesValue);
   const dateInputRef = useRef<HTMLInputElement | null>(null);
+  const mobileDayScrollRef = useRef<HTMLDivElement | null>(null);
+  const desktopDayScrollRef = useRef<HTMLDivElement | null>(null);
   const mobileDayTimeTargetRef = useRef<HTMLDivElement | null>(null);
   const desktopDayTimeTargetRef = useRef<HTMLDivElement | null>(null);
   const dayName = weekdayName(activeDate);
@@ -4265,17 +4267,23 @@ function CalendarView({
   useEffect(() => {
     if (resourceMode !== "rooms" || calendarMode !== "day") return;
 
-    const frame = window.requestAnimationFrame(() => {
-      if (mobileDayTimeTargetRef.current) {
-        mobileDayTimeTargetRef.current.scrollIntoView({ block: "start", inline: "nearest" });
+    const syncScroll = () => {
+      if (mobileDayScrollRef.current && mobileDayTimeTargetRef.current) {
+        mobileDayScrollRef.current.scrollTop = mobileDayTimeTargetRef.current.offsetTop;
       }
 
-      if (desktopDayTimeTargetRef.current) {
-        desktopDayTimeTargetRef.current.scrollIntoView({ block: "start", inline: "nearest" });
+      if (desktopDayScrollRef.current && desktopDayTimeTargetRef.current) {
+        desktopDayScrollRef.current.scrollTop = desktopDayTimeTargetRef.current.offsetTop;
       }
-    });
+    };
 
-    return () => window.cancelAnimationFrame(frame);
+    const frame = window.requestAnimationFrame(syncScroll);
+    const timer = window.setTimeout(syncScroll, 60);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
   }, [calendarMode, resourceMode, scrollTargetTime]);
 
   function openDatePicker() {
@@ -4449,7 +4457,7 @@ function CalendarView({
               </div>
 
               <div className="overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm">
-                <div className="overflow-auto">
+                <div ref={mobileDayScrollRef} className="overflow-auto">
                   <div
                     className="grid border-b border-black/10 bg-[#f6f7f9]"
                     style={{
@@ -4591,7 +4599,7 @@ function CalendarView({
               ))}
             </div>
 
-            <div className="overflow-auto">
+            <div ref={desktopDayScrollRef} className="overflow-auto">
               <div
                 className="grid min-w-[980px]"
                 style={{ gridTemplateColumns: `96px repeat(${resources.length}, minmax(220px, 1fr))` }}
