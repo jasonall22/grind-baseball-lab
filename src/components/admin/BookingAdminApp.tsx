@@ -4234,10 +4234,10 @@ function CalendarView({
                   {slots.map((slot, index) => (
                       <div
                         key={slot}
-                        className="flex items-center justify-end border-b border-black/10 px-4 text-right text-[15px] font-medium text-black/90"
+                        className="flex items-start justify-end border-b border-black/10 px-4 text-right text-[15px] font-medium text-black/90"
                         style={{ height: slotHeight }}
                       >
-                        <div className={`w-full ${index === 0 ? "pt-1" : ""}`}>{timeLabel(slot)}</div>
+                        <div className={`w-full ${index === 0 ? "pt-1" : "pt-0.5"}`}>{timeLabel(slot)}</div>
                       </div>
                   ))}
                 </div>
