@@ -4397,11 +4397,11 @@ function CalendarView({
                         const customer = customersById.get(booking.customerId);
                         const service = servicesById.get(booking.serviceId);
                         const statusBadge = bookingStatusBadge(booking);
+                        const tone = bookingTonePresentation(booking, service);
                         const top = (timeToMinutes(booking.start) / 30) * slotHeight + 1;
                         const durationMinutes = Math.max(30, timeToMinutes(booking.end) - timeToMinutes(booking.start));
                         const height = Math.max(slotHeight - 2, (durationMinutes / 30) * slotHeight - 2);
                         const isCompactBooking = durationMinutes <= 30;
-                        const tone = bookingTonePresentation(booking, service);
 
                         return (
                           <button
@@ -4531,23 +4531,17 @@ function CalendarView({
                         const customer = customersById.get(booking.customerId);
                         const service = servicesById.get(booking.serviceId);
                         const statusBadge = bookingStatusBadge(booking);
+                        const tone = bookingTonePresentation(booking, service);
                         return (
                           <button
                             key={booking.id}
                             type="button"
                             onClick={() => onEdit(booking.id)}
-                            className={`block w-full rounded-lg border px-3 py-3 text-left shadow-sm ${
-                              booking.status === "Cancelled"
-                                ? "border-black/10 bg-[#6b7280] text-white"
-                                : "border-black/10 bg-[#eef3f8]"
-                            }`}
+                            className={`block w-full rounded-lg border px-3 py-3 text-left shadow-sm ${tone.borderClass} ${tone.containerClass}`}
+                            style={tone.style}
                           >
                             <div className="flex items-start justify-between gap-2">
-                              <div
-                                className={`text-[11px] font-semibold ${
-                                  booking.status === "Cancelled" ? "text-white/80" : "text-[#526f9a]"
-                                }`}
-                              >
+                              <div className={`text-[11px] font-semibold ${tone.timeClass}`}>
                                 {timeLabel(booking.start)} - {timeLabel(booking.end)}
                               </div>
                               {statusBadge ? (
@@ -4558,18 +4552,10 @@ function CalendarView({
                                 </span>
                               ) : null}
                             </div>
-                            <div
-                              className={`mt-1 truncate text-[14px] font-semibold ${
-                                booking.status === "Cancelled" ? "text-white" : "text-[#10243e]"
-                              }`}
-                            >
+                            <div className="mt-1 truncate text-[14px] font-semibold">
                               {customer?.player || customer?.name || "Customer"}
                             </div>
-                            <div
-                              className={`mt-1 text-[12px] ${
-                                booking.status === "Cancelled" ? "text-white/85" : "text-[#506174]"
-                              }`}
-                            >
+                            <div className={`mt-1 text-[12px] ${tone.subClass}`}>
                               {(service?.name || "Service")} · {booking.resource}
                             </div>
                           </button>
