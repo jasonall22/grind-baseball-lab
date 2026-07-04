@@ -1242,23 +1242,18 @@ function closedBlocksForDate(availability: AppState["availability"], value: stri
   return blocks;
 }
 
-function calendarScrollOffsetForTime(now: Date, slotHeight: number) {
-  const minutes = now.getHours() * 60 + now.getMinutes();
-  const rawOffset = (minutes / 30) * slotHeight - slotHeight * 2;
-  return Math.max(0, rawOffset);
-}
+function calendarScrollTargetTime(availability: AppState["availability"], date: string) {
+  const today = isoDate(new Date());
 
-function calendarScrollOffsetForAvailabilityStart(
-  availability: AppState["availability"],
-  date: string,
-  slotHeight: number
-) {
+  if (date === today) {
+    const now = new Date();
+    const roundedMinutes = Math.floor((now.getHours() * 60 + now.getMinutes()) / 30) * 30;
+    return minutesToTime(roundedMinutes);
+  }
+
   const [, isOpen, openStart] = availabilityForDate(availability, date);
-  if (!isOpen) return 0;
-
-  const openStartMinutes = timeToMinutes(openStart);
-  const rawOffset = (openStartMinutes / 30) * slotHeight - slotHeight;
-  return Math.max(0, rawOffset);
+  if (!isOpen) return "00:00";
+  return openStart;
 }
 
 function bookingTimesOverlap(
@@ -4181,8 +4176,8 @@ function CalendarView({
   const [calendarMode, setCalendarMode] = useState<"day" | "week">("day");
   const [mobileResource, setMobileResource] = useState<string>(allMobileResourcesValue);
   const dateInputRef = useRef<HTMLInputElement | null>(null);
-  const mobileDayScrollRef = useRef<HTMLDivElement | null>(null);
-  const desktopDayScrollRef = useRef<HTMLDivElement | null>(null);
+  const mobileDayTimeTargetRef = useRef<HTMLDivElement | null>(null);
+  const desktopDayTimeTargetRef = useRef<HTMLDivElement | null>(null);
   const dayName = weekdayName(activeDate);
   const availabilityRow = availabilityForDate(availability, activeDate);
   const [, isOpen, openStart, openEnd] = availabilityRow;
@@ -4251,6 +4246,10 @@ function CalendarView({
         : mobileDayResourceViews.filter((item) => item.resource === mobileResource),
     [mobileDayResourceViews, mobileResource]
   );
+  const scrollTargetTime = useMemo(
+    () => calendarScrollTargetTime(availability, activeDate),
+    [activeDate, availability]
+  );
 
   useEffect(() => {
     if (!resources.length) {
@@ -4266,28 +4265,18 @@ function CalendarView({
   useEffect(() => {
     if (resourceMode !== "rooms" || calendarMode !== "day") return;
 
-    const mobileNode = mobileDayScrollRef.current;
-    const desktopNode = desktopDayScrollRef.current;
-    const isToday = activeDate === isoDate(new Date());
-    const mobileOffset = isToday
-      ? calendarScrollOffsetForTime(new Date(), mobileSlotHeight)
-      : calendarScrollOffsetForAvailabilityStart(availability, activeDate, mobileSlotHeight);
-    const desktopOffset = isToday
-      ? calendarScrollOffsetForTime(new Date(), slotHeight)
-      : calendarScrollOffsetForAvailabilityStart(availability, activeDate, slotHeight);
-
     const frame = window.requestAnimationFrame(() => {
-      if (mobileNode) {
-        mobileNode.scrollTop = mobileOffset;
+      if (mobileDayTimeTargetRef.current) {
+        mobileDayTimeTargetRef.current.scrollIntoView({ block: "start", inline: "nearest" });
       }
 
-      if (desktopNode) {
-        desktopNode.scrollTop = desktopOffset;
+      if (desktopDayTimeTargetRef.current) {
+        desktopDayTimeTargetRef.current.scrollIntoView({ block: "start", inline: "nearest" });
       }
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [activeDate, availability, calendarMode, mobileSlotHeight, resourceMode, slotHeight]);
+  }, [calendarMode, resourceMode, scrollTargetTime]);
 
   function openDatePicker() {
     const input = dateInputRef.current as HTMLInputElement | null;
@@ -4460,7 +4449,7 @@ function CalendarView({
               </div>
 
               <div className="overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm">
-                <div ref={mobileDayScrollRef} className="overflow-auto">
+                <div className="overflow-auto">
                   <div
                     className="grid border-b border-black/10 bg-[#f6f7f9]"
                     style={{
@@ -4490,6 +4479,7 @@ function CalendarView({
                       {slots.map((slot, index) => (
                         <div
                           key={`mobile-time-${slot}`}
+                          ref={slot === scrollTargetTime ? mobileDayTimeTargetRef : undefined}
                           className="flex items-start justify-end border-b border-black/10 px-2 text-right text-[12px] font-medium text-black/90"
                           style={{ height: mobileSlotHeight }}
                         >
@@ -4601,7 +4591,7 @@ function CalendarView({
               ))}
             </div>
 
-            <div ref={desktopDayScrollRef} className="overflow-auto">
+            <div className="overflow-auto">
               <div
                 className="grid min-w-[980px]"
                 style={{ gridTemplateColumns: `96px repeat(${resources.length}, minmax(220px, 1fr))` }}
@@ -4610,6 +4600,7 @@ function CalendarView({
                   {slots.map((slot, index) => (
                       <div
                         key={slot}
+                        ref={slot === scrollTargetTime ? desktopDayTimeTargetRef : undefined}
                         className="flex items-start justify-end border-b border-black/10 px-4 text-right text-[15px] font-medium text-black/90"
                         style={{ height: slotHeight }}
                       >
