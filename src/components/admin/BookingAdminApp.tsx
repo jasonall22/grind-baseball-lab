@@ -4061,9 +4061,10 @@ function CalendarView({
   onEdit: (id: string) => void;
   showToast: (message: string) => void;
 }) {
+  const allMobileResourcesValue = "__all__";
   const [resourceMode, setResourceMode] = useState<"rooms" | "staff" | "equipment">("rooms");
   const [calendarMode, setCalendarMode] = useState<"day" | "week">("day");
-  const [mobileResource, setMobileResource] = useState(resources[0] ?? "");
+  const [mobileResource, setMobileResource] = useState<string>(allMobileResourcesValue);
   const dateInputRef = useRef<HTMLInputElement | null>(null);
   const dayName = weekdayName(activeDate);
   const availabilityRow = availabilityForDate(availability, activeDate);
@@ -4098,7 +4099,9 @@ function CalendarView({
   }, [activeCalendarBookings, week]);
   const mobileDayBookings = useMemo(
     () =>
-      visibleDayBookings.filter((booking) => booking.resource === mobileResource),
+      mobileResource === allMobileResourcesValue
+        ? visibleDayBookings
+        : visibleDayBookings.filter((booking) => booking.resource === mobileResource),
     [mobileResource, visibleDayBookings]
   );
   const mobileTimeline = useMemo(
@@ -4114,22 +4117,41 @@ function CalendarView({
       week.map((date) => ({
         date,
         items: activeCalendarBookings
-          .filter((booking) => booking.date === date && booking.resource === mobileResource)
+          .filter(
+            (booking) =>
+              booking.date === date &&
+              (mobileResource === allMobileResourcesValue || booking.resource === mobileResource)
+          )
           .sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start)),
       })),
     [activeCalendarBookings, mobileResource, week]
   );
+  const mobileDayResourceViews = useMemo(
+    () =>
+      resources.map((resource) => {
+        const resourceBookings = visibleDayBookings.filter((booking) => booking.resource === resource);
+        const timeline = buildMobileCalendarTimeline(resourceBookings, availability, activeDate);
+        const availableBlocks = timeline.filter((segment) => segment.type === "available");
+        return {
+          resource,
+          bookings: resourceBookings,
+          timeline,
+          availableBlocks,
+        };
+      }),
+    [activeDate, availability, resources, visibleDayBookings]
+  );
 
   useEffect(() => {
     if (!resources.length) {
-      setMobileResource("");
+      setMobileResource(allMobileResourcesValue);
       return;
     }
 
-    if (!resources.includes(mobileResource)) {
-      setMobileResource(resources[0]);
+    if (mobileResource !== allMobileResourcesValue && !resources.includes(mobileResource)) {
+      setMobileResource(allMobileResourcesValue);
     }
-  }, [mobileResource, resources]);
+  }, [allMobileResourcesValue, mobileResource, resources]);
 
   function openDatePicker() {
     const input = dateInputRef.current as HTMLInputElement | null;
@@ -4240,6 +4262,18 @@ function CalendarView({
 
       {resourceMode === "rooms" ? (
         <div className="mb-4 flex gap-2 overflow-x-auto pb-1 xl:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileResource(allMobileResourcesValue)}
+            className={[
+              "shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition",
+              mobileResource === allMobileResourcesValue
+                ? "border-black bg-black text-white"
+                : "border-black/10 bg-white text-black/70",
+            ].join(" ")}
+          >
+            All Lanes
+          </button>
           {resources.map((resource) => (
             <button
               key={resource}
@@ -4262,34 +4296,37 @@ function CalendarView({
         calendarMode === "day" ? (
           <>
             <div className="space-y-3 xl:hidden">
-              <div className="rounded-xl border border-black/10 bg-white p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <div className="text-[13px] font-semibold uppercase tracking-[0.12em] text-black/45">
-                      {formatCalendarHeading(activeDate)}
+              {(mobileResource === allMobileResourcesValue ? mobileDayResourceViews : mobileDayResourceViews.filter((item) => item.resource === mobileResource)).map(
+                ({ resource, bookings: resourceBookings, timeline, availableBlocks }) => (
+                  <div key={resource} className="space-y-3">
+                    <div className="rounded-xl border border-black/10 bg-white p-4 shadow-sm">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <div className="text-[13px] font-semibold uppercase tracking-[0.12em] text-black/45">
+                            {formatCalendarHeading(activeDate)}
+                          </div>
+                          <div className="mt-1 text-2xl font-semibold text-black">{resource || "Room"}</div>
+                          <div className="mt-2 text-sm font-medium text-black/55">
+                            {isOpen ? `Open ${timeLabel(openStart)} - ${timeLabel(openEnd)}` : "Closed all day"}
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-2">
+                          <Pill label={`${resourceBookings.length} Booking${resourceBookings.length === 1 ? "" : "s"}`} />
+                          {availableBlocks.length ? (
+                            <span className="rounded-full bg-[#e8faf0] px-3 py-1 text-[12px] font-semibold text-[#15835d]">
+                              {availableBlocks.length} Open Slot{availableBlocks.length === 1 ? "" : "s"}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
                     </div>
-                    <div className="mt-1 text-2xl font-semibold text-black">{mobileResource || "Room"}</div>
-                    <div className="mt-2 text-sm font-medium text-black/55">
-                      {isOpen ? `Open ${timeLabel(openStart)} - ${timeLabel(openEnd)}` : "Closed all day"}
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-end gap-2">
-                    <Pill label={`${mobileDayBookings.length} Booking${mobileDayBookings.length === 1 ? "" : "s"}`} />
-                    {mobileAvailableBlocks.length ? (
-                      <span className="rounded-full bg-[#e8faf0] px-3 py-1 text-[12px] font-semibold text-[#15835d]">
-                        {mobileAvailableBlocks.length} Open Slot{mobileAvailableBlocks.length === 1 ? "" : "s"}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
 
-              {mobileTimeline.length ? (
-                mobileTimeline.map((segment, index) => {
+                    {timeline.length ? (
+                      timeline.map((segment, index) => {
                   if (segment.type === "closed") {
                     return (
                       <div
-                        key={`mobile-closed-${index}`}
+                        key={`${resource}-mobile-closed-${index}`}
                         className="rounded-xl border border-black/10 bg-[#8a8f98] px-4 py-4 text-white shadow-sm"
                       >
                         <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/80">
@@ -4304,8 +4341,8 @@ function CalendarView({
                     return (
                       <button
                         type="button"
-                        onClick={() => createBookingFromSlot(mobileResource, segment.start, segment.end)}
-                        key={`mobile-available-${index}`}
+                        onClick={() => createBookingFromSlot(resource, segment.start, segment.end)}
+                        key={`${resource}-mobile-available-${index}`}
                         className="block w-full rounded-xl border border-[#caefdd] bg-[#f3fcf7] px-4 py-4 text-left text-[#166443] shadow-sm transition hover:border-[#9ed8bc] hover:bg-[#ecfaf3]"
                       >
                         <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#15835d]/75">
@@ -4349,11 +4386,14 @@ function CalendarView({
                       <div className={`mt-1 text-[13px] ${tone.subClass}`}>{service?.name || booking.serviceName || "Service"}</div>
                     </button>
                   );
-                })
-              ) : (
-                <div className="rounded-xl border border-dashed border-black/15 bg-white px-5 py-10 text-center text-sm text-black/50 shadow-sm">
-                  No bookings for {mobileResource || "this room"} on {formatCalendarHeading(activeDate)}.
-                </div>
+                      })
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-black/15 bg-white px-5 py-10 text-center text-sm text-black/50 shadow-sm">
+                        No bookings for {resource || "this room"} on {formatCalendarHeading(activeDate)}.
+                      </div>
+                    )}
+                  </div>
+                )
               )}
             </div>
 
