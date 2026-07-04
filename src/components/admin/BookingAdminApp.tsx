@@ -4267,32 +4267,29 @@ function CalendarView({
   useEffect(() => {
     if (resourceMode !== "rooms" || calendarMode !== "day") return;
 
+    const targetIndex = slots.findIndex((slot) => slot === scrollTargetTime);
+    if (targetIndex < 0) return;
+
     const syncScroll = () => {
-      if (mobileDayScrollRef.current && mobileDayTimeTargetRef.current) {
+      if (mobileDayScrollRef.current) {
         const container = mobileDayScrollRef.current;
-        const target = mobileDayTimeTargetRef.current;
-        const containerRect = container.getBoundingClientRect();
-        const targetRect = target.getBoundingClientRect();
-        container.scrollTop += targetRect.top - containerRect.top;
+        container.scrollTop = targetIndex * mobileSlotHeight;
       }
 
-      if (desktopDayScrollRef.current && desktopDayTimeTargetRef.current) {
+      if (desktopDayScrollRef.current) {
         const container = desktopDayScrollRef.current;
-        const target = desktopDayTimeTargetRef.current;
-        const containerRect = container.getBoundingClientRect();
-        const targetRect = target.getBoundingClientRect();
-        container.scrollTop += targetRect.top - containerRect.top;
+        container.scrollTop = targetIndex * slotHeight;
       }
     };
 
     const frame = window.requestAnimationFrame(syncScroll);
     const timer = window.setTimeout(syncScroll, 60);
 
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.clearTimeout(timer);
-    };
-  }, [calendarMode, resourceMode, scrollTargetTime]);
+      return () => {
+        window.cancelAnimationFrame(frame);
+        window.clearTimeout(timer);
+      };
+  }, [calendarMode, mobileSlotHeight, resourceMode, scrollTargetTime, slotHeight, slots]);
 
   function openDatePicker() {
     const input = dateInputRef.current as HTMLInputElement | null;
