@@ -4071,6 +4071,7 @@ function CalendarView({
   const [, isOpen, openStart, openEnd] = availabilityRow;
   const slots = useMemo(() => Array.from({ length: 48 }, (_, index) => minutesToTime(index * 30)), []);
   const slotHeight = 50;
+  const mobileSlotHeight = 46;
   const columnHeight = slots.length * slotHeight;
   const activeCalendarBookings = useMemo(
     () => bookings.filter((booking) => booking.status !== "Cancelled"),
@@ -4097,21 +4098,6 @@ function CalendarView({
         .sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start)),
     }));
   }, [activeCalendarBookings, week]);
-  const mobileDayBookings = useMemo(
-    () =>
-      mobileResource === allMobileResourcesValue
-        ? visibleDayBookings
-        : visibleDayBookings.filter((booking) => booking.resource === mobileResource),
-    [mobileResource, visibleDayBookings]
-  );
-  const mobileTimeline = useMemo(
-    () => buildMobileCalendarTimeline(mobileDayBookings, availability, activeDate),
-    [activeDate, availability, mobileDayBookings]
-  );
-  const mobileAvailableBlocks = useMemo(
-    () => mobileTimeline.filter((segment) => segment.type === "available"),
-    [mobileTimeline]
-  );
   const mobileWeekBookings = useMemo(
     () =>
       week.map((date) => ({
@@ -4140,6 +4126,13 @@ function CalendarView({
         };
       }),
     [activeDate, availability, resources, visibleDayBookings]
+  );
+  const mobileVisibleDayResourceViews = useMemo(
+    () =>
+      mobileResource === allMobileResourcesValue
+        ? mobileDayResourceViews
+        : mobileDayResourceViews.filter((item) => item.resource === mobileResource),
+    [mobileDayResourceViews, mobileResource]
   );
 
   useEffect(() => {
@@ -4296,105 +4289,160 @@ function CalendarView({
         calendarMode === "day" ? (
           <>
             <div className="space-y-3 xl:hidden">
-              {(mobileResource === allMobileResourcesValue ? mobileDayResourceViews : mobileDayResourceViews.filter((item) => item.resource === mobileResource)).map(
-                ({ resource, bookings: resourceBookings, timeline, availableBlocks }) => (
-                  <div key={resource} className="space-y-3">
-                    <div className="rounded-xl border border-black/10 bg-white p-4 shadow-sm">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <div className="text-[13px] font-semibold uppercase tracking-[0.12em] text-black/45">
-                            {formatCalendarHeading(activeDate)}
-                          </div>
-                          <div className="mt-1 text-2xl font-semibold text-black">{resource || "Room"}</div>
-                          <div className="mt-2 text-sm font-medium text-black/55">
-                            {isOpen ? `Open ${timeLabel(openStart)} - ${timeLabel(openEnd)}` : "Closed all day"}
-                          </div>
-                        </div>
-                        <div className="flex flex-col items-end gap-2">
-                          <Pill label={`${resourceBookings.length} Booking${resourceBookings.length === 1 ? "" : "s"}`} />
-                          {availableBlocks.length ? (
-                            <span className="rounded-full bg-[#e8faf0] px-3 py-1 text-[12px] font-semibold text-[#15835d]">
-                              {availableBlocks.length} Open Slot{availableBlocks.length === 1 ? "" : "s"}
-                            </span>
-                          ) : null}
-                        </div>
+              <div className="rounded-xl border border-black/10 bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="text-[13px] font-semibold uppercase tracking-[0.12em] text-black/45">
+                      {formatCalendarHeading(activeDate)}
+                    </div>
+                    <div className="mt-1 text-2xl font-semibold text-black">
+                      {mobileResource === allMobileResourcesValue ? "All Lanes" : mobileResource || "Room"}
+                    </div>
+                    <div className="mt-2 text-sm font-medium text-black/55">
+                      {isOpen ? `Open ${timeLabel(openStart)} - ${timeLabel(openEnd)}` : "Closed all day"}
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <Pill
+                      label={`${mobileVisibleDayResourceViews.reduce((count, item) => count + item.bookings.length, 0)} Booking${
+                        mobileVisibleDayResourceViews.reduce((count, item) => count + item.bookings.length, 0) === 1 ? "" : "s"
+                      }`}
+                    />
+                    <span className="rounded-full bg-[#e8faf0] px-3 py-1 text-[12px] font-semibold text-[#15835d]">
+                      {mobileVisibleDayResourceViews.reduce((count, item) => count + item.availableBlocks.length, 0)} Open Slot
+                      {mobileVisibleDayResourceViews.reduce((count, item) => count + item.availableBlocks.length, 0) === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm">
+                <div className="overflow-auto">
+                  <div
+                    className="grid border-b border-black/10 bg-[#f6f7f9]"
+                    style={{
+                      gridTemplateColumns: `76px repeat(${Math.max(mobileVisibleDayResourceViews.length, 1)}, minmax(132px, 1fr))`,
+                      minWidth: `${76 + Math.max(mobileVisibleDayResourceViews.length, 1) * 132}px`,
+                    }}
+                  >
+                    <div className="sticky left-0 z-20 border-r border-black/10 bg-[#f6f7f9] px-3 py-3" />
+                    {mobileVisibleDayResourceViews.map(({ resource }) => (
+                      <div
+                        key={`mobile-day-header-${resource}`}
+                        className="border-r border-black/10 px-2 py-3 text-center text-[14px] font-bold last:border-r-0"
+                      >
+                        {resource}
                       </div>
+                    ))}
+                  </div>
+
+                  <div
+                    className="grid"
+                    style={{
+                      gridTemplateColumns: `76px repeat(${Math.max(mobileVisibleDayResourceViews.length, 1)}, minmax(132px, 1fr))`,
+                      minWidth: `${76 + Math.max(mobileVisibleDayResourceViews.length, 1) * 132}px`,
+                    }}
+                  >
+                    <div className="sticky left-0 z-10 border-r border-black/10 bg-white">
+                      {slots.map((slot, index) => (
+                        <div
+                          key={`mobile-time-${slot}`}
+                          className="flex items-start justify-end border-b border-black/10 px-2 text-right text-[12px] font-medium text-black/90"
+                          style={{ height: mobileSlotHeight }}
+                        >
+                          <div className={`w-full ${index === 0 ? "pt-1" : "pt-0.5"}`}>{timeLabel(slot)}</div>
+                        </div>
+                      ))}
                     </div>
 
-                    {timeline.length ? (
-                      timeline.map((segment, index) => {
-                  if (segment.type === "closed") {
-                    return (
+                    {mobileVisibleDayResourceViews.map(({ resource, timeline }) => (
                       <div
-                        key={`${resource}-mobile-closed-${index}`}
-                        className="rounded-xl border border-black/10 bg-[#8a8f98] px-4 py-4 text-white shadow-sm"
+                        key={`mobile-day-column-${resource}`}
+                        className="relative border-r border-black/10 last:border-r-0"
+                        style={{ height: slots.length * mobileSlotHeight }}
                       >
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/80">
-                          {timeLabel(minutesToTime(segment.start))} - {timeLabel(minutesToTime(segment.end))}
-                        </div>
-                        <div className="mt-1 text-lg font-semibold">Closed</div>
-                      </div>
-                    );
-                  }
+                        {slots.map((slot) => (
+                          <div
+                            key={`${resource}-mobile-slot-${slot}`}
+                            className="border-b border-black/10"
+                            style={{ height: mobileSlotHeight }}
+                          />
+                        ))}
 
-                  if (segment.type === "available") {
-                    return (
-                      <button
-                        type="button"
-                        onClick={() => createBookingFromSlot(resource, segment.start, segment.end)}
-                        key={`${resource}-mobile-available-${index}`}
-                        className="block w-full rounded-xl border border-[#caefdd] bg-[#f3fcf7] px-4 py-4 text-left text-[#166443] shadow-sm transition hover:border-[#9ed8bc] hover:bg-[#ecfaf3]"
-                      >
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#15835d]/75">
-                          {timeLabel(minutesToTime(segment.start))} - {timeLabel(minutesToTime(segment.end))}
-                        </div>
-                        <div className="mt-1 text-lg font-semibold">Available</div>
-                        <div className="mt-1 text-sm text-[#15835d]">Open for booking</div>
-                      </button>
-                    );
-                  }
+                        {timeline.map((segment, index) => {
+                          const top = (segment.start / 30) * mobileSlotHeight + 1;
+                          const height = Math.max(mobileSlotHeight - 2, ((segment.end - segment.start) / 30) * mobileSlotHeight - 2);
 
-                  const booking = segment.booking;
-                  const customer = customersById.get(booking.customerId);
-                  const service = servicesById.get(booking.serviceId);
-                  const statusBadge = bookingStatusBadge(booking);
-                  const tone = bookingTonePresentation(booking, service);
+                          if (segment.type === "closed") {
+                            return (
+                              <div
+                                key={`${resource}-mobile-closed-block-${index}`}
+                                className="absolute left-[2px] right-[2px] overflow-hidden rounded-md border border-[#6f86a0] bg-[#8a8f98] px-2 py-1 text-white"
+                                style={{ top, height }}
+                              >
+                                <div className="text-[9px] font-semibold leading-none text-white/80">
+                                  {timeLabel(minutesToTime(segment.start))} - {timeLabel(minutesToTime(segment.end))}
+                                </div>
+                                <div className="mt-1 text-[18px] font-semibold leading-none">Closed</div>
+                              </div>
+                            );
+                          }
 
-                  return (
-                    <button
-                      key={booking.id}
-                      type="button"
-                      onClick={() => onEdit(booking.id)}
-                      className={`block w-full rounded-xl px-4 py-4 text-left shadow-sm ${tone.containerClass}`}
-                      style={tone.style}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className={`text-[11px] font-semibold uppercase tracking-[0.08em] ${tone.timeClass}`}>
-                          {timeLabel(minutesToTime(segment.start))} - {timeLabel(minutesToTime(segment.end))}
-                        </div>
-                        {statusBadge ? (
-                          <span
-                            className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] ${statusBadge.className}`}
-                          >
-                            {statusBadge.label}
-                          </span>
-                        ) : null}
+                          if (segment.type === "available") {
+                            return (
+                              <button
+                                key={`${resource}-mobile-open-block-${index}`}
+                                type="button"
+                                onClick={() => createBookingFromSlot(resource, segment.start, segment.end)}
+                                className="absolute left-[2px] right-[2px] overflow-hidden rounded-md border border-[#caefdd] bg-[#f3fcf7] px-2 py-1 text-left text-[#166443] shadow-sm"
+                                style={{ top, height }}
+                              >
+                                <div className="text-[9px] font-semibold leading-none text-[#15835d]/75">
+                                  {timeLabel(minutesToTime(segment.start))}
+                                </div>
+                                <div className="mt-1 text-[16px] font-semibold leading-none">Open</div>
+                              </button>
+                            );
+                          }
+
+                          const booking = segment.booking;
+                          const customer = customersById.get(booking.customerId);
+                          const service = servicesById.get(booking.serviceId);
+                          const tone = bookingTonePresentation(booking, service);
+                          const durationMinutes = Math.max(30, segment.end - segment.start);
+                          const isCompactBooking = durationMinutes <= 30;
+
+                          return (
+                            <button
+                              key={booking.id}
+                              type="button"
+                              onClick={() => onEdit(booking.id)}
+                              className={`absolute left-[2px] right-[2px] overflow-hidden rounded-md border text-left shadow-sm ${tone.borderClass} ${tone.containerClass} ${
+                                isCompactBooking ? "px-2 py-1" : "px-2 py-1.5"
+                              }`}
+                              style={{ top, height, ...tone.style }}
+                            >
+                              <div className={`${isCompactBooking ? "text-[8px]" : "text-[9px]"} ${tone.timeClass} font-semibold leading-none`}>
+                                {timeLabel(minutesToTime(segment.start))}
+                              </div>
+                              <div className={`truncate font-semibold leading-[1.05] ${isCompactBooking ? "mt-0.5 text-[11px]" : "mt-1 text-[12px]"}`}>
+                                {customer?.player || customer?.name || "Customer"}
+                              </div>
+                              <div
+                                className={`line-clamp-2 font-medium leading-[1.05] ${tone.subClass} ${
+                                  isCompactBooking ? "mt-0.5 text-[9px]" : "mt-0.5 text-[10px]"
+                                }`}
+                              >
+                                {service?.name || booking.serviceName || "Service"}
+                              </div>
+                            </button>
+                          );
+                        })}
                       </div>
-                      <div className="mt-1 text-[20px] font-semibold leading-tight">
-                        {customer?.player || customer?.name || "Customer"}
-                      </div>
-                      <div className={`mt-1 text-[13px] ${tone.subClass}`}>{service?.name || booking.serviceName || "Service"}</div>
-                    </button>
-                  );
-                      })
-                    ) : (
-                      <div className="rounded-xl border border-dashed border-black/15 bg-white px-5 py-10 text-center text-sm text-black/50 shadow-sm">
-                        No bookings for {resource || "this room"} on {formatCalendarHeading(activeDate)}.
-                      </div>
-                    )}
+                    ))}
                   </div>
-                )
-              )}
+                </div>
+              </div>
             </div>
 
             <div className="hidden overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm xl:block">
