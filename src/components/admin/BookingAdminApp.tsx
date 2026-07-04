@@ -1082,6 +1082,60 @@ function timeLabel(value: string) {
   });
 }
 
+function timeToMinutes(value: string) {
+  const [hour, minute] = value.split(":").map(Number);
+  return hour * 60 + minute;
+}
+
+function minutesToTime(totalMinutes: number) {
+  const minutes = ((totalMinutes % 1440) + 1440) % 1440;
+  const hour = Math.floor(minutes / 60);
+  const minute = minutes % 60;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+function parseLocalDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, (month || 1) - 1, day || 1);
+}
+
+function isoDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function shiftDate(value: string, days: number) {
+  const date = parseLocalDate(value);
+  date.setDate(date.getDate() + days);
+  return isoDate(date);
+}
+
+function formatCalendarHeading(value: string) {
+  const date = parseLocalDate(value);
+  return date.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "2-digit",
+  });
+}
+
+function weekdayName(value: string) {
+  return parseLocalDate(value).toLocaleDateString("en-US", { weekday: "long" });
+}
+
+function weekDates(value: string) {
+  const date = parseLocalDate(value);
+  const start = new Date(date);
+  start.setDate(date.getDate() - date.getDay());
+  return Array.from({ length: 7 }, (_, index) => {
+    const next = new Date(start);
+    next.setDate(start.getDate() + index);
+    return isoDate(next);
+  });
+}
+
 function dateLabel(value: string) {
   if (!value) return "";
 
@@ -2314,13 +2368,15 @@ export default function BookingAdminApp({
           {view === "calendar" ? (
             <CalendarView
               activeDate={activeDate}
-              bookings={dayBookings}
+              bookings={state.bookings}
+              availability={state.availability}
               customersById={customersById}
               resources={state.resources}
               servicesById={servicesById}
               onDateChange={setActiveDate}
               onNew={() => setModal({ type: "booking" })}
               onEdit={(id) => setModal({ type: "booking", id })}
+              showToast={showToast}
             />
           ) : null}
           {view === "availability" ? (
@@ -3691,154 +3747,367 @@ function InlineOnOff({
 function CalendarView({
   activeDate,
   bookings,
+  availability,
   customersById,
   resources,
   servicesById,
   onDateChange,
   onNew,
   onEdit,
+  showToast,
 }: {
   activeDate: string;
   bookings: Booking[];
+  availability: AppState["availability"];
   customersById: Map<string, Customer>;
   resources: string[];
   servicesById: Map<string, Service>;
   onDateChange: (date: string) => void;
   onNew: () => void;
   onEdit: (id: string) => void;
+  showToast: (message: string) => void;
 }) {
-  const hours = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
+  const [resourceMode, setResourceMode] = useState<"rooms" | "staff" | "equipment">("rooms");
+  const [calendarMode, setCalendarMode] = useState<"day" | "week">("day");
+  const dateInputRef = useRef<HTMLInputElement | null>(null);
+  const dayName = weekdayName(activeDate);
+  const availabilityRow = availability.find(([name]) => name === dayName) ?? [dayName, false, "00:00", "23:59"];
+  const [, isOpen, openStart, openEnd] = availabilityRow;
+  const slots = useMemo(() => Array.from({ length: 48 }, (_, index) => minutesToTime(index * 30)), []);
+  const slotHeight = 50;
+  const columnHeight = slots.length * slotHeight;
+  const visibleDayBookings = useMemo(
+    () =>
+      bookings
+        .filter((booking) => booking.date === activeDate)
+        .sort(
+        (a, b) =>
+          timeToMinutes(a.start) - timeToMinutes(b.start) ||
+          timeToMinutes(a.end) - timeToMinutes(b.end)
+      ),
+    [activeDate, bookings]
+  );
+  const closedBlocks = useMemo(() => {
+    if (!isOpen) {
+      return [{ start: 0, end: 1439 }];
+    }
+
+    const blocks: Array<{ start: number; end: number }> = [];
+    const startMinutes = timeToMinutes(openStart);
+    const endMinutes = Math.min(1439, timeToMinutes(openEnd));
+
+    if (startMinutes > 0) blocks.push({ start: 0, end: startMinutes });
+    if (endMinutes < 1439) blocks.push({ start: endMinutes, end: 1439 });
+    return blocks;
+  }, [isOpen, openStart, openEnd]);
+  const week = useMemo(() => weekDates(activeDate), [activeDate]);
+  const weekBookings = useMemo(() => {
+    return week.map((date) => ({
+      date,
+      items: bookings
+        .filter((booking) => booking.date === date)
+        .sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start)),
+    }));
+  }, [bookings, week]);
+
+  function openDatePicker() {
+    const input = dateInputRef.current as HTMLInputElement | null;
+    if (!input) return;
+    (input as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+  }
+
+  function changeMode(next: "rooms" | "staff" | "equipment") {
+    setResourceMode(next);
+    if (next !== "rooms") {
+      showToast(`${next[0].toUpperCase()}${next.slice(1)} calendar is next.`);
+    }
+  }
 
   return (
-    <section className="min-h-screen px-6 py-8">
-      <PageHeader title="Calendar" subtitle={activeDate}>
-        <input
-          type="date"
-          value={activeDate}
-          onChange={(event) => onDateChange(event.target.value)}
-          className="min-h-10 rounded-lg border border-black/10 px-3 text-sm"
-          aria-label="Calendar date"
-        />
-        <PrimaryButton icon="plus" onClick={onNew}>
-          New booking
-        </PrimaryButton>
-      </PageHeader>
-
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_330px]">
-        <div className="overflow-auto rounded-lg border border-black/10 bg-white shadow-sm">
-          <div
-            className="grid min-w-[780px]"
-            style={{ gridTemplateColumns: `75px repeat(${resources.length}, minmax(150px, 1fr))` }}
-          >
-            <div className="border-b border-r border-black/10 bg-black/[0.02] p-3" />
-            {resources.map((resource) => (
-              <div key={resource} className="border-b border-r border-black/10 bg-black/[0.02] p-3 text-sm font-bold">
-                {resource}
-              </div>
-            ))}
-
-            {hours.map((hour) => (
-              <CalendarRow
-                key={hour}
-                hour={hour}
-                resources={resources}
-                bookings={bookings}
-                customersById={customersById}
-                servicesById={servicesById}
-                onEdit={onEdit}
-              />
-            ))}
-          </div>
+    <section className="min-h-screen px-6 py-8 xl:px-7">
+      <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <CalendarToolbarButton label="Today" onClick={() => onDateChange(isoDate(new Date()))} />
+          <CalendarToolbarButton label="Back" onClick={() => onDateChange(shiftDate(activeDate, calendarMode === "week" ? -7 : -1))} />
+          <CalendarToolbarButton label="Next" onClick={() => onDateChange(shiftDate(activeDate, calendarMode === "week" ? 7 : 1))} />
         </div>
 
-        <aside className="rounded-lg border border-black/10 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-black/10 px-4 py-4">
-            <h2 className="font-semibold">Today&apos;s Bookings</h2>
-            <Pill label={String(bookings.length)} />
-          </div>
-          <div className="divide-y divide-black/10">
-            {bookings.length ? (
-              bookings.map((booking) => {
-                const customer = customersById.get(booking.customerId);
-                const service = servicesById.get(booking.serviceId);
+        <div className="flex items-center gap-4">
+          <input
+            ref={dateInputRef}
+            type="date"
+            value={activeDate}
+            onChange={(event) => onDateChange(event.target.value)}
+            className="sr-only"
+            aria-label="Calendar date"
+          />
+          <button
+            type="button"
+            onClick={openDatePicker}
+            className="inline-flex min-h-12 items-center gap-3 rounded-lg border border-black/15 bg-[#f3f3f3] px-5 text-[16px] font-semibold text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
+          >
+            <span>{formatCalendarHeading(activeDate)}</span>
+            <Icon name="chevron" className="h-4 w-4 rotate-90 text-black/60" />
+          </button>
 
-                return (
-                  <button
-                    key={booking.id}
-                    type="button"
-                    onClick={() => onEdit(booking.id)}
-                    className="block w-full px-4 py-3 text-left hover:bg-black/[0.02]"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <strong>{timeLabel(booking.start)}</strong>
-                      <Pill label={booking.status} />
-                    </div>
-                    <div className="mt-1">{customer?.player || customer?.name || "Customer"}</div>
-                    <div className="mt-1 text-sm text-black/60">
-                      {service?.name || "Service"} | {booking.resource}
-                    </div>
-                  </button>
-                );
-              })
-            ) : (
-              <div className="px-4 py-8 text-sm text-black/60">No bookings on this date.</div>
-            )}
+          <div className="hidden items-center gap-2 xl:flex">
+            <CalendarSegmentButton active={resourceMode === "rooms"} onClick={() => changeMode("rooms")}>
+              Rooms
+            </CalendarSegmentButton>
+            <CalendarSegmentButton active={resourceMode === "staff"} onClick={() => changeMode("staff")}>
+              Staff
+            </CalendarSegmentButton>
+            <CalendarSegmentButton active={resourceMode === "equipment"} onClick={() => changeMode("equipment")}>
+              Equipment
+            </CalendarSegmentButton>
           </div>
-        </aside>
+
+          <div className="hidden items-center gap-2 xl:flex">
+            <CalendarSegmentButton active={calendarMode === "day"} onClick={() => setCalendarMode("day")}>
+              Day
+            </CalendarSegmentButton>
+            <CalendarSegmentButton active={calendarMode === "week"} onClick={() => setCalendarMode("week")}>
+              Week
+            </CalendarSegmentButton>
+          </div>
+
+          <CalendarToolbarButton
+            label="Filter View"
+            icon="table"
+            onClick={() => showToast("Filter View is next.")}
+            className="hidden xl:inline-flex"
+          />
+        </div>
       </div>
+
+      <div className="mb-5 flex flex-wrap items-center gap-2 xl:hidden">
+        <CalendarSegmentButton active={resourceMode === "rooms"} onClick={() => changeMode("rooms")}>
+          Rooms
+        </CalendarSegmentButton>
+        <CalendarSegmentButton active={resourceMode === "staff"} onClick={() => changeMode("staff")}>
+          Staff
+        </CalendarSegmentButton>
+        <CalendarSegmentButton active={resourceMode === "equipment"} onClick={() => changeMode("equipment")}>
+          Equipment
+        </CalendarSegmentButton>
+        <CalendarSegmentButton active={calendarMode === "day"} onClick={() => setCalendarMode("day")}>
+          Day
+        </CalendarSegmentButton>
+        <CalendarSegmentButton active={calendarMode === "week"} onClick={() => setCalendarMode("week")}>
+          Week
+        </CalendarSegmentButton>
+        <CalendarToolbarButton label="Filter" icon="table" onClick={() => showToast("Filter View is next.")} />
+      </div>
+
+      {resourceMode === "rooms" ? (
+        calendarMode === "day" ? (
+          <div className="overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm">
+            <div
+              className="grid min-w-[980px] border-b border-black/10 bg-[#f6f7f9]"
+              style={{ gridTemplateColumns: `96px repeat(${resources.length}, minmax(220px, 1fr))` }}
+            >
+              <div className="border-r border-black/10 px-4 py-4" />
+              {resources.map((resource) => (
+                <div key={resource} className="border-r border-black/10 px-4 py-4 text-center text-[15px] font-bold last:border-r-0">
+                  {resource}
+                </div>
+              ))}
+            </div>
+
+            <div className="overflow-auto">
+              <div
+                className="grid min-w-[980px]"
+                style={{ gridTemplateColumns: `96px repeat(${resources.length}, minmax(220px, 1fr))` }}
+              >
+                <div className="relative border-r border-black/10 bg-white">
+                  {slots.map((slot, index) => (
+                    <div
+                      key={slot}
+                      className="border-b border-black/10 px-4 text-right text-[12px] font-medium text-black/75"
+                      style={{ height: slotHeight }}
+                    >
+                      <div className={index === 0 ? "pt-2" : "-mt-3"}>{timeLabel(slot)}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {resources.map((resource) => {
+                  const resourceBookings = visibleDayBookings.filter((booking) => booking.resource === resource);
+
+                  return (
+                    <div key={resource} className="relative border-r border-black/10 last:border-r-0" style={{ height: columnHeight }}>
+                      {slots.map((slot) => (
+                        <div key={`${resource}-${slot}`} className="border-b border-black/10" style={{ height: slotHeight }} />
+                      ))}
+
+                      {closedBlocks.map((block, index) => {
+                        const top = (block.start / 30) * slotHeight;
+                        const height = Math.max(slotHeight, ((block.end - block.start) / 30) * slotHeight);
+                        return (
+                          <div
+                            key={`${resource}-closed-${index}`}
+                            className="absolute left-[5px] right-[5px] rounded-md border border-[#6f86a0] bg-[#7f848d]/70 text-white"
+                            style={{ top, height }}
+                          >
+                            <div className="flex h-full items-center justify-center px-3 text-center text-[12px] font-medium">
+                              <span className="rounded-sm border border-black/45 bg-white px-3 py-1 text-black shadow-sm">
+                                {timeLabel(minutesToTime(block.start))} - {timeLabel(minutesToTime(block.end))}: Closed
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {resourceBookings.map((booking) => {
+                        const customer = customersById.get(booking.customerId);
+                        const service = servicesById.get(booking.serviceId);
+                        const top = (timeToMinutes(booking.start) / 30) * slotHeight;
+                        const durationMinutes = Math.max(30, timeToMinutes(booking.end) - timeToMinutes(booking.start));
+                        const height = Math.max(slotHeight, (durationMinutes / 30) * slotHeight - 2);
+                        const tone =
+                          booking.status === "Cancelled"
+                            ? "bg-[#6b7280] text-white"
+                            : !booking.paid
+                              ? "bg-[#2f3742] text-white"
+                              : "bg-[#4e7cb5] text-white";
+
+                        return (
+                          <button
+                            key={booking.id}
+                            type="button"
+                            onClick={() => onEdit(booking.id)}
+                            className={`absolute left-[2px] right-[10px] overflow-hidden rounded-md border border-black/20 px-2 py-1 text-left shadow-sm ${tone}`}
+                            style={{ top, height }}
+                          >
+                            <div className="text-[10px] font-semibold">{timeLabel(booking.start)} - {timeLabel(booking.end)}</div>
+                            <div className="truncate text-[15px] font-semibold leading-tight">
+                              {customer?.player || customer?.name || "Customer"}
+                            </div>
+                            <div className="truncate text-[11px] font-medium text-white/90">
+                              {service?.name || "Service"}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-black/10 bg-white shadow-sm">
+            <div className="grid gap-0 border-b border-black/10 bg-[#f6f7f9] md:grid-cols-7">
+              {week.map((date) => (
+                <div key={date} className="border-r border-black/10 px-4 py-4 text-center last:border-r-0">
+                  <div className="text-[12px] font-semibold uppercase tracking-[0.12em] text-black/45">
+                    {parseLocalDate(date).toLocaleDateString("en-US", { weekday: "short" })}
+                  </div>
+                  <div className="mt-1 text-[15px] font-bold">{parseLocalDate(date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>
+                </div>
+              ))}
+            </div>
+            <div className="grid gap-0 md:grid-cols-7">
+              {weekBookings.map(({ date, items }) => (
+                <div key={date} className="min-h-[320px] border-r border-black/10 p-3 last:border-r-0">
+                  {items.length ? (
+                    <div className="space-y-2">
+                      {items.map((booking) => {
+                        const customer = customersById.get(booking.customerId);
+                        const service = servicesById.get(booking.serviceId);
+                        return (
+                          <button
+                            key={booking.id}
+                            type="button"
+                            onClick={() => onEdit(booking.id)}
+                            className="block w-full rounded-lg border border-black/10 bg-[#eef3f8] px-3 py-3 text-left shadow-sm"
+                          >
+                            <div className="text-[11px] font-semibold text-[#526f9a]">
+                              {timeLabel(booking.start)} - {timeLabel(booking.end)}
+                            </div>
+                            <div className="mt-1 truncate text-[14px] font-semibold text-[#10243e]">
+                              {customer?.player || customer?.name || "Customer"}
+                            </div>
+                            <div className="mt-1 text-[12px] text-[#506174]">
+                              {(service?.name || "Service")} · {booking.resource}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="flex min-h-[280px] items-center justify-center text-center text-sm text-black/45">
+                      No bookings
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      ) : (
+        <div className="rounded-xl border border-dashed border-black/15 bg-white px-6 py-16 text-center text-black/55 shadow-sm">
+          {resourceMode === "staff" ? "Staff calendar is next." : "Equipment calendar is next."}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={onNew}
+        className="fixed bottom-[90px] right-5 z-20 inline-flex min-h-14 items-center gap-3 rounded-full bg-[#1f1a1a] px-6 text-[15px] font-semibold text-white shadow-[0_10px_24px_rgba(0,0,0,0.24)] xl:bottom-6"
+      >
+        <Icon name="plus" className="h-5 w-5" />
+        <span>New Booking</span>
+      </button>
     </section>
   );
 }
 
-function CalendarRow({
-  hour,
-  resources,
-  bookings,
-  customersById,
-  servicesById,
-  onEdit,
+function CalendarToolbarButton({
+  label,
+  onClick,
+  icon,
+  className = "",
 }: {
-  hour: string;
-  resources: string[];
-  bookings: Booking[];
-  customersById: Map<string, Customer>;
-  servicesById: Map<string, Service>;
-  onEdit: (id: string) => void;
+  label: string;
+  onClick: () => void;
+  icon?: IconName;
+  className?: string;
 }) {
   return (
-    <>
-      <div className="min-h-[68px] border-b border-r border-black/10 bg-black/[0.02] p-2 text-xs font-semibold text-black/60">
-        {timeLabel(hour)}
-      </div>
-      {resources.map((resource) => {
-        const slotBookings = bookings.filter(
-          (booking) => booking.resource === resource && booking.start.slice(0, 2) === hour.slice(0, 2)
-        );
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex min-h-10 items-center gap-2 rounded-lg border border-black/15 bg-white px-4 text-[15px] font-medium text-black shadow-[0_1px_0_rgba(255,255,255,0.9)] hover:bg-black/[0.02] ${className}`.trim()}
+    >
+      {icon ? <Icon name={icon} className="h-4 w-4" /> : null}
+      <span>{label}</span>
+    </button>
+  );
+}
 
-        return (
-          <div key={`${hour}-${resource}`} className="min-h-[68px] border-b border-r border-black/10 p-2">
-            {slotBookings.map((booking) => {
-              const customer = customersById.get(booking.customerId);
-              const service = servicesById.get(booking.serviceId);
-
-              return (
-                <button
-                  key={booking.id}
-                  type="button"
-                  onClick={() => onEdit(booking.id)}
-                  className="grid w-full gap-1 rounded-lg border-l-[3px] border-[#526f9a] bg-[#eef3f8] px-2 py-2 text-left text-sm text-[#10243e]"
-                >
-                  <strong className="truncate">{customer?.player || customer?.name || "Customer"}</strong>
-                  <span className="truncate text-xs text-[#506174]">
-                    {service?.name || "Service"} | {timeLabel(booking.start)}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        );
-      })}
-    </>
+function CalendarSegmentButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "inline-flex min-h-10 items-center rounded-lg border px-4 text-[15px] font-medium shadow-[0_1px_0_rgba(255,255,255,0.9)]",
+        active
+          ? "border-black/15 bg-[#ececec] text-black"
+          : "border-black/15 bg-white text-black/75 hover:bg-black/[0.02]",
+      ].join(" ")}
+    >
+      {children}
+    </button>
   );
 }
 
