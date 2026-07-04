@@ -1163,6 +1163,70 @@ function bookingToneClass(booking: Booking) {
   return "bg-[#4e7cb5] text-white";
 }
 
+type MobileCalendarTimelineSegment =
+  | { type: "closed"; start: number; end: number }
+  | { type: "available"; start: number; end: number }
+  | { type: "booking"; start: number; end: number; booking: Booking };
+
+function buildMobileCalendarTimeline(
+  bookings: Booking[],
+  availability: AppState["availability"],
+  date: string
+): MobileCalendarTimelineSegment[] {
+  const [, isOpen, openStart, openEnd] = availabilityForDate(availability, date);
+
+  if (!isOpen) {
+    return [{ type: "closed", start: 0, end: 1439 }];
+  }
+
+  const startMinutes = Math.max(0, timeToMinutes(openStart));
+  const endMinutes = Math.min(1439, timeToMinutes(openEnd));
+  const segments: MobileCalendarTimelineSegment[] = [];
+  const sortedBookings = [...bookings].sort(
+    (a, b) =>
+      timeToMinutes(a.start) - timeToMinutes(b.start) ||
+      timeToMinutes(a.end) - timeToMinutes(b.end)
+  );
+
+  if (startMinutes > 0) {
+    segments.push({ type: "closed", start: 0, end: startMinutes });
+  }
+
+  let cursor = startMinutes;
+
+  for (const booking of sortedBookings) {
+    const bookingStart = Math.max(startMinutes, timeToMinutes(booking.start));
+    const bookingEnd = Math.min(endMinutes, Math.max(bookingStart + 30, timeToMinutes(booking.end)));
+
+    if (bookingEnd <= startMinutes || bookingStart >= endMinutes) {
+      continue;
+    }
+
+    if (bookingStart > cursor) {
+      segments.push({ type: "available", start: cursor, end: bookingStart });
+    }
+
+    segments.push({
+      type: "booking",
+      start: Math.max(cursor, bookingStart),
+      end: bookingEnd,
+      booking,
+    });
+
+    cursor = Math.max(cursor, bookingEnd);
+  }
+
+  if (cursor < endMinutes) {
+    segments.push({ type: "available", start: cursor, end: endMinutes });
+  }
+
+  if (endMinutes < 1439) {
+    segments.push({ type: "closed", start: endMinutes, end: 1439 });
+  }
+
+  return segments.filter((segment) => segment.end > segment.start);
+}
+
 function dateLabel(value: string) {
   if (!value) return "";
 
@@ -3830,6 +3894,14 @@ function CalendarView({
       visibleDayBookings.filter((booking) => booking.resource === mobileResource),
     [mobileResource, visibleDayBookings]
   );
+  const mobileTimeline = useMemo(
+    () => buildMobileCalendarTimeline(mobileDayBookings, availability, activeDate),
+    [activeDate, availability, mobileDayBookings]
+  );
+  const mobileAvailableBlocks = useMemo(
+    () => mobileTimeline.filter((segment) => segment.type === "available"),
+    [mobileTimeline]
+  );
   const mobileWeekBookings = useMemo(
     () =>
       week.map((date) => ({
@@ -3972,22 +4044,53 @@ function CalendarView({
                       {formatCalendarHeading(activeDate)}
                     </div>
                     <div className="mt-1 text-2xl font-semibold text-black">{mobileResource || "Room"}</div>
+                    <div className="mt-2 text-sm font-medium text-black/55">
+                      {isOpen ? `Open ${timeLabel(openStart)} - ${timeLabel(openEnd)}` : "Closed all day"}
+                    </div>
                   </div>
-                  <Pill label={`${mobileDayBookings.length} Booking${mobileDayBookings.length === 1 ? "" : "s"}`} />
+                  <div className="flex flex-col items-end gap-2">
+                    <Pill label={`${mobileDayBookings.length} Booking${mobileDayBookings.length === 1 ? "" : "s"}`} />
+                    {mobileAvailableBlocks.length ? (
+                      <span className="rounded-full bg-[#e8faf0] px-3 py-1 text-[12px] font-semibold text-[#15835d]">
+                        {mobileAvailableBlocks.length} Open Slot{mobileAvailableBlocks.length === 1 ? "" : "s"}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
               </div>
 
-              {closedBlocks.map((block, index) => (
-                <div key={`mobile-closed-${index}`} className="rounded-xl border border-black/10 bg-[#8a8f98] px-4 py-4 text-white shadow-sm">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/80">
-                    {timeLabel(minutesToTime(block.start))} - {timeLabel(minutesToTime(block.end))}
-                  </div>
-                  <div className="mt-1 text-lg font-semibold">Closed</div>
-                </div>
-              ))}
+              {mobileTimeline.length ? (
+                mobileTimeline.map((segment, index) => {
+                  if (segment.type === "closed") {
+                    return (
+                      <div
+                        key={`mobile-closed-${index}`}
+                        className="rounded-xl border border-black/10 bg-[#8a8f98] px-4 py-4 text-white shadow-sm"
+                      >
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/80">
+                          {timeLabel(minutesToTime(segment.start))} - {timeLabel(minutesToTime(segment.end))}
+                        </div>
+                        <div className="mt-1 text-lg font-semibold">Closed</div>
+                      </div>
+                    );
+                  }
 
-              {mobileDayBookings.length ? (
-                mobileDayBookings.map((booking) => {
+                  if (segment.type === "available") {
+                    return (
+                      <div
+                        key={`mobile-available-${index}`}
+                        className="rounded-xl border border-[#caefdd] bg-[#f3fcf7] px-4 py-4 text-[#166443] shadow-sm"
+                      >
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#15835d]/75">
+                          {timeLabel(minutesToTime(segment.start))} - {timeLabel(minutesToTime(segment.end))}
+                        </div>
+                        <div className="mt-1 text-lg font-semibold">Available</div>
+                        <div className="mt-1 text-sm text-[#15835d]">Open for booking</div>
+                      </div>
+                    );
+                  }
+
+                  const booking = segment.booking;
                   const customer = customersById.get(booking.customerId);
                   const service = servicesById.get(booking.serviceId);
 
@@ -3999,7 +4102,7 @@ function CalendarView({
                       className={`block w-full rounded-xl px-4 py-4 text-left shadow-sm ${bookingToneClass(booking)}`}
                     >
                       <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/80">
-                        {timeLabel(booking.start)} - {timeLabel(booking.end)}
+                        {timeLabel(minutesToTime(segment.start))} - {timeLabel(minutesToTime(segment.end))}
                       </div>
                       <div className="mt-1 text-[20px] font-semibold leading-tight">
                         {customer?.player || customer?.name || "Customer"}
