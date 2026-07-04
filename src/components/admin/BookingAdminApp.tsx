@@ -314,7 +314,7 @@ const previewDevicePresets: Record<
 > = {
   mobile: { label: "Mobile", width: 430, height: 932 },
   tablet: { label: "Tablet", width: 820, height: 1180 },
-  desktop: { label: "Desktop", width: 1280, height: 900 },
+  desktop: { label: "Desktop", width: 1366, height: 900 },
 };
 
 const rentalDurationOptions = Array.from({ length: 32 }, (_, index) => String((index + 1) * 15));
