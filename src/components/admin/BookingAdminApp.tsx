@@ -3930,27 +3930,31 @@ function CalendarView({
   const slots = useMemo(() => Array.from({ length: 48 }, (_, index) => minutesToTime(index * 30)), []);
   const slotHeight = 50;
   const columnHeight = slots.length * slotHeight;
+  const activeCalendarBookings = useMemo(
+    () => bookings.filter((booking) => booking.status !== "Cancelled"),
+    [bookings]
+  );
   const visibleDayBookings = useMemo(
     () =>
-      bookings
+      activeCalendarBookings
         .filter((booking) => booking.date === activeDate)
         .sort(
         (a, b) =>
           timeToMinutes(a.start) - timeToMinutes(b.start) ||
           timeToMinutes(a.end) - timeToMinutes(b.end)
       ),
-    [activeDate, bookings]
+    [activeDate, activeCalendarBookings]
   );
   const closedBlocks = useMemo(() => closedBlocksForDate(availability, activeDate), [availability, activeDate]);
   const week = useMemo(() => weekDates(activeDate), [activeDate]);
   const weekBookings = useMemo(() => {
     return week.map((date) => ({
       date,
-      items: bookings
+      items: activeCalendarBookings
         .filter((booking) => booking.date === date)
         .sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start)),
     }));
-  }, [bookings, week]);
+  }, [activeCalendarBookings, week]);
   const mobileDayBookings = useMemo(
     () =>
       visibleDayBookings.filter((booking) => booking.resource === mobileResource),
@@ -3968,11 +3972,11 @@ function CalendarView({
     () =>
       week.map((date) => ({
         date,
-        items: bookings
+        items: activeCalendarBookings
           .filter((booking) => booking.date === date && booking.resource === mobileResource)
           .sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start)),
       })),
-    [bookings, mobileResource, week]
+    [activeCalendarBookings, mobileResource, week]
   );
 
   useEffect(() => {
