@@ -1248,6 +1248,19 @@ function calendarScrollOffsetForTime(now: Date, slotHeight: number) {
   return Math.max(0, rawOffset);
 }
 
+function calendarScrollOffsetForAvailabilityStart(
+  availability: AppState["availability"],
+  date: string,
+  slotHeight: number
+) {
+  const [, isOpen, openStart] = availabilityForDate(availability, date);
+  if (!isOpen) return 0;
+
+  const openStartMinutes = timeToMinutes(openStart);
+  const rawOffset = (openStartMinutes / 30) * slotHeight - slotHeight;
+  return Math.max(0, rawOffset);
+}
+
 function bookingTimesOverlap(
   startA: string,
   endA: string,
@@ -4252,12 +4265,16 @@ function CalendarView({
 
   useEffect(() => {
     if (resourceMode !== "rooms" || calendarMode !== "day") return;
-    if (activeDate !== isoDate(new Date())) return;
 
     const mobileNode = mobileDayScrollRef.current;
     const desktopNode = desktopDayScrollRef.current;
-    const mobileOffset = calendarScrollOffsetForTime(new Date(), mobileSlotHeight);
-    const desktopOffset = calendarScrollOffsetForTime(new Date(), slotHeight);
+    const isToday = activeDate === isoDate(new Date());
+    const mobileOffset = isToday
+      ? calendarScrollOffsetForTime(new Date(), mobileSlotHeight)
+      : calendarScrollOffsetForAvailabilityStart(availability, activeDate, mobileSlotHeight);
+    const desktopOffset = isToday
+      ? calendarScrollOffsetForTime(new Date(), slotHeight)
+      : calendarScrollOffsetForAvailabilityStart(availability, activeDate, slotHeight);
 
     const frame = window.requestAnimationFrame(() => {
       if (mobileNode) {
@@ -4270,7 +4287,7 @@ function CalendarView({
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [activeDate, calendarMode, mobileSlotHeight, resourceMode, slotHeight]);
+  }, [activeDate, availability, calendarMode, mobileSlotHeight, resourceMode, slotHeight]);
 
   function openDatePicker() {
     const input = dateInputRef.current as HTMLInputElement | null;
