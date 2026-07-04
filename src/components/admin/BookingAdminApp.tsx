@@ -1164,6 +1164,24 @@ function bookingToneClass(booking: Booking) {
   return "bg-[#4e7cb5] text-white";
 }
 
+function bookingStatusBadge(booking: Booking) {
+  if (booking.status === "Cancelled") {
+    return {
+      label: "Cancelled",
+      className: "bg-white/15 text-white ring-1 ring-white/20",
+    };
+  }
+
+  if (booking.status === "Pending") {
+    return {
+      label: "Pending",
+      className: "bg-white/15 text-white ring-1 ring-white/20",
+    };
+  }
+
+  return null;
+}
+
 function findServiceForCalendarSlot(services: Service[], resource: string, durationMinutes: number) {
   const normalizedResource = resource.trim().toLowerCase();
   const activeServices = services.filter((service) => service.status === "Active");
@@ -4155,6 +4173,7 @@ function CalendarView({
                   const booking = segment.booking;
                   const customer = customersById.get(booking.customerId);
                   const service = servicesById.get(booking.serviceId);
+                  const statusBadge = bookingStatusBadge(booking);
 
                   return (
                     <button
@@ -4163,8 +4182,17 @@ function CalendarView({
                       onClick={() => onEdit(booking.id)}
                       className={`block w-full rounded-xl px-4 py-4 text-left shadow-sm ${bookingToneClass(booking)}`}
                     >
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/80">
-                        {timeLabel(minutesToTime(segment.start))} - {timeLabel(minutesToTime(segment.end))}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/80">
+                          {timeLabel(minutesToTime(segment.start))} - {timeLabel(minutesToTime(segment.end))}
+                        </div>
+                        {statusBadge ? (
+                          <span
+                            className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] ${statusBadge.className}`}
+                          >
+                            {statusBadge.label}
+                          </span>
+                        ) : null}
                       </div>
                       <div className="mt-1 text-[20px] font-semibold leading-tight">
                         {customer?.player || customer?.name || "Customer"}
@@ -4240,6 +4268,7 @@ function CalendarView({
                       {resourceBookings.map((booking) => {
                         const customer = customersById.get(booking.customerId);
                         const service = servicesById.get(booking.serviceId);
+                        const statusBadge = bookingStatusBadge(booking);
                         const top = (timeToMinutes(booking.start) / 30) * slotHeight;
                         const durationMinutes = Math.max(30, timeToMinutes(booking.end) - timeToMinutes(booking.start));
                         const height = Math.max(slotHeight, (durationMinutes / 30) * slotHeight - 2);
@@ -4252,7 +4281,16 @@ function CalendarView({
                             className={`absolute left-[2px] right-[10px] overflow-hidden rounded-md border border-black/20 px-2 py-1 text-left shadow-sm ${bookingToneClass(booking)}`}
                             style={{ top, height }}
                           >
-                            <div className="text-[10px] font-semibold">{timeLabel(booking.start)} - {timeLabel(booking.end)}</div>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="text-[10px] font-semibold">{timeLabel(booking.start)} - {timeLabel(booking.end)}</div>
+                              {statusBadge ? (
+                                <span
+                                  className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.06em] ${statusBadge.className}`}
+                                >
+                                  {statusBadge.label}
+                                </span>
+                              ) : null}
+                            </div>
                             <div className="truncate text-[15px] font-semibold leading-tight">
                               {customer?.player || customer?.name || "Customer"}
                             </div>
@@ -4300,6 +4338,7 @@ function CalendarView({
                       items.map((booking) => {
                         const customer = customersById.get(booking.customerId);
                         const service = servicesById.get(booking.serviceId);
+                        const statusBadge = bookingStatusBadge(booking);
                         return (
                           <button
                             key={booking.id}
@@ -4307,8 +4346,17 @@ function CalendarView({
                             onClick={() => onEdit(booking.id)}
                             className={`block w-full rounded-lg px-4 py-3 text-left shadow-sm ${bookingToneClass(booking)}`}
                           >
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/80">
-                              {timeLabel(booking.start)} - {timeLabel(booking.end)}
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/80">
+                                {timeLabel(booking.start)} - {timeLabel(booking.end)}
+                              </div>
+                              {statusBadge ? (
+                                <span
+                                  className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] ${statusBadge.className}`}
+                                >
+                                  {statusBadge.label}
+                                </span>
+                              ) : null}
                             </div>
                             <div className="mt-1 text-[18px] font-semibold leading-tight">
                               {customer?.player || customer?.name || "Customer"}
@@ -4346,20 +4394,46 @@ function CalendarView({
                       {items.map((booking) => {
                         const customer = customersById.get(booking.customerId);
                         const service = servicesById.get(booking.serviceId);
+                        const statusBadge = bookingStatusBadge(booking);
                         return (
                           <button
                             key={booking.id}
                             type="button"
                             onClick={() => onEdit(booking.id)}
-                            className="block w-full rounded-lg border border-black/10 bg-[#eef3f8] px-3 py-3 text-left shadow-sm"
+                            className={`block w-full rounded-lg border px-3 py-3 text-left shadow-sm ${
+                              booking.status === "Cancelled"
+                                ? "border-black/10 bg-[#6b7280] text-white"
+                                : "border-black/10 bg-[#eef3f8]"
+                            }`}
                           >
-                            <div className="text-[11px] font-semibold text-[#526f9a]">
-                              {timeLabel(booking.start)} - {timeLabel(booking.end)}
+                            <div className="flex items-start justify-between gap-2">
+                              <div
+                                className={`text-[11px] font-semibold ${
+                                  booking.status === "Cancelled" ? "text-white/80" : "text-[#526f9a]"
+                                }`}
+                              >
+                                {timeLabel(booking.start)} - {timeLabel(booking.end)}
+                              </div>
+                              {statusBadge ? (
+                                <span
+                                  className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.06em] ${statusBadge.className}`}
+                                >
+                                  {statusBadge.label}
+                                </span>
+                              ) : null}
                             </div>
-                            <div className="mt-1 truncate text-[14px] font-semibold text-[#10243e]">
+                            <div
+                              className={`mt-1 truncate text-[14px] font-semibold ${
+                                booking.status === "Cancelled" ? "text-white" : "text-[#10243e]"
+                              }`}
+                            >
                               {customer?.player || customer?.name || "Customer"}
                             </div>
-                            <div className="mt-1 text-[12px] text-[#506174]">
+                            <div
+                              className={`mt-1 text-[12px] ${
+                                booking.status === "Cancelled" ? "text-white/85" : "text-[#506174]"
+                              }`}
+                            >
                               {(service?.name || "Service")} · {booking.resource}
                             </div>
                           </button>
