@@ -1136,6 +1136,33 @@ function weekDates(value: string) {
   });
 }
 
+function availabilityForDate(availability: AppState["availability"], value: string) {
+  const dayName = weekdayName(value);
+  return availability.find(([name]) => name === dayName) ?? [dayName, false, "00:00", "23:59"];
+}
+
+function closedBlocksForDate(availability: AppState["availability"], value: string) {
+  const [, isOpen, openStart, openEnd] = availabilityForDate(availability, value);
+
+  if (!isOpen) {
+    return [{ start: 0, end: 1439 }];
+  }
+
+  const blocks: Array<{ start: number; end: number }> = [];
+  const startMinutes = timeToMinutes(openStart);
+  const endMinutes = Math.min(1439, timeToMinutes(openEnd));
+
+  if (startMinutes > 0) blocks.push({ start: 0, end: startMinutes });
+  if (endMinutes < 1439) blocks.push({ start: endMinutes, end: 1439 });
+  return blocks;
+}
+
+function bookingToneClass(booking: Booking) {
+  if (booking.status === "Cancelled") return "bg-[#6b7280] text-white";
+  if (!booking.paid) return "bg-[#2f3742] text-white";
+  return "bg-[#4e7cb5] text-white";
+}
+
 function dateLabel(value: string) {
   if (!value) return "";
 
@@ -3769,9 +3796,10 @@ function CalendarView({
 }) {
   const [resourceMode, setResourceMode] = useState<"rooms" | "staff" | "equipment">("rooms");
   const [calendarMode, setCalendarMode] = useState<"day" | "week">("day");
+  const [mobileResource, setMobileResource] = useState(resources[0] ?? "");
   const dateInputRef = useRef<HTMLInputElement | null>(null);
   const dayName = weekdayName(activeDate);
-  const availabilityRow = availability.find(([name]) => name === dayName) ?? [dayName, false, "00:00", "23:59"];
+  const availabilityRow = availabilityForDate(availability, activeDate);
   const [, isOpen, openStart, openEnd] = availabilityRow;
   const slots = useMemo(() => Array.from({ length: 48 }, (_, index) => minutesToTime(index * 30)), []);
   const slotHeight = 50;
@@ -3787,19 +3815,7 @@ function CalendarView({
       ),
     [activeDate, bookings]
   );
-  const closedBlocks = useMemo(() => {
-    if (!isOpen) {
-      return [{ start: 0, end: 1439 }];
-    }
-
-    const blocks: Array<{ start: number; end: number }> = [];
-    const startMinutes = timeToMinutes(openStart);
-    const endMinutes = Math.min(1439, timeToMinutes(openEnd));
-
-    if (startMinutes > 0) blocks.push({ start: 0, end: startMinutes });
-    if (endMinutes < 1439) blocks.push({ start: endMinutes, end: 1439 });
-    return blocks;
-  }, [isOpen, openStart, openEnd]);
+  const closedBlocks = useMemo(() => closedBlocksForDate(availability, activeDate), [availability, activeDate]);
   const week = useMemo(() => weekDates(activeDate), [activeDate]);
   const weekBookings = useMemo(() => {
     return week.map((date) => ({
@@ -3809,6 +3825,32 @@ function CalendarView({
         .sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start)),
     }));
   }, [bookings, week]);
+  const mobileDayBookings = useMemo(
+    () =>
+      visibleDayBookings.filter((booking) => booking.resource === mobileResource),
+    [mobileResource, visibleDayBookings]
+  );
+  const mobileWeekBookings = useMemo(
+    () =>
+      week.map((date) => ({
+        date,
+        items: bookings
+          .filter((booking) => booking.date === date && booking.resource === mobileResource)
+          .sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start)),
+      })),
+    [bookings, mobileResource, week]
+  );
+
+  useEffect(() => {
+    if (!resources.length) {
+      setMobileResource("");
+      return;
+    }
+
+    if (!resources.includes(mobileResource)) {
+      setMobileResource(resources[0]);
+    }
+  }, [mobileResource, resources]);
 
   function openDatePicker() {
     const input = dateInputRef.current as HTMLInputElement | null;
@@ -3900,12 +3942,84 @@ function CalendarView({
       </div>
 
       {resourceMode === "rooms" ? (
-        calendarMode === "day" ? (
-          <div className="overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm">
-            <div
-              className="grid min-w-[980px] border-b border-black/10 bg-[#f6f7f9]"
-              style={{ gridTemplateColumns: `96px repeat(${resources.length}, minmax(220px, 1fr))` }}
+        <div className="mb-4 flex gap-2 overflow-x-auto pb-1 xl:hidden">
+          {resources.map((resource) => (
+            <button
+              key={resource}
+              type="button"
+              onClick={() => setMobileResource(resource)}
+              className={[
+                "shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition",
+                mobileResource === resource
+                  ? "border-black bg-black text-white"
+                  : "border-black/10 bg-white text-black/70",
+              ].join(" ")}
             >
+              {resource}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {resourceMode === "rooms" ? (
+        calendarMode === "day" ? (
+          <>
+            <div className="space-y-3 xl:hidden">
+              <div className="rounded-xl border border-black/10 bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="text-[13px] font-semibold uppercase tracking-[0.12em] text-black/45">
+                      {formatCalendarHeading(activeDate)}
+                    </div>
+                    <div className="mt-1 text-2xl font-semibold text-black">{mobileResource || "Room"}</div>
+                  </div>
+                  <Pill label={`${mobileDayBookings.length} Booking${mobileDayBookings.length === 1 ? "" : "s"}`} />
+                </div>
+              </div>
+
+              {closedBlocks.map((block, index) => (
+                <div key={`mobile-closed-${index}`} className="rounded-xl border border-black/10 bg-[#8a8f98] px-4 py-4 text-white shadow-sm">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/80">
+                    {timeLabel(minutesToTime(block.start))} - {timeLabel(minutesToTime(block.end))}
+                  </div>
+                  <div className="mt-1 text-lg font-semibold">Closed</div>
+                </div>
+              ))}
+
+              {mobileDayBookings.length ? (
+                mobileDayBookings.map((booking) => {
+                  const customer = customersById.get(booking.customerId);
+                  const service = servicesById.get(booking.serviceId);
+
+                  return (
+                    <button
+                      key={booking.id}
+                      type="button"
+                      onClick={() => onEdit(booking.id)}
+                      className={`block w-full rounded-xl px-4 py-4 text-left shadow-sm ${bookingToneClass(booking)}`}
+                    >
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/80">
+                        {timeLabel(booking.start)} - {timeLabel(booking.end)}
+                      </div>
+                      <div className="mt-1 text-[20px] font-semibold leading-tight">
+                        {customer?.player || customer?.name || "Customer"}
+                      </div>
+                      <div className="mt-1 text-[13px] text-white/85">{service?.name || "Service"}</div>
+                    </button>
+                  );
+                })
+              ) : (
+                <div className="rounded-xl border border-dashed border-black/15 bg-white px-5 py-10 text-center text-sm text-black/50 shadow-sm">
+                  No bookings for {mobileResource || "this room"} on {formatCalendarHeading(activeDate)}.
+                </div>
+              )}
+            </div>
+
+            <div className="hidden overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm xl:block">
+          <div
+            className="grid min-w-[980px] border-b border-black/10 bg-[#f6f7f9]"
+            style={{ gridTemplateColumns: `96px repeat(${resources.length}, minmax(220px, 1fr))` }}
+          >
               <div className="border-r border-black/10 px-4 py-4" />
               {resources.map((resource) => (
                 <div key={resource} className="border-r border-black/10 px-4 py-4 text-center text-[15px] font-bold last:border-r-0">
@@ -3964,19 +4078,13 @@ function CalendarView({
                         const top = (timeToMinutes(booking.start) / 30) * slotHeight;
                         const durationMinutes = Math.max(30, timeToMinutes(booking.end) - timeToMinutes(booking.start));
                         const height = Math.max(slotHeight, (durationMinutes / 30) * slotHeight - 2);
-                        const tone =
-                          booking.status === "Cancelled"
-                            ? "bg-[#6b7280] text-white"
-                            : !booking.paid
-                              ? "bg-[#2f3742] text-white"
-                              : "bg-[#4e7cb5] text-white";
 
                         return (
                           <button
                             key={booking.id}
                             type="button"
                             onClick={() => onEdit(booking.id)}
-                            className={`absolute left-[2px] right-[10px] overflow-hidden rounded-md border border-black/20 px-2 py-1 text-left shadow-sm ${tone}`}
+                            className={`absolute left-[2px] right-[10px] overflow-hidden rounded-md border border-black/20 px-2 py-1 text-left shadow-sm ${bookingToneClass(booking)}`}
                             style={{ top, height }}
                           >
                             <div className="text-[10px] font-semibold">{timeLabel(booking.start)} - {timeLabel(booking.end)}</div>
@@ -3994,9 +4102,67 @@ function CalendarView({
                 })}
               </div>
             </div>
-          </div>
+            </div>
+          </>
         ) : (
-          <div className="rounded-xl border border-black/10 bg-white shadow-sm">
+          <>
+            <div className="space-y-3 xl:hidden">
+              {mobileWeekBookings.map(({ date, items }) => (
+                <div key={date} className="rounded-xl border border-black/10 bg-white p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="text-[12px] font-semibold uppercase tracking-[0.12em] text-black/45">
+                        {parseLocalDate(date).toLocaleDateString("en-US", { weekday: "short" })}
+                      </div>
+                      <div className="mt-1 text-[20px] font-semibold">
+                        {parseLocalDate(date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      </div>
+                    </div>
+                    <Pill label={`${items.length}`} />
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    {closedBlocksForDate(availability, date).map((block, index) => (
+                      <div key={`${date}-closed-${index}`} className="rounded-lg border border-black/10 bg-[#8a8f98] px-4 py-3 text-white">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/80">
+                          {timeLabel(minutesToTime(block.start))} - {timeLabel(minutesToTime(block.end))}
+                        </div>
+                        <div className="mt-1 text-base font-semibold">Closed</div>
+                      </div>
+                    ))}
+
+                    {items.length ? (
+                      items.map((booking) => {
+                        const customer = customersById.get(booking.customerId);
+                        const service = servicesById.get(booking.serviceId);
+                        return (
+                          <button
+                            key={booking.id}
+                            type="button"
+                            onClick={() => onEdit(booking.id)}
+                            className={`block w-full rounded-lg px-4 py-3 text-left shadow-sm ${bookingToneClass(booking)}`}
+                          >
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/80">
+                              {timeLabel(booking.start)} - {timeLabel(booking.end)}
+                            </div>
+                            <div className="mt-1 text-[18px] font-semibold leading-tight">
+                              {customer?.player || customer?.name || "Customer"}
+                            </div>
+                            <div className="mt-1 text-[13px] text-white/85">{service?.name || "Service"}</div>
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-black/15 px-4 py-6 text-center text-sm text-black/50">
+                        No bookings
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="hidden rounded-xl border border-black/10 bg-white shadow-sm xl:block">
             <div className="grid gap-0 border-b border-black/10 bg-[#f6f7f9] md:grid-cols-7">
               {week.map((date) => (
                 <div key={date} className="border-r border-black/10 px-4 py-4 text-center last:border-r-0">
@@ -4043,7 +4209,8 @@ function CalendarView({
                 </div>
               ))}
             </div>
-          </div>
+            </div>
+          </>
         )
       ) : (
         <div className="rounded-xl border border-dashed border-black/15 bg-white px-6 py-16 text-center text-black/55 shadow-sm">
