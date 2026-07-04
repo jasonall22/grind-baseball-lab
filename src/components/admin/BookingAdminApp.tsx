@@ -1055,6 +1055,34 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
 
   if (change.type === "booking") {
     const item = change.item;
+    const resourceId = resourceIdsByName[item.resource] || null;
+
+    if (resourceId && item.status !== "Cancelled") {
+      const existingBookings = await supabase
+        .from("booking_bookings")
+        .select("id,start_time,end_time,status")
+        .eq("booking_date", item.date)
+        .eq("resource_id", resourceId)
+        .neq("status", "Cancelled");
+
+      if (existingBookings.error) throw existingBookings.error;
+
+      const overlappingBooking = (existingBookings.data ?? []).some((booking) => {
+        if (booking.id === item.id) return false;
+
+        return bookingTimesOverlap(
+          normalizeTime(booking.start_time),
+          normalizeTime(booking.end_time),
+          item.start,
+          item.end
+        );
+      });
+
+      if (overlappingBooking) {
+        throw new Error("This room is already booked for that time.");
+      }
+    }
+
     const { error } = await supabase.from("booking_bookings").upsert({
       id: item.id,
       booking_date: item.date,
@@ -1062,7 +1090,7 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
       end_time: item.end,
       customer_id: item.customerId || null,
       service_id: item.serviceId || null,
-      resource_id: resourceIdsByName[item.resource] || null,
+      resource_id: resourceId,
       status: item.status,
       paid: item.paid,
     });
@@ -1212,6 +1240,33 @@ function closedBlocksForDate(availability: AppState["availability"], value: stri
   if (startMinutes > 0) blocks.push({ start: 0, end: startMinutes });
   if (endMinutes < 1439) blocks.push({ start: endMinutes, end: 1439 });
   return blocks;
+}
+
+function bookingTimesOverlap(
+  startA: string,
+  endA: string,
+  startB: string,
+  endB: string
+) {
+  const startAMinutes = timeToMinutes(startA);
+  const endAMinutes = timeToMinutes(endA);
+  const startBMinutes = timeToMinutes(startB);
+  const endBMinutes = timeToMinutes(endB);
+
+  return startAMinutes < endBMinutes && startBMinutes < endAMinutes;
+}
+
+function hasRoomBookingConflict(bookings: Booking[], candidate: Booking) {
+  if (!candidate.resource || candidate.status === "Cancelled") return false;
+
+  return bookings.some((booking) => {
+    if (booking.id === candidate.id) return false;
+    if (booking.status === "Cancelled") return false;
+    if (booking.date !== candidate.date) return false;
+    if (booking.resource !== candidate.resource) return false;
+
+    return bookingTimesOverlap(booking.start, booking.end, candidate.start, candidate.end);
+  });
 }
 
 function bookingTonePresentation(booking: Booking, service?: Service | null) {
@@ -2824,6 +2879,7 @@ export default function BookingAdminApp({
           modal={modal}
           state={state}
           activeDate={activeDate}
+          showToast={showToast}
           onClose={() => setModal(null)}
           onSave={(next, message, change) => void saveModalChange(next, message, change)}
         />
@@ -8050,12 +8106,14 @@ function EditorModal({
   modal,
   state,
   activeDate,
+  showToast,
   onClose,
   onSave,
 }: {
   modal: NonNullable<ModalState>;
   state: AppState;
   activeDate: string;
+  showToast: (message: string) => void;
   onClose: () => void;
   onSave: (next: AppState, message: string, change: ModalSaveChange) => void;
 }) {
@@ -8173,6 +8231,12 @@ function EditorModal({
     }
     if (modal.type === "booking") {
       const item = { ...(draft as Booking), id: draft.id || makeId("bk") };
+
+      if (hasRoomBookingConflict(state.bookings, item)) {
+        showToast("This room is already booked for that time.");
+        return;
+      }
+
       onSave({ ...state, bookings: upsert(state.bookings, item) }, "Booking saved.", { type: "booking", item });
     }
     if (modal.type === "customer") {
