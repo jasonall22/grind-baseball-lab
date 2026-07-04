@@ -23,6 +23,7 @@ type Service = {
   previewText?: string;
   description?: string;
   mediaUrl?: string;
+  calendarColor: string;
 };
 
 type FamilyMember = {
@@ -168,6 +169,7 @@ type BookingServiceRow = {
   service_type: ServiceSection | null;
   status: Service["status"];
   sort_order: number;
+  calendar_color: string | null;
 };
 
 type BookingCustomerRow = {
@@ -318,6 +320,17 @@ const previewDevicePresets: Record<
 };
 
 const rentalDurationOptions = Array.from({ length: 32 }, (_, index) => String((index + 1) * 15));
+const DEFAULT_SERVICE_CALENDAR_COLOR = "#4e7cb5";
+const serviceCalendarColorOptions = [
+  "#4e7cb5",
+  "#f97316",
+  "#10b981",
+  "#8b5cf6",
+  "#ef4444",
+  "#111827",
+  "#eab308",
+  "#ec4899",
+];
 
 const navItems: { key: BookingAdminView; label: string; icon: IconName }[] = [
   { key: "home", label: "Home", icon: "home" },
@@ -506,6 +519,7 @@ const defaultState: AppState = {
       rooms: ["Cage 1"],
       category: "lessons",
       status: "Active",
+      calendarColor: "#f97316",
     },
     {
       id: "svc-pitching",
@@ -516,6 +530,7 @@ const defaultState: AppState = {
       rooms: ["Pitching Lane"],
       category: "lessons",
       status: "Active",
+      calendarColor: "#10b981",
     },
     {
       id: "svc-cage-rental",
@@ -526,6 +541,7 @@ const defaultState: AppState = {
       rooms: ["Cage 2"],
       category: "rentals",
       status: "Active",
+      calendarColor: DEFAULT_SERVICE_CALENDAR_COLOR,
     },
   ],
   customers: [
@@ -776,6 +792,32 @@ function getErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
+function normalizeCalendarColor(value: string | null | undefined) {
+  const trimmed = (value ?? "").trim();
+  if (/^#[0-9a-f]{6}$/i.test(trimmed)) return trimmed;
+  return DEFAULT_SERVICE_CALENDAR_COLOR;
+}
+
+function isLightCalendarColor(value: string) {
+  const normalized = normalizeCalendarColor(value);
+  const red = Number.parseInt(normalized.slice(1, 3), 16);
+  const green = Number.parseInt(normalized.slice(3, 5), 16);
+  const blue = Number.parseInt(normalized.slice(5, 7), 16);
+  const luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
+  return luminance > 0.65;
+}
+
+function normalizeService(service: Service): Service {
+  return {
+    ...service,
+    calendarColor: normalizeCalendarColor(service.calendarColor),
+  };
+}
+
+function normalizeServices(services: Service[]) {
+  return services.map(normalizeService);
+}
+
 function slugifyFileNameStem(fileName: string) {
   const stem = fileName.replace(/\.[^.]+$/, "").toLowerCase();
   const slug = stem
@@ -992,6 +1034,7 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
       resource_names: roomNames,
       service_type: item.category,
       status: item.status,
+      calendar_color: normalizeCalendarColor(item.calendarColor),
     });
     if (error) throw error;
   }
@@ -1157,11 +1200,47 @@ function closedBlocksForDate(availability: AppState["availability"], value: stri
   return blocks;
 }
 
-function bookingToneClass(booking: Booking) {
-  if (booking.status === "Cancelled") return "bg-[#6b7280] text-white";
-  if (booking.status === "Pending") return "bg-[#d97706] text-white";
-  if (!booking.paid) return "bg-[#2f3742] text-white";
-  return "bg-[#4e7cb5] text-white";
+function bookingTonePresentation(booking: Booking, service?: Service | null) {
+  if (booking.status === "Cancelled") {
+    return {
+      containerClass: "bg-[#6b7280] text-white",
+      timeClass: "text-white/80",
+      subClass: "text-white/85",
+      borderClass: "border-black/20",
+      style: undefined,
+    };
+  }
+
+  if (booking.status === "Pending") {
+    return {
+      containerClass: "bg-[#d97706] text-white",
+      timeClass: "text-white/80",
+      subClass: "text-white/85",
+      borderClass: "border-black/20",
+      style: undefined,
+    };
+  }
+
+  if (!booking.paid) {
+    return {
+      containerClass: "bg-[#2f3742] text-white",
+      timeClass: "text-white/80",
+      subClass: "text-white/85",
+      borderClass: "border-black/20",
+      style: undefined,
+    };
+  }
+
+  const backgroundColor = normalizeCalendarColor(service?.calendarColor);
+  const isLight = isLightCalendarColor(backgroundColor);
+
+  return {
+    containerClass: isLight ? "text-black" : "text-white",
+    timeClass: isLight ? "text-black/65" : "text-white/80",
+    subClass: isLight ? "text-black/72" : "text-white/85",
+    borderClass: isLight ? "border-black/12" : "border-black/20",
+    style: { backgroundColor },
+  };
 }
 
 function bookingStatusBadge(booking: Booking) {
@@ -1569,7 +1648,11 @@ function loadInitialState() {
   try {
     const raw = window.localStorage.getItem(storageKey);
     if (!raw) return defaultState;
-    return { ...defaultState, ...JSON.parse(raw) } as AppState;
+    const parsed = { ...defaultState, ...JSON.parse(raw) } as AppState;
+    return {
+      ...parsed,
+      services: normalizeServices(parsed.services ?? defaultState.services),
+    };
   } catch {
     return defaultState;
   }
@@ -1593,7 +1676,7 @@ function createRentalDraft(resources: string[]): RentalDraft {
     emergencyContactInfo: false,
     customFieldsSummary: "No custom fields",
     private: false,
-    calendarColor: "#4e7cb5",
+    calendarColor: DEFAULT_SERVICE_CALENDAR_COLOR,
   };
 }
 
@@ -1615,7 +1698,7 @@ function createRentalDraftFromService(service: Service): RentalDraft {
     emergencyContactInfo: false,
     customFieldsSummary: "No custom fields",
     private: service.status !== "Active",
-    calendarColor: "#4e7cb5",
+    calendarColor: normalizeCalendarColor(service.calendarColor),
   };
 }
 
@@ -1858,9 +1941,10 @@ export default function BookingAdminApp({
               ? service.resource_names
               : service.resource_id
                 ? [namesById.get(service.resource_id) ?? ""].filter(Boolean)
-                : [],
+              : [],
           category: service.service_type ?? inferServiceCategory(service.name),
           status: service.status,
+          calendarColor: normalizeCalendarColor(service.calendar_color),
         })),
         customers: customerRows.map((customer) => ({
           id: customer.id,
@@ -2106,6 +2190,7 @@ export default function BookingAdminApp({
       previewText: rentalDraft.previewText,
       description: rentalDraft.description,
       mediaUrl: rentalDraft.mediaUrl,
+      calendarColor: normalizeCalendarColor(rentalDraft.calendarColor),
     };
     const next = { ...state, services: upsert(state.services, item) };
     const successMessage = existingService ? "Rental updated." : "Rental saved.";
@@ -3298,6 +3383,7 @@ function RentalEditorView({
   const [advancedOpen, setAdvancedOpen] = useState(true);
   const [showActions, setShowActions] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const calendarColorInputRef = useRef<HTMLInputElement | null>(null);
   const isEditMode = mode === "edit";
   const rentalName = service?.name || draft.name.trim() || "Rental";
 
@@ -3737,9 +3823,45 @@ function RentalEditorView({
                   title="Calendar Color"
                   description="The color used to display bookings for this service on the calendar."
                 >
-                  <div className="inline-flex h-[44px] items-center gap-3 rounded-[10px] border border-black/12 px-4">
-                    <span className="h-8 w-8 rounded-full border border-black/10" style={{ backgroundColor: draft.calendarColor }} />
-                    <Icon name="chevron" className="h-4 w-4 -rotate-90 text-black/45" />
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => calendarColorInputRef.current?.click()}
+                      className="inline-flex h-[44px] items-center gap-3 rounded-[10px] border border-black/12 px-4 transition hover:bg-black/[0.03]"
+                    >
+                      <span
+                        className="h-8 w-8 rounded-full border border-black/10"
+                        style={{ backgroundColor: draft.calendarColor }}
+                      />
+                      <span className="text-[14px] font-medium text-black/70">
+                        {draft.calendarColor.toUpperCase()}
+                      </span>
+                      <Icon name="chevron" className="h-4 w-4 -rotate-90 text-black/45" />
+                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {serviceCalendarColorOptions.map((option) => {
+                        const isActive = normalizeCalendarColor(draft.calendarColor) === option;
+                        return (
+                          <button
+                            key={option}
+                            type="button"
+                            onClick={() => patch({ calendarColor: option })}
+                            className={`h-8 w-8 rounded-full border-2 transition ${
+                              isActive ? "border-black shadow-sm" : "border-black/10"
+                            }`}
+                            style={{ backgroundColor: option }}
+                            aria-label={`Choose ${option} as the calendar color`}
+                          />
+                        );
+                      })}
+                    </div>
+                    <input
+                      ref={calendarColorInputRef}
+                      type="color"
+                      value={normalizeCalendarColor(draft.calendarColor)}
+                      onChange={(event) => patch({ calendarColor: normalizeCalendarColor(event.target.value) })}
+                      className="sr-only"
+                    />
                   </div>
                 </AdvancedSettingsRow>
               </div>
@@ -4178,16 +4300,18 @@ function CalendarView({
                   const customer = customersById.get(booking.customerId);
                   const service = servicesById.get(booking.serviceId);
                   const statusBadge = bookingStatusBadge(booking);
+                  const tone = bookingTonePresentation(booking, service);
 
                   return (
                     <button
                       key={booking.id}
                       type="button"
                       onClick={() => onEdit(booking.id)}
-                      className={`block w-full rounded-xl px-4 py-4 text-left shadow-sm ${bookingToneClass(booking)}`}
+                      className={`block w-full rounded-xl px-4 py-4 text-left shadow-sm ${tone.containerClass}`}
+                      style={tone.style}
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/80">
+                        <div className={`text-[11px] font-semibold uppercase tracking-[0.08em] ${tone.timeClass}`}>
                           {timeLabel(minutesToTime(segment.start))} - {timeLabel(minutesToTime(segment.end))}
                         </div>
                         {statusBadge ? (
@@ -4201,7 +4325,7 @@ function CalendarView({
                       <div className="mt-1 text-[20px] font-semibold leading-tight">
                         {customer?.player || customer?.name || "Customer"}
                       </div>
-                      <div className="mt-1 text-[13px] text-white/85">{service?.name || "Service"}</div>
+                      <div className={`mt-1 text-[13px] ${tone.subClass}`}>{service?.name || "Service"}</div>
                     </button>
                   );
                 })
@@ -4277,19 +4401,20 @@ function CalendarView({
                         const durationMinutes = Math.max(30, timeToMinutes(booking.end) - timeToMinutes(booking.start));
                         const height = Math.max(slotHeight - 2, (durationMinutes / 30) * slotHeight - 2);
                         const isCompactBooking = durationMinutes <= 30;
+                        const tone = bookingTonePresentation(booking, service);
 
                         return (
                           <button
                             key={booking.id}
                             type="button"
                             onClick={() => onEdit(booking.id)}
-                            className={`absolute left-[1px] right-[1px] overflow-hidden rounded-[4px] border border-black/20 text-left shadow-sm ${bookingToneClass(booking)} ${
+                            className={`absolute left-[1px] right-[1px] overflow-hidden rounded-[4px] border text-left shadow-sm ${tone.borderClass} ${tone.containerClass} ${
                               isCompactBooking ? "px-2 py-1" : "px-2.5 py-1.5"
                             }`}
-                            style={{ top, height }}
+                            style={{ top, height, ...tone.style }}
                           >
                             <div className="flex items-start justify-between gap-2">
-                              <div className={`${isCompactBooking ? "text-[9px]" : "text-[10px]"} font-semibold leading-none`}>
+                              <div className={`${isCompactBooking ? "text-[9px]" : "text-[10px]"} ${tone.timeClass} font-semibold leading-none`}>
                                 {timeLabel(booking.start)} - {timeLabel(booking.end)}
                               </div>
                               {statusBadge ? (
@@ -4303,7 +4428,7 @@ function CalendarView({
                             <div className={`truncate font-semibold leading-[1.05] ${isCompactBooking ? "mt-0.5 text-[13px]" : "mt-1 text-[15px]"}`}>
                               {customer?.player || customer?.name || "Customer"}
                             </div>
-                            <div className={`truncate font-medium leading-[1.05] text-white/90 ${isCompactBooking ? "mt-0.5 text-[10px]" : "mt-0.5 text-[11px]"}`}>
+                            <div className={`truncate font-medium leading-[1.05] ${tone.subClass} ${isCompactBooking ? "mt-0.5 text-[10px]" : "mt-0.5 text-[11px]"}`}>
                               {service?.name || "Service"}
                             </div>
                           </button>
@@ -4348,15 +4473,17 @@ function CalendarView({
                         const customer = customersById.get(booking.customerId);
                         const service = servicesById.get(booking.serviceId);
                         const statusBadge = bookingStatusBadge(booking);
+                        const tone = bookingTonePresentation(booking, service);
                         return (
                           <button
                             key={booking.id}
                             type="button"
                             onClick={() => onEdit(booking.id)}
-                            className={`block w-full rounded-lg px-4 py-3 text-left shadow-sm ${bookingToneClass(booking)}`}
+                            className={`block w-full rounded-lg px-4 py-3 text-left shadow-sm ${tone.containerClass}`}
+                            style={tone.style}
                           >
                             <div className="flex items-start justify-between gap-3">
-                              <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/80">
+                              <div className={`text-[11px] font-semibold uppercase tracking-[0.08em] ${tone.timeClass}`}>
                                 {timeLabel(booking.start)} - {timeLabel(booking.end)}
                               </div>
                               {statusBadge ? (
@@ -4370,7 +4497,7 @@ function CalendarView({
                             <div className="mt-1 text-[18px] font-semibold leading-tight">
                               {customer?.player || customer?.name || "Customer"}
                             </div>
-                            <div className="mt-1 text-[13px] text-white/85">{service?.name || "Service"}</div>
+                            <div className={`mt-1 text-[13px] ${tone.subClass}`}>{service?.name || "Service"}</div>
                           </button>
                         );
                       })
@@ -7848,6 +7975,7 @@ function EditorModal({
           rooms: state.resources[0] ? [state.resources[0]] : [],
           category: "rentals" as const,
           status: "Active" as const,
+          calendarColor: DEFAULT_SERVICE_CALENDAR_COLOR,
         }
       : null;
 
