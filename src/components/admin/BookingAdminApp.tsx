@@ -302,7 +302,7 @@ type ParsedCsvFile = {
 
 const storageKey = "grind_booking_admin_v1";
 const lastAppRouteKey = "grind_booking_admin_last_app_route";
-type SettingsSection = "basics" | "rooms" | "policies";
+type SettingsSection = "basics" | "rooms" | "policies" | "schedules";
 
 type RoomEditorDraft = {
   name: string;
@@ -321,6 +321,7 @@ const previewDevicePresets: Record<
   desktop: { label: "Desktop", width: 1366, height: 900 },
 };
 
+const scheduleTimeOptions = Array.from({ length: 96 }, (_, index) => minutesToTime(index * 15));
 const rentalDurationOptions = Array.from({ length: 32 }, (_, index) => String((index + 1) * 15));
 const DEFAULT_SERVICE_CALENDAR_COLOR = "#4e7cb5";
 const serviceCalendarColorOptions = [
@@ -442,7 +443,12 @@ const settingsNavGroups: {
         section: "rooms",
       },
       { label: "Equipment", icon: "bag" },
-      { label: "Schedules", icon: "calendar" },
+      {
+        label: "Schedules",
+        icon: "calendar",
+        href: bookingAdminRouteByView["settings-schedules"],
+        section: "schedules",
+      },
     ],
   },
   {
@@ -2793,6 +2799,21 @@ export default function BookingAdminApp({
           {view === "reports" ? (
             <ReportsView bookings={state.bookings} services={state.services} onExport={() => exportReport(state, showToast)} />
           ) : null}
+          {view === "settings-schedules-add" ? (
+            <ScheduleEditorView
+              rows={state.availability}
+              onBack={() => router.push(bookingAdminRouteByView["settings-schedules"])}
+              onSave={(rows) => void saveAvailability(rows)}
+              showToast={showToast}
+            />
+          ) : null}
+          {view === "settings-schedules" ? (
+            <SchedulesSettingsView
+              backHref={backToAppHref}
+              state={state}
+              showToast={showToast}
+            />
+          ) : null}
           {view === "settings-rooms-add" ? (
             <RoomEditorView
               backHref={backToAppHref}
@@ -2890,10 +2911,21 @@ export default function BookingAdminApp({
               <section className="min-h-screen px-6 py-8 text-[16px] text-black/60">Loading room...</section>
             )
           ) : null}
-          {!isRoomEditPage && (view === "more" || view === "settings" || view === "settings-basics" || view === "settings-rooms" || view === "settings-policies") ? (
+          {!isRoomEditPage &&
+          (view === "more" ||
+            view === "settings" ||
+            view === "settings-basics" ||
+            view === "settings-rooms" ||
+            view === "settings-policies") ? (
             <SettingsView
               backHref={backToAppHref}
-              section={view === "settings-policies" ? "policies" : view === "settings-rooms" ? "rooms" : "basics"}
+              section={
+                view === "settings-policies"
+                  ? "policies"
+                  : view === "settings-rooms"
+                    ? "rooms"
+                    : "basics"
+              }
               showMobileMenu={view === "more"}
               showMobileSettingsIndex={view === "settings"}
               state={state}
@@ -7175,6 +7207,530 @@ function SettingsView({
           ) : null}
         </div>
         )}
+      </div>
+    </section>
+  );
+}
+
+function formatScheduleTimeLabel(value: string) {
+  const [hour, minute] = value.split(":").map(Number);
+  return new Date(2026, 0, 1, hour, minute).toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function SchedulesSettingsView({
+  backHref,
+  state,
+  showToast,
+}: {
+  backHref: string;
+  state: AppState;
+  showToast: (message: string) => void;
+}) {
+  const router = useRouter();
+  const scheduleRooms = Array.from(new Set([state.facility.name, ...state.resources].filter(Boolean)));
+
+  return (
+    <section className="min-h-screen bg-white">
+      <div className="px-5 py-4 xl:hidden">
+        <Link href={backHref} className="inline-flex items-center gap-2 text-[15px] font-medium text-black">
+          <Icon name="arrow-left" className="h-4 w-4" />
+          Schedules
+        </Link>
+      </div>
+
+      <div className="hidden min-h-screen xl:grid xl:grid-cols-[284px_minmax(0,1fr)]">
+        <aside className="border-b border-black/10 bg-[#f7f7f7] px-4 py-5 lg:border-b-0 lg:border-r">
+          <Link
+            href={backHref}
+            className="inline-flex items-center gap-2 text-sm font-semibold text-black/70 transition hover:text-black"
+          >
+            <Icon name="arrow-left" className="h-4 w-4" />
+            Back to app
+          </Link>
+
+          <div className="mt-6 space-y-6">
+            {settingsNavGroups.map((group) => (
+              <div key={group.title}>
+                <div className="mb-2 text-sm font-medium text-black/45">{group.title}</div>
+                <div className="space-y-1">
+                  {group.items.map((item) => {
+                    const isActive = item.section === "schedules";
+                    const className = [
+                      "flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-[15px] transition",
+                      isActive && item.section === "schedules"
+                        ? "bg-[#e9e9e9] font-semibold"
+                        : "text-black/75 hover:bg-black/5",
+                    ].join(" ");
+
+                    if (item.href) {
+                      return (
+                        <Link key={item.label} href={item.href} className={className}>
+                          <Icon name={item.icon} className="h-4 w-4" />
+                          <span>{item.label}</span>
+                        </Link>
+                      );
+                    }
+
+                    return (
+                      <button
+                        key={item.label}
+                        type="button"
+                        onClick={() => showToast(`${item.label} is next in the Settings build-out.`)}
+                        className={className}
+                      >
+                        <Icon name={item.icon} className="h-4 w-4" />
+                        <span>{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </aside>
+
+        <div className="px-7 py-8 lg:px-8">
+          <div className="max-w-[1084px]">
+            <PageHeader
+              title="Schedules"
+              subtitle="Schedules indicate when a set of rooms are available for online booking"
+            >
+              <PrimaryButton
+                icon="plus"
+                onClick={() => router.push(bookingAdminRouteByView["settings-schedules-add"])}
+              >
+                New
+              </PrimaryButton>
+            </PageHeader>
+
+            <div className="overflow-hidden rounded-[10px] border border-black/10 bg-white shadow-sm">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-[#f3f6fa]">
+                    <th className="px-5 py-5 text-left text-[15px] font-semibold text-black">Name</th>
+                    <th className="px-5 py-5 text-left text-[15px] font-semibold text-black">Services</th>
+                    <th className="px-5 py-5 text-left text-[15px] font-semibold text-black">Rooms</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-black/10">
+                  <tr
+                    className="cursor-pointer bg-white transition hover:bg-black/[0.02]"
+                    onClick={() => router.push(bookingAdminRouteByView["settings-schedules-add"])}
+                  >
+                    <td className="px-5 py-6 align-middle text-[18px] font-medium text-black">Working Hours</td>
+                    <td className="px-5 py-6 align-middle text-[16px] text-black/75">
+                      This schedule has no services assigned.
+                    </td>
+                    <td className="px-5 py-6 align-middle">
+                      <div className="flex flex-wrap justify-end gap-3 xl:justify-start">
+                        {scheduleRooms.map((room) => (
+                          <span
+                            key={room}
+                            className="inline-flex rounded-full bg-black/[0.06] px-4 py-1.5 text-[14px] font-medium text-black/80"
+                          >
+                            {room}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-4 px-5 pb-6 xl:hidden">
+        <div className="flex items-center justify-between pt-2">
+          <div>
+            <h1 className="text-[30px] font-medium text-black">Schedules</h1>
+            <p className="mt-1 text-[14px] leading-6 text-black/70">
+              Schedules indicate when a set of rooms are available for online booking
+            </p>
+          </div>
+          <PrimaryButton
+            icon="plus"
+            onClick={() => router.push(bookingAdminRouteByView["settings-schedules-add"])}
+          >
+            New
+          </PrimaryButton>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => router.push(bookingAdminRouteByView["settings-schedules-add"])}
+          className="w-full rounded-[16px] border border-black/12 bg-white p-5 text-left shadow-[0_1px_2px_rgba(0,0,0,0.03)]"
+        >
+          <div className="text-[20px] font-medium text-black">Working Hours</div>
+          <div className="mt-2 text-[14px] leading-6 text-black/70">This schedule has no services assigned.</div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {scheduleRooms.map((room) => (
+              <span
+                key={room}
+                className="inline-flex rounded-full bg-black/[0.06] px-3 py-1 text-[13px] font-medium text-black/80"
+              >
+                {room}
+              </span>
+            ))}
+          </div>
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function ScheduleEditorView({
+  rows,
+  onBack,
+  onSave,
+  showToast,
+}: {
+  rows: AppState["availability"];
+  onBack: () => void;
+  onSave: (rows: AppState["availability"]) => void;
+  showToast: (message: string) => void;
+}) {
+  const [draftRows, setDraftRows] = useState(rows);
+  const [scheduleName, setScheduleName] = useState("Working Hours");
+
+  useEffect(() => {
+    setDraftRows(rows);
+  }, [rows]);
+
+  function updateRow(index: number, next: Partial<{ open: boolean; start: string; end: string }>) {
+    setDraftRows((current) =>
+      current.map(([day, open, start, end], rowIndex) =>
+        rowIndex === index
+          ? [day, next.open ?? open, next.start ?? start, next.end ?? end]
+          : [day, open, start, end]
+      )
+    );
+  }
+
+  function copyPreviousRow(index: number) {
+    const previous = draftRows[index - 1];
+    if (!previous) {
+      showToast("There is no previous day to copy yet.");
+      return;
+    }
+
+    updateRow(index, {
+      open: previous[1],
+      start: previous[2],
+      end: previous[3],
+    });
+    showToast(`${draftRows[index][0]} copied ${previous[0]}.`);
+  }
+
+  return (
+    <section className="min-h-screen bg-white">
+      <div className="hidden min-h-screen xl:grid xl:grid-cols-[284px_minmax(0,1fr)]">
+        <aside className="border-b border-black/10 bg-[#f7f7f7] px-4 py-5 lg:border-b-0 lg:border-r">
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center gap-2 text-sm font-semibold text-black/70 transition hover:text-black"
+          >
+            <Icon name="arrow-left" className="h-4 w-4" />
+            Back to app
+          </button>
+
+          <div className="mt-6 space-y-6">
+            {settingsNavGroups.map((group) => (
+              <div key={group.title}>
+                <div className="mb-2 text-sm font-medium text-black/45">{group.title}</div>
+                <div className="space-y-1">
+                  {group.items.map((item) => {
+                    const isActive = item.section === "schedules";
+                    const className = [
+                      "flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-[15px] transition",
+                      isActive && item.section === "schedules"
+                        ? "bg-[#e9e9e9] font-semibold"
+                        : "text-black/75 hover:bg-black/5",
+                    ].join(" ");
+
+                    if (item.href) {
+                      return (
+                        <Link key={item.label} href={item.href} className={className}>
+                          <Icon name={item.icon} className="h-4 w-4" />
+                          <span>{item.label}</span>
+                        </Link>
+                      );
+                    }
+
+                    return (
+                      <button
+                        key={item.label}
+                        type="button"
+                        onClick={() => showToast(`${item.label} is next in the Settings build-out.`)}
+                        className={className}
+                      >
+                        <Icon name={item.icon} className="h-4 w-4" />
+                        <span>{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </aside>
+
+        <div className="px-7 py-8 lg:px-8">
+          <div className="max-w-[1084px]">
+            <div className="mb-6">
+              <div className="mb-3 flex items-center gap-3 text-[14px] font-medium text-black/60">
+                <Link href={bookingAdminRouteByView["settings-schedules"]} className="text-black/70 hover:text-black">
+                  Schedules
+                </Link>
+                <span>/</span>
+                <span className="text-black">Add Schedule</span>
+              </div>
+              <h1 className="text-[24px] font-semibold text-black">Add Schedule</h1>
+            </div>
+
+            <div className="overflow-hidden rounded-[10px] border border-black/10 bg-white shadow-sm">
+              <div className="border-t-4 border-t-[#4866b0]" />
+              <div className="border-b border-black/10 px-5 py-4 text-[18px] font-semibold">Schedule Details</div>
+
+              <div className="divide-y divide-black/10">
+                <div className="px-5 py-5">
+                  <label className="grid max-w-[360px] gap-1.5">
+                    <span className="text-sm font-semibold text-black/70">Name</span>
+                    <input
+                      value={scheduleName}
+                      onChange={(event) => setScheduleName(event.target.value)}
+                      className="min-h-12 rounded-lg border border-black/10 px-4 text-[15px] outline-none focus:border-black/30"
+                    />
+                  </label>
+                </div>
+
+                <div className="px-5 py-5">
+                  <div className="mb-5 text-[18px] font-semibold text-black">Hours</div>
+                  <div className="space-y-4">
+                    {draftRows.map(([day, open, start, end], index) => (
+                      <div key={day} className="grid grid-cols-[170px_minmax(0,1fr)] items-center gap-6">
+                        <div className="flex items-center gap-3">
+                          <ToggleSwitch
+                            checked={open}
+                            onChange={(checked) => updateRow(index, { open: checked })}
+                            label={`${day} open`}
+                          />
+                          <span className="text-[16px] font-medium text-black">{day}</span>
+                        </div>
+
+                        {open ? (
+                          <div className="flex flex-wrap items-center gap-4">
+                            <select
+                              value={start}
+                              onChange={(event) => updateRow(index, { start: event.target.value })}
+                              className="min-h-12 min-w-[164px] rounded-lg border border-black/10 px-4 text-[15px] outline-none focus:border-black/30"
+                            >
+                              {scheduleTimeOptions.map((value) => (
+                                <option key={value} value={value}>
+                                  {formatScheduleTimeLabel(value)}
+                                </option>
+                              ))}
+                            </select>
+                            <span className="text-[18px] text-black/45">-</span>
+                            <select
+                              value={end}
+                              onChange={(event) => updateRow(index, { end: event.target.value })}
+                              className="min-h-12 min-w-[164px] rounded-lg border border-black/10 px-4 text-[15px] outline-none focus:border-black/30"
+                            >
+                              {scheduleTimeOptions.map((value) => (
+                                <option key={value} value={value}>
+                                  {formatScheduleTimeLabel(value)}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => showToast("Multiple daily time slots are next in the schedule builder.")}
+                              className="text-black/55 transition hover:text-black"
+                              aria-label={`Add time slot for ${day}`}
+                            >
+                              <Icon name="plus" className="h-5 w-5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => copyPreviousRow(index)}
+                              className="text-black/55 transition hover:text-black"
+                              aria-label={`Copy hours to ${day}`}
+                            >
+                              <Icon name="copy" className="h-5 w-5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="text-[16px] text-black/55">Closed</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="px-5 py-5">
+                  <div className="overflow-hidden rounded-[10px] border border-black/10 bg-white">
+                    <div className="border-b border-black/10 px-5 py-4 text-[18px] font-semibold text-black">
+                      Date Overrides
+                    </div>
+                    <div className="flex flex-col items-start gap-4 px-5 py-5">
+                      <p className="text-[15px] leading-7 text-black/65">
+                        Add specific dates when your schedule changes from your regular hours.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => showToast("Date overrides are next in the schedules build-out.")}
+                        className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-black/10 bg-white px-5 py-2.5 text-[15px] font-medium text-black"
+                      >
+                        <Icon name="plus" className="h-4 w-4" />
+                        Add an override
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end border-t border-black/10 bg-[#f7f8fb] px-5 py-4">
+                <button
+                  type="button"
+                  onClick={() => onSave(draftRows)}
+                  className="rounded-lg bg-[#1f1b1b] px-6 py-3 text-[15px] font-medium text-white shadow-[0_3px_8px_rgba(0,0,0,0.18)]"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-5 pb-6 xl:hidden">
+        <div className="mb-4 flex items-center gap-3 text-[14px] font-medium text-black/60">
+          <button type="button" onClick={onBack} className="text-black/70 hover:text-black">
+            Schedules
+          </button>
+          <span>/</span>
+          <span className="text-black">Add Schedule</span>
+        </div>
+        <h1 className="mb-5 text-[28px] font-medium text-black">Add Schedule</h1>
+
+        <div className="overflow-hidden rounded-[10px] border border-black/12 bg-white shadow-sm">
+          <div className="border-t-4 border-t-[#4866b0]" />
+          <div className="border-b border-black/10 px-6 py-5 text-[18px] font-medium">Schedule Details</div>
+
+          <div className="divide-y divide-black/10">
+            <div className="px-6 py-6">
+              <label className="grid gap-2">
+                <span className="text-[14px] font-medium text-black/85">Name</span>
+                <input
+                  value={scheduleName}
+                  onChange={(event) => setScheduleName(event.target.value)}
+                  className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
+                />
+              </label>
+            </div>
+
+            <div className="px-6 py-6">
+              <div className="mb-4 text-[16px] font-medium text-black">Hours</div>
+              <div className="space-y-5">
+                {draftRows.map(([day, open, start, end], index) => (
+                  <div key={day} className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <ToggleSwitch
+                        checked={open}
+                        onChange={(checked) => updateRow(index, { open: checked })}
+                        label={`${day} open`}
+                      />
+                      <span className="text-[18px] font-medium text-black">{day}</span>
+                    </div>
+                    {open ? (
+                      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)_28px_28px] sm:items-center">
+                        <select
+                          value={start}
+                          onChange={(event) => updateRow(index, { start: event.target.value })}
+                          className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
+                        >
+                          {scheduleTimeOptions.map((value) => (
+                            <option key={value} value={value}>
+                              {formatScheduleTimeLabel(value)}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="hidden text-center text-[18px] text-black/45 sm:block">-</span>
+                        <select
+                          value={end}
+                          onChange={(event) => updateRow(index, { end: event.target.value })}
+                          className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
+                        >
+                          {scheduleTimeOptions.map((value) => (
+                            <option key={value} value={value}>
+                              {formatScheduleTimeLabel(value)}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => showToast("Multiple daily time slots are next in the schedule builder.")}
+                          className="grid h-7 w-7 place-items-center text-black/55"
+                          aria-label={`Add time slot for ${day}`}
+                        >
+                          <Icon name="plus" className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => copyPreviousRow(index)}
+                          className="grid h-7 w-7 place-items-center text-black/55"
+                          aria-label={`Copy hours to ${day}`}
+                        >
+                          <Icon name="copy" className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="text-[16px] text-black/55">Closed</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="px-6 py-6">
+              <div className="overflow-hidden rounded-[10px] border border-black/12 bg-white">
+                <div className="border-b border-black/10 px-5 py-4 text-[16px] font-medium">Date Overrides</div>
+                <div className="px-5 py-5">
+                  <p className="text-[14px] leading-6 text-black/70">
+                    Add specific dates when your schedule changes from your regular hours.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => showToast("Date overrides are next in the schedules build-out.")}
+                    className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-[10px] border border-black/12 bg-white px-5 py-2.5 text-[15px] font-medium text-black"
+                  >
+                    <Icon name="plus" className="h-4 w-4" />
+                    Add an override
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-4 border-t border-black/10 bg-[#f7f8fb] px-6 py-5">
+            <button type="button" onClick={onBack} className="text-[15px] font-medium text-black/65">
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => onSave(draftRows)}
+              className="rounded-lg bg-[#1f1b1b] px-6 py-3 text-[15px] font-medium text-white shadow-[0_3px_8px_rgba(0,0,0,0.18)]"
+            >
+              Save
+            </button>
+          </div>
+        </div>
       </div>
     </section>
   );
