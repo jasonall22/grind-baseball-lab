@@ -3928,7 +3928,7 @@ function CalendarView({
   const availabilityRow = availabilityForDate(availability, activeDate);
   const [, isOpen, openStart, openEnd] = availabilityRow;
   const slots = useMemo(() => Array.from({ length: 48 }, (_, index) => minutesToTime(index * 30)), []);
-  const slotHeight = 58;
+  const slotHeight = 50;
   const columnHeight = slots.length * slotHeight;
   const activeCalendarBookings = useMemo(
     () => bookings.filter((booking) => booking.status !== "Cancelled"),
@@ -4234,10 +4234,10 @@ function CalendarView({
                   {slots.map((slot, index) => (
                       <div
                         key={slot}
-                        className="flex border-b border-black/10 px-4 text-right text-[12px] font-medium text-black/75"
+                        className="flex items-center justify-end border-b border-black/10 px-4 text-right text-[15px] font-medium text-black/90"
                         style={{ height: slotHeight }}
                       >
-                        <div className={`w-full ${index === 0 ? "pt-2" : "pt-1.5"}`}>{timeLabel(slot)}</div>
+                        <div className={`w-full ${index === 0 ? "pt-1" : ""}`}>{timeLabel(slot)}</div>
                       </div>
                   ))}
                 </div>
@@ -4273,9 +4273,9 @@ function CalendarView({
                         const customer = customersById.get(booking.customerId);
                         const service = servicesById.get(booking.serviceId);
                         const statusBadge = bookingStatusBadge(booking);
-                        const top = (timeToMinutes(booking.start) / 30) * slotHeight;
+                        const top = (timeToMinutes(booking.start) / 30) * slotHeight + 1;
                         const durationMinutes = Math.max(30, timeToMinutes(booking.end) - timeToMinutes(booking.start));
-                        const height = Math.max(slotHeight, (durationMinutes / 30) * slotHeight - 2);
+                        const height = Math.max(slotHeight - 2, (durationMinutes / 30) * slotHeight - 2);
                         const isCompactBooking = durationMinutes <= 30;
 
                         return (
@@ -4283,7 +4283,7 @@ function CalendarView({
                             key={booking.id}
                             type="button"
                             onClick={() => onEdit(booking.id)}
-                            className={`absolute left-[3px] right-[3px] overflow-hidden rounded-md border border-black/20 text-left shadow-sm ${bookingToneClass(booking)} ${
+                            className={`absolute left-[1px] right-[1px] overflow-hidden rounded-[4px] border border-black/20 text-left shadow-sm ${bookingToneClass(booking)} ${
                               isCompactBooking ? "px-2 py-1" : "px-2.5 py-1.5"
                             }`}
                             style={{ top, height }}
@@ -4300,10 +4300,10 @@ function CalendarView({
                                 </span>
                               ) : null}
                             </div>
-                            <div className={`truncate font-semibold leading-tight ${isCompactBooking ? "mt-1 text-[12px]" : "mt-1 text-[15px]"}`}>
+                            <div className={`truncate font-semibold leading-[1.05] ${isCompactBooking ? "mt-0.5 text-[13px]" : "mt-1 text-[15px]"}`}>
                               {customer?.player || customer?.name || "Customer"}
                             </div>
-                            <div className={`truncate font-medium text-white/90 ${isCompactBooking ? "mt-0.5 text-[10px]" : "mt-0.5 text-[11px]"}`}>
+                            <div className={`truncate font-medium leading-[1.05] text-white/90 ${isCompactBooking ? "mt-0.5 text-[10px]" : "mt-0.5 text-[11px]"}`}>
                               {service?.name || "Service"}
                             </div>
                           </button>
