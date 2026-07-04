@@ -1242,6 +1242,12 @@ function closedBlocksForDate(availability: AppState["availability"], value: stri
   return blocks;
 }
 
+function calendarScrollOffsetForTime(now: Date, slotHeight: number) {
+  const minutes = now.getHours() * 60 + now.getMinutes();
+  const rawOffset = (minutes / 30) * slotHeight - slotHeight * 2;
+  return Math.max(0, rawOffset);
+}
+
 function bookingTimesOverlap(
   startA: string,
   endA: string,
@@ -4162,6 +4168,8 @@ function CalendarView({
   const [calendarMode, setCalendarMode] = useState<"day" | "week">("day");
   const [mobileResource, setMobileResource] = useState<string>(allMobileResourcesValue);
   const dateInputRef = useRef<HTMLInputElement | null>(null);
+  const mobileDayScrollRef = useRef<HTMLDivElement | null>(null);
+  const desktopDayScrollRef = useRef<HTMLDivElement | null>(null);
   const dayName = weekdayName(activeDate);
   const availabilityRow = availabilityForDate(availability, activeDate);
   const [, isOpen, openStart, openEnd] = availabilityRow;
@@ -4241,6 +4249,28 @@ function CalendarView({
       setMobileResource(allMobileResourcesValue);
     }
   }, [allMobileResourcesValue, mobileResource, resources]);
+
+  useEffect(() => {
+    if (resourceMode !== "rooms" || calendarMode !== "day") return;
+    if (activeDate !== isoDate(new Date())) return;
+
+    const mobileNode = mobileDayScrollRef.current;
+    const desktopNode = desktopDayScrollRef.current;
+    const mobileOffset = calendarScrollOffsetForTime(new Date(), mobileSlotHeight);
+    const desktopOffset = calendarScrollOffsetForTime(new Date(), slotHeight);
+
+    const frame = window.requestAnimationFrame(() => {
+      if (mobileNode) {
+        mobileNode.scrollTop = mobileOffset;
+      }
+
+      if (desktopNode) {
+        desktopNode.scrollTop = desktopOffset;
+      }
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeDate, calendarMode, mobileSlotHeight, resourceMode, slotHeight]);
 
   function openDatePicker() {
     const input = dateInputRef.current as HTMLInputElement | null;
@@ -4413,7 +4443,7 @@ function CalendarView({
               </div>
 
               <div className="overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm">
-                <div className="overflow-auto">
+                <div ref={mobileDayScrollRef} className="overflow-auto">
                   <div
                     className="grid border-b border-black/10 bg-[#f6f7f9]"
                     style={{
@@ -4554,7 +4584,7 @@ function CalendarView({
               ))}
             </div>
 
-            <div className="overflow-auto">
+            <div ref={desktopDayScrollRef} className="overflow-auto">
               <div
                 className="grid min-w-[980px]"
                 style={{ gridTemplateColumns: `96px repeat(${resources.length}, minmax(220px, 1fr))` }}
