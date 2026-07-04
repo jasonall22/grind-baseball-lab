@@ -1269,6 +1269,10 @@ function hasRoomBookingConflict(bookings: Booking[], candidate: Booking) {
   });
 }
 
+function isBookingConflictMessage(message: string) {
+  return message.toLowerCase().includes("already booked");
+}
+
 function bookingTonePresentation(booking: Booking, service?: Service | null) {
   if (booking.status === "Cancelled") {
     return {
@@ -1860,6 +1864,7 @@ export default function BookingAdminApp({
   const [resourceIdsByName, setResourceIdsByName] = useState<Record<string, string>>({});
   const [backToAppHref, setBackToAppHref] = useState(bookingAdminRouteByView.home);
   const [showCustomerImport, setShowCustomerImport] = useState(false);
+  const [bookingConflictDialog, setBookingConflictDialog] = useState<string | null>(null);
   const isRentalAddPage = pathname === "/admin/services/rentals/add";
   const isRentalEditPage = Boolean(selectedServiceId && /^\/admin\/services\/rentals\/[^/]+$/.test(pathname));
   const isRoomEditPage = Boolean(selectedRoomId && /^\/admin\/settings\/rooms\/[^/]+$/.test(pathname) && !pathname.endsWith("/add"));
@@ -1881,6 +1886,12 @@ export default function BookingAdminApp({
   const showToast = useCallback((message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(""), 2400);
+  }, []);
+
+  const showBookingConflictDialog = useCallback((message?: string) => {
+    setBookingConflictDialog(
+      message?.trim() || "This room is already booked for that time. Please choose another time or another room."
+    );
   }, []);
 
   useEffect(() => {
@@ -2213,16 +2224,22 @@ export default function BookingAdminApp({
       return;
     }
 
+    const previousState = state;
     setState(next);
-    setModal(null);
 
     try {
       await upsertModalChange(change, resourceIdsByName);
+      setModal(null);
       showToast(message);
     } catch (error) {
       console.error(error);
+      setState(previousState);
       const fallbackMessage = "That change could not be saved.";
       const errorMessage = getErrorMessage(error, fallbackMessage);
+      if (change.type === "booking" && isBookingConflictMessage(errorMessage)) {
+        showBookingConflictDialog(errorMessage);
+        return;
+      }
       showToast(errorMessage === fallbackMessage ? fallbackMessage : `${fallbackMessage} ${errorMessage}`);
     }
   }
@@ -2880,6 +2897,7 @@ export default function BookingAdminApp({
           state={state}
           activeDate={activeDate}
           showToast={showToast}
+          showBookingConflictDialog={showBookingConflictDialog}
           onClose={() => setModal(null)}
           onSave={(next, message, change) => void saveModalChange(next, message, change)}
         />
@@ -2895,6 +2913,28 @@ export default function BookingAdminApp({
       {toast ? (
         <div className="fixed bottom-5 right-5 z-50 rounded-lg border border-black/10 bg-white px-4 py-3 text-sm font-semibold shadow-lg">
           {toast}
+        </div>
+      ) : null}
+
+      {bookingConflictDialog ? (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/45 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+            <div className="border-b border-black/10 px-6 py-5">
+              <h2 className="text-xl font-semibold text-black">Room already booked</h2>
+            </div>
+            <div className="px-6 py-5 text-[15px] leading-7 text-black/75">
+              {bookingConflictDialog}
+            </div>
+            <div className="flex justify-end border-t border-black/10 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setBookingConflictDialog(null)}
+                className="rounded-xl bg-black px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(0,0,0,0.18)]"
+              >
+                OK
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
 
@@ -8107,6 +8147,7 @@ function EditorModal({
   state,
   activeDate,
   showToast,
+  showBookingConflictDialog,
   onClose,
   onSave,
 }: {
@@ -8114,6 +8155,7 @@ function EditorModal({
   state: AppState;
   activeDate: string;
   showToast: (message: string) => void;
+  showBookingConflictDialog: (message?: string) => void;
   onClose: () => void;
   onSave: (next: AppState, message: string, change: ModalSaveChange) => void;
 }) {
@@ -8233,7 +8275,7 @@ function EditorModal({
       const item = { ...(draft as Booking), id: draft.id || makeId("bk") };
 
       if (hasRoomBookingConflict(state.bookings, item)) {
-        showToast("This room is already booked for that time.");
+        showBookingConflictDialog("This room is already booked for that time. Please choose another time or another room.");
         return;
       }
 
