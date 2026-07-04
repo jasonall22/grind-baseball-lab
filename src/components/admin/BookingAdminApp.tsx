@@ -263,7 +263,7 @@ type AppState = {
 
 type ModalState =
   | { type: "service"; id?: string }
-  | { type: "booking"; id?: string }
+  | { type: "booking"; id?: string; seed?: Partial<Booking> }
   | { type: "customer"; id?: string }
   | { type: "campaign"; id?: string }
   | { type: "product"; id?: string }
@@ -2475,7 +2475,7 @@ export default function BookingAdminApp({
               resources={state.resources}
               servicesById={servicesById}
               onDateChange={setActiveDate}
-              onNew={() => setModal({ type: "booking" })}
+              onNew={(seed) => setModal({ type: "booking", seed })}
               onEdit={(id) => setModal({ type: "booking", id })}
               showToast={showToast}
             />
@@ -3864,7 +3864,7 @@ function CalendarView({
   resources: string[];
   servicesById: Map<string, Service>;
   onDateChange: (date: string) => void;
-  onNew: () => void;
+  onNew: (seed?: Partial<Booking>) => void;
   onEdit: (id: string) => void;
   showToast: (message: string) => void;
 }) {
@@ -3945,6 +3945,15 @@ function CalendarView({
     if (next !== "rooms") {
       showToast(`${next[0].toUpperCase()}${next.slice(1)} calendar is next.`);
     }
+  }
+
+  function createBookingFromSlot(resource: string, startMinutes: number, endMinutes: number) {
+    onNew({
+      date: activeDate,
+      resource,
+      start: minutesToTime(startMinutes),
+      end: minutesToTime(endMinutes),
+    });
   }
 
   return (
@@ -4087,16 +4096,18 @@ function CalendarView({
 
                   if (segment.type === "available") {
                     return (
-                      <div
+                      <button
+                        type="button"
+                        onClick={() => createBookingFromSlot(mobileResource, segment.start, segment.end)}
                         key={`mobile-available-${index}`}
-                        className="rounded-xl border border-[#caefdd] bg-[#f3fcf7] px-4 py-4 text-[#166443] shadow-sm"
+                        className="block w-full rounded-xl border border-[#caefdd] bg-[#f3fcf7] px-4 py-4 text-left text-[#166443] shadow-sm transition hover:border-[#9ed8bc] hover:bg-[#ecfaf3]"
                       >
                         <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#15835d]/75">
                           {timeLabel(minutesToTime(segment.start))} - {timeLabel(minutesToTime(segment.end))}
                         </div>
                         <div className="mt-1 text-lg font-semibold">Available</div>
                         <div className="mt-1 text-sm text-[#15835d]">Open for booking</div>
-                      </div>
+                      </button>
                     );
                   }
 
@@ -4333,7 +4344,7 @@ function CalendarView({
 
       <button
         type="button"
-        onClick={onNew}
+        onClick={() => onNew()}
         className="fixed bottom-[90px] right-5 z-20 inline-flex min-h-14 items-center gap-3 rounded-full bg-[#1f1a1a] px-6 text-[15px] font-semibold text-white shadow-[0_10px_24px_rgba(0,0,0,0.24)] xl:bottom-6"
       >
         <Icon name="plus" className="h-5 w-5" />
@@ -7720,14 +7731,14 @@ function EditorModal({
     modal.type === "booking"
       ? state.bookings.find((item) => item.id === modal.id) ?? {
           id: "",
-          date: activeDate,
-          start: "09:00",
-          end: "10:00",
-          customerId: state.customers[0]?.id ?? "",
-          serviceId: state.services[0]?.id ?? "",
-          resource: state.resources[0] ?? "",
-          status: "Confirmed" as const,
-          paid: false,
+          date: modal.seed?.date ?? activeDate,
+          start: modal.seed?.start ?? "09:00",
+          end: modal.seed?.end ?? "10:00",
+          customerId: modal.seed?.customerId ?? state.customers[0]?.id ?? "",
+          serviceId: modal.seed?.serviceId ?? state.services[0]?.id ?? "",
+          resource: modal.seed?.resource ?? state.resources[0] ?? "",
+          status: modal.seed?.status ?? ("Confirmed" as const),
+          paid: modal.seed?.paid ?? false,
         }
       : null;
 
