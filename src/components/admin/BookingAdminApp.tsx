@@ -1863,11 +1863,13 @@ export default function BookingAdminApp({
   selectedCustomerId,
   selectedServiceId,
   selectedRoomId,
+  selectedScheduleId,
 }: {
   view?: BookingAdminView;
   selectedCustomerId?: string;
   selectedServiceId?: string;
   selectedRoomId?: string;
+  selectedScheduleId?: string;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -1888,6 +1890,9 @@ export default function BookingAdminApp({
   const isRentalAddPage = pathname === "/admin/services/rentals/add";
   const isRentalEditPage = Boolean(selectedServiceId && /^\/admin\/services\/rentals\/[^/]+$/.test(pathname));
   const isRoomEditPage = Boolean(selectedRoomId && /^\/admin\/settings\/rooms\/[^/]+$/.test(pathname) && !pathname.endsWith("/add"));
+  const isScheduleEditPage = Boolean(
+    selectedScheduleId && /^\/admin\/settings\/schedules\/[^/]+$/.test(pathname) && !pathname.endsWith("/add")
+  );
 
   const roomNamesById = useMemo(
     () => new Map(Object.entries(resourceIdsByName).map(([name, id]) => [id, name])),
@@ -1902,6 +1907,17 @@ export default function BookingAdminApp({
     const decodedId = decodeURIComponent(selectedRoomId);
     return state.resources.find((resource) => resource === decodedId) ?? null;
   }, [roomNamesById, selectedRoomId, state.resources]);
+  const selectedScheduleName = useMemo(() => {
+    if (!selectedScheduleId) return null;
+
+    const decodedId = decodeURIComponent(selectedScheduleId);
+    if (decodedId === "working-hours") return "Working Hours";
+    return decodedId
+      .split("-")
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+  }, [selectedScheduleId]);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -2803,16 +2819,28 @@ export default function BookingAdminApp({
             <ScheduleEditorView
               rows={state.availability}
               onBack={() => router.push(bookingAdminRouteByView["settings-schedules"])}
-              onSave={(rows) => void saveAvailability(rows)}
+              onSave={() => showToast("Creating additional schedules is next. Working Hours editing is ready now.")}
               showToast={showToast}
+              mode="add"
             />
           ) : null}
           {view === "settings-schedules" ? (
-            <SchedulesSettingsView
-              backHref={backToAppHref}
-              state={state}
-              showToast={showToast}
-            />
+            isScheduleEditPage ? (
+              <ScheduleEditorView
+                rows={state.availability}
+                onBack={() => router.push(bookingAdminRouteByView["settings-schedules"])}
+                onSave={(rows) => void saveAvailability(rows)}
+                showToast={showToast}
+                scheduleName={selectedScheduleName ?? "Working Hours"}
+                mode="edit"
+              />
+            ) : (
+              <SchedulesSettingsView
+                backHref={backToAppHref}
+                state={state}
+                showToast={showToast}
+              />
+            )
           ) : null}
           {view === "settings-rooms-add" ? (
             <RoomEditorView
@@ -7220,6 +7248,11 @@ function formatScheduleTimeLabel(value: string) {
   });
 }
 
+function scheduleHref(scheduleName: string) {
+  const slug = scheduleName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return `/admin/settings/schedules/${slug || "working-hours"}`;
+}
+
 function SchedulesSettingsView({
   backHref,
   state,
@@ -7231,6 +7264,7 @@ function SchedulesSettingsView({
 }) {
   const router = useRouter();
   const scheduleRooms = Array.from(new Set([state.facility.name, ...state.resources].filter(Boolean)));
+  const workingHoursHref = scheduleHref("Working Hours");
 
   return (
     <section className="min-h-screen bg-white">
@@ -7318,7 +7352,7 @@ function SchedulesSettingsView({
                 <tbody className="divide-y divide-black/10">
                   <tr
                     className="cursor-pointer bg-white transition hover:bg-black/[0.02]"
-                    onClick={() => router.push(bookingAdminRouteByView["settings-schedules-add"])}
+                    onClick={() => router.push(workingHoursHref)}
                   >
                     <td className="px-5 py-6 align-middle text-[18px] font-medium text-black">Working Hours</td>
                     <td className="px-5 py-6 align-middle text-[16px] text-black/75">
@@ -7362,7 +7396,7 @@ function SchedulesSettingsView({
 
         <button
           type="button"
-          onClick={() => router.push(bookingAdminRouteByView["settings-schedules-add"])}
+          onClick={() => router.push(workingHoursHref)}
           className="w-full rounded-[16px] border border-black/12 bg-white p-5 text-left shadow-[0_1px_2px_rgba(0,0,0,0.03)]"
         >
           <div className="text-[20px] font-medium text-black">Working Hours</div>
@@ -7388,18 +7422,29 @@ function ScheduleEditorView({
   onBack,
   onSave,
   showToast,
+  scheduleName: scheduleNameProp,
+  mode = "add",
 }: {
   rows: AppState["availability"];
   onBack: () => void;
   onSave: (rows: AppState["availability"]) => void;
   showToast: (message: string) => void;
+  scheduleName?: string;
+  mode?: "add" | "edit";
 }) {
   const [draftRows, setDraftRows] = useState(rows);
-  const [scheduleName, setScheduleName] = useState("Working Hours");
+  const [scheduleName, setScheduleName] = useState(scheduleNameProp ?? "");
+  const isEditMode = mode === "edit";
+  const pageTitle = isEditMode ? scheduleNameProp ?? "Working Hours" : "Add Schedule";
+  const breadcrumbLabel = isEditMode ? pageTitle : "Add Schedule";
 
   useEffect(() => {
     setDraftRows(rows);
   }, [rows]);
+
+  useEffect(() => {
+    setScheduleName(scheduleNameProp ?? "");
+  }, [scheduleNameProp]);
 
   function updateRow(index: number, next: Partial<{ open: boolean; start: string; end: string }>) {
     setDraftRows((current) =>
@@ -7488,9 +7533,9 @@ function ScheduleEditorView({
                   Schedules
                 </Link>
                 <span>/</span>
-                <span className="text-black">Add Schedule</span>
+                <span className="text-black">{breadcrumbLabel}</span>
               </div>
-              <h1 className="text-[24px] font-semibold text-black">Add Schedule</h1>
+              <h1 className="text-[24px] font-semibold text-black">{pageTitle}</h1>
             </div>
 
             <div className="overflow-hidden rounded-[10px] border border-black/10 bg-white shadow-sm">
@@ -7615,9 +7660,9 @@ function ScheduleEditorView({
             Schedules
           </button>
           <span>/</span>
-          <span className="text-black">Add Schedule</span>
+          <span className="text-black">{breadcrumbLabel}</span>
         </div>
-        <h1 className="mb-5 text-[28px] font-medium text-black">Add Schedule</h1>
+        <h1 className="mb-5 text-[28px] font-medium text-black">{pageTitle}</h1>
 
         <div className="overflow-hidden rounded-[10px] border border-black/12 bg-white shadow-sm">
           <div className="border-t-4 border-t-[#4866b0]" />
