@@ -1164,6 +1164,36 @@ function bookingToneClass(booking: Booking) {
   return "bg-[#4e7cb5] text-white";
 }
 
+function findServiceForCalendarSlot(services: Service[], resource: string, durationMinutes: number) {
+  const normalizedResource = resource.trim().toLowerCase();
+  const activeServices = services.filter((service) => service.status === "Active");
+  const exactRentalMatch = activeServices.find((service) => {
+    const rooms = service.rooms?.length ? service.rooms : service.resource ? [service.resource] : [];
+    return (
+      service.category === "rentals" &&
+      service.duration === durationMinutes &&
+      rooms.some((room) => room.trim().toLowerCase() === normalizedResource)
+    );
+  });
+
+  if (exactRentalMatch) return exactRentalMatch;
+
+  const exactAnyMatch = activeServices.find((service) => {
+    const rooms = service.rooms?.length ? service.rooms : service.resource ? [service.resource] : [];
+    return (
+      service.duration === durationMinutes &&
+      rooms.some((room) => room.trim().toLowerCase() === normalizedResource)
+    );
+  });
+
+  if (exactAnyMatch) return exactAnyMatch;
+
+  return activeServices.find((service) => {
+    const rooms = service.rooms?.length ? service.rooms : service.resource ? [service.resource] : [];
+    return rooms.some((room) => room.trim().toLowerCase() === normalizedResource);
+  });
+}
+
 type MobileCalendarTimelineSegment =
   | { type: "closed"; start: number; end: number }
   | { type: "available"; start: number; end: number }
@@ -3948,11 +3978,18 @@ function CalendarView({
   }
 
   function createBookingFromSlot(resource: string, startMinutes: number, endMinutes: number) {
+    const durationMinutes = Math.max(30, endMinutes - startMinutes);
+    const matchedService = findServiceForCalendarSlot(
+      Array.from(servicesById.values()),
+      resource,
+      durationMinutes
+    );
     onNew({
       date: activeDate,
       resource,
       start: minutesToTime(startMinutes),
       end: minutesToTime(endMinutes),
+      serviceId: matchedService?.id,
     });
   }
 
