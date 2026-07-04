@@ -1159,6 +1159,7 @@ function closedBlocksForDate(availability: AppState["availability"], value: stri
 
 function bookingToneClass(booking: Booking) {
   if (booking.status === "Cancelled") return "bg-[#6b7280] text-white";
+  if (booking.status === "Pending") return "bg-[#d97706] text-white";
   if (!booking.paid) return "bg-[#2f3742] text-white";
   return "bg-[#4e7cb5] text-white";
 }
@@ -1173,6 +1174,15 @@ function buildMobileCalendarTimeline(
   availability: AppState["availability"],
   date: string
 ): MobileCalendarTimelineSegment[] {
+  function pushAvailableBlocks(segments: MobileCalendarTimelineSegment[], start: number, end: number) {
+    let nextStart = start;
+    while (nextStart < end) {
+      const nextEnd = Math.min(end, nextStart + 30);
+      segments.push({ type: "available", start: nextStart, end: nextEnd });
+      nextStart = nextEnd;
+    }
+  }
+
   const [, isOpen, openStart, openEnd] = availabilityForDate(availability, date);
 
   if (!isOpen) {
@@ -1203,7 +1213,7 @@ function buildMobileCalendarTimeline(
     }
 
     if (bookingStart > cursor) {
-      segments.push({ type: "available", start: cursor, end: bookingStart });
+      pushAvailableBlocks(segments, cursor, bookingStart);
     }
 
     segments.push({
@@ -1217,7 +1227,7 @@ function buildMobileCalendarTimeline(
   }
 
   if (cursor < endMinutes) {
-    segments.push({ type: "available", start: cursor, end: endMinutes });
+    pushAvailableBlocks(segments, cursor, endMinutes);
   }
 
   if (endMinutes < 1439) {
