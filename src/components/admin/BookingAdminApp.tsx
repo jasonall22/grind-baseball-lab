@@ -4269,11 +4269,19 @@ function CalendarView({
 
     const syncScroll = () => {
       if (mobileDayScrollRef.current && mobileDayTimeTargetRef.current) {
-        mobileDayScrollRef.current.scrollTop = mobileDayTimeTargetRef.current.offsetTop;
+        const container = mobileDayScrollRef.current;
+        const target = mobileDayTimeTargetRef.current;
+        const containerRect = container.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        container.scrollTop += targetRect.top - containerRect.top;
       }
 
       if (desktopDayScrollRef.current && desktopDayTimeTargetRef.current) {
-        desktopDayScrollRef.current.scrollTop = desktopDayTimeTargetRef.current.offsetTop;
+        const container = desktopDayScrollRef.current;
+        const target = desktopDayTimeTargetRef.current;
+        const containerRect = container.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        container.scrollTop += targetRect.top - containerRect.top;
       }
     };
 
