@@ -1794,7 +1794,7 @@ export default function BookingAdminApp({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [state, setState] = useState<AppState>(loadInitialState);
-  const [activeDate, setActiveDate] = useState("2026-07-01");
+  const [activeDate, setActiveDate] = useState(() => isoDate(new Date()));
   const [modal, setModal] = useState<ModalState>(null);
   const [toast, setToast] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
