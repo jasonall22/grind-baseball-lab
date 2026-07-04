@@ -4457,7 +4457,11 @@ function CalendarView({
               </div>
 
               <div className="overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm">
-                <div ref={mobileDayScrollRef} className="overflow-auto">
+                <div
+                  ref={mobileDayScrollRef}
+                  className="overflow-auto"
+                  style={{ maxHeight: "calc(100vh - 360px)" }}
+                >
                   <div
                     className="grid border-b border-black/10 bg-[#f6f7f9]"
                     style={{
@@ -4599,7 +4603,11 @@ function CalendarView({
               ))}
             </div>
 
-            <div ref={desktopDayScrollRef} className="overflow-auto">
+            <div
+              ref={desktopDayScrollRef}
+              className="overflow-auto"
+              style={{ maxHeight: "calc(100vh - 270px)" }}
+            >
               <div
                 className="grid min-w-[980px]"
                 style={{ gridTemplateColumns: `96px repeat(${resources.length}, minmax(220px, 1fr))` }}
