@@ -154,6 +154,26 @@ type CustomFee = {
   amount: string;
 };
 
+type RegistrationPersonalFieldKey = "name" | "gender" | "dateOfBirth";
+type RegistrationContactFieldKey = "address" | "phoneNumber";
+type RegistrationFieldConfig = {
+  required: boolean;
+  hidden: boolean;
+};
+
+type RegistrationAdditionalField = {
+  id: string;
+  label: string;
+  type: "Short Text" | "Single-select";
+  required: boolean;
+};
+
+type RegistrationSettings = {
+  personalFields: Record<RegistrationPersonalFieldKey, RegistrationFieldConfig>;
+  contactFields: Record<RegistrationContactFieldKey, RegistrationFieldConfig>;
+  additionalFields: RegistrationAdditionalField[];
+};
+
 type ServiceSection =
   | "rentals"
   | "lessons"
@@ -230,6 +250,9 @@ type BookingSettingsRow = {
   waiver_document_name: string | null;
   waiver_intro: string | null;
   waiver_allow_in_person: boolean | null;
+  registration_personal_fields: unknown | null;
+  registration_contact_fields: unknown | null;
+  registration_additional_fields: unknown[] | null;
   tax_rates: unknown[] | null;
   custom_fees: unknown[] | null;
 };
@@ -378,6 +401,7 @@ type AppState = {
     waiverIntro: string;
     waiverAllowInPerson: boolean;
   };
+  registration: RegistrationSettings;
   taxesAndFees: {
     taxRates: TaxRate[];
     customFees: CustomFee[];
@@ -436,6 +460,7 @@ type SettingsSection =
   | "basics"
   | "rooms"
   | "policies"
+  | "registration"
   | "schedules"
   | "staff"
   | "roles"
@@ -989,7 +1014,12 @@ const settingsNavGroups: {
         href: bookingAdminRouteByView["settings-policies"],
         section: "policies",
       },
-      { label: "Registration", icon: "user" },
+      {
+        label: "Registration",
+        icon: "user",
+        href: bookingAdminRouteByView["settings-registration"],
+        section: "registration",
+      },
       { label: "Custom Fields", icon: "edit" },
     ],
   },
@@ -1056,6 +1086,37 @@ const defaultState: AppState = {
     waiverIntro:
       "By clicking Agree & Continue, you confirm that the customer has had the opportunity to review this waiver and has agreed to its terms with full consent.",
     waiverAllowInPerson: true,
+  },
+  registration: {
+    personalFields: {
+      name: { required: true, hidden: false },
+      gender: { required: true, hidden: false },
+      dateOfBirth: { required: true, hidden: false },
+    },
+    contactFields: {
+      address: { required: true, hidden: false },
+      phoneNumber: { required: true, hidden: false },
+    },
+    additionalFields: [
+      {
+        id: "registration-organization",
+        label: "Organization",
+        type: "Short Text",
+        required: false,
+      },
+      {
+        id: "registration-referral",
+        label: "Referral",
+        type: "Single-select",
+        required: false,
+      },
+      {
+        id: "registration-shirt-size",
+        label: "Shirt Size",
+        type: "Single-select",
+        required: false,
+      },
+    ],
   },
   taxesAndFees: {
     taxRates: [
@@ -1474,6 +1535,15 @@ function createCustomFeeDraft(): CustomFee {
   };
 }
 
+function createRegistrationAdditionalFieldDraft(): RegistrationAdditionalField {
+  return {
+    id: makeId("registration-field"),
+    label: "",
+    type: "Short Text",
+    required: false,
+  };
+}
+
 function normalizeTaxRateEntry(value: unknown): TaxRate | null {
   if (!value || typeof value !== "object") return null;
   const item = value as Partial<TaxRate>;
@@ -1502,6 +1572,55 @@ function normalizeCustomFeeEntry(value: unknown): CustomFee | null {
         : typeof item.amount === "number"
           ? String(item.amount)
           : "",
+  };
+}
+
+function normalizeRegistrationFieldConfig(value: unknown, fallback: RegistrationFieldConfig): RegistrationFieldConfig {
+  if (!value || typeof value !== "object") return fallback;
+  const item = value as Partial<RegistrationFieldConfig>;
+  return {
+    required: typeof item.required === "boolean" ? item.required : fallback.required,
+    hidden: typeof item.hidden === "boolean" ? item.hidden : fallback.hidden,
+  };
+}
+
+function normalizeRegistrationAdditionalFieldEntry(value: unknown): RegistrationAdditionalField | null {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Partial<RegistrationAdditionalField>;
+  return {
+    id:
+      typeof item.id === "string" && item.id.trim()
+        ? item.id
+        : makeId("registration-field"),
+    label: typeof item.label === "string" ? item.label : "",
+    type: item.type === "Single-select" ? "Single-select" : "Short Text",
+    required: typeof item.required === "boolean" ? item.required : false,
+  };
+}
+
+function normalizeRegistrationSettings(
+  personalValue: unknown,
+  contactValue: unknown,
+  additionalValue: unknown
+): RegistrationSettings {
+  const fallback = defaultState.registration;
+  const personal = personalValue && typeof personalValue === "object" ? (personalValue as Record<string, unknown>) : {};
+  const contact = contactValue && typeof contactValue === "object" ? (contactValue as Record<string, unknown>) : {};
+  const additional = Array.isArray(additionalValue)
+    ? additionalValue.map(normalizeRegistrationAdditionalFieldEntry).filter(Boolean) as RegistrationAdditionalField[]
+    : fallback.additionalFields;
+
+  return {
+    personalFields: {
+      name: normalizeRegistrationFieldConfig(personal.name, fallback.personalFields.name),
+      gender: normalizeRegistrationFieldConfig(personal.gender, fallback.personalFields.gender),
+      dateOfBirth: normalizeRegistrationFieldConfig(personal.dateOfBirth, fallback.personalFields.dateOfBirth),
+    },
+    contactFields: {
+      address: normalizeRegistrationFieldConfig(contact.address, fallback.contactFields.address),
+      phoneNumber: normalizeRegistrationFieldConfig(contact.phoneNumber, fallback.contactFields.phoneNumber),
+    },
+    additionalFields: additional.length ? additional : fallback.additionalFields,
   };
 }
 
@@ -1781,6 +1900,7 @@ async function upsertFacilitySettings(
   facility: FacilitySettings,
   profile: AppState["profile"],
   policies: BookingPolicies,
+  registration: AppState["registration"],
   taxesAndFees: AppState["taxesAndFees"]
 ) {
   const { error } = await supabase.from("booking_settings").upsert({
@@ -1806,6 +1926,9 @@ async function upsertFacilitySettings(
     waiver_document_name: policies.waiverDocumentName || null,
     waiver_intro: policies.waiverIntro,
     waiver_allow_in_person: policies.waiverAllowInPerson,
+    registration_personal_fields: registration.personalFields,
+    registration_contact_fields: registration.contactFields,
+    registration_additional_fields: registration.additionalFields,
     tax_rates: taxesAndFees.taxRates,
     custom_fees: taxesAndFees.customFees,
   });
@@ -3356,6 +3479,11 @@ export default function BookingAdminApp({
             settings?.waiver_allow_in_person ??
             defaultState.policies.waiverAllowInPerson,
         },
+        registration: normalizeRegistrationSettings(
+          settings?.registration_personal_fields,
+          settings?.registration_contact_fields,
+          settings?.registration_additional_fields
+        ),
         taxesAndFees: {
           taxRates: normalizeTaxRates(settings?.tax_rates),
           customFees: normalizeCustomFees(settings?.custom_fees),
@@ -3506,6 +3634,7 @@ export default function BookingAdminApp({
         normalizedNext.facility,
         normalizedNext.profile,
         normalizedNext.policies,
+        normalizedNext.registration,
         normalizedNext.taxesAndFees
       );
       const resources = await upsertResources(normalizedNext.resources);
@@ -4685,6 +4814,7 @@ export default function BookingAdminApp({
             view === "settings-profile" ||
             view === "settings-basics" ||
             view === "settings-rooms" ||
+            view === "settings-registration" ||
             view === "settings-taxes-fees" ||
             view === "settings-policies") ? (
             <SettingsView
@@ -4696,6 +4826,8 @@ export default function BookingAdminApp({
                   ? "policies"
                   : view === "settings-taxes-fees"
                     ? "taxes-fees"
+                  : view === "settings-registration"
+                    ? "registration"
                   : view === "settings-rooms"
                     ? "rooms"
                     : "basics"
@@ -8139,6 +8271,371 @@ function MetricPanel({ title, rows }: { title: string; rows: [string, React.Reac
   );
 }
 
+const registrationPersonalFieldMeta: Array<{
+  key: RegistrationPersonalFieldKey;
+  label: string;
+  description: string;
+}> = [
+  {
+    key: "name",
+    label: "Name",
+    description:
+      "Choose whether users must enter their name when creating an account at your facility.",
+  },
+  {
+    key: "gender",
+    label: "Gender",
+    description:
+      "Choose whether users must enter their gender when creating an account at your facility.",
+  },
+  {
+    key: "dateOfBirth",
+    label: "Date of Birth",
+    description:
+      "Choose whether users must enter their date of birth when creating an account at your facility.",
+  },
+];
+
+const registrationContactFieldMeta: Array<{
+  key: RegistrationContactFieldKey;
+  label: string;
+  description: string;
+}> = [
+  {
+    key: "address",
+    label: "Address",
+    description:
+      "Choose whether users must enter their address when creating an account at your facility.",
+  },
+  {
+    key: "phoneNumber",
+    label: "Phone Number",
+    description:
+      "Choose whether users must enter their phone number when creating an account at your facility.",
+  },
+];
+
+function RegistrationRequiredToggle({
+  checked,
+  disabled = false,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (checked: boolean) => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => !disabled && onChange(!checked)}
+      aria-checked={checked}
+      aria-label={label}
+      role="checkbox"
+      disabled={disabled}
+      className={[
+        "grid h-8 w-8 place-items-center rounded-[6px] border transition",
+        disabled
+          ? "cursor-not-allowed border-black/10 bg-[#f4f4f4] text-transparent"
+          : checked
+            ? "border-black bg-black text-white"
+            : "border-black/25 bg-white text-transparent hover:border-black/45",
+      ].join(" ")}
+    >
+      <Icon name="check" className="h-4 w-4" />
+    </button>
+  );
+}
+
+function RegistrationSettingsEditor({
+  value,
+  onChange,
+  mobile = false,
+}: {
+  value: RegistrationSettings;
+  onChange: (next: RegistrationSettings) => void;
+  mobile?: boolean;
+}) {
+  const [isAddFieldOpen, setIsAddFieldOpen] = useState(false);
+  const [newFieldLabel, setNewFieldLabel] = useState("");
+  const [newFieldType, setNewFieldType] = useState<RegistrationAdditionalField["type"]>("Short Text");
+
+  function updatePersonalField(key: RegistrationPersonalFieldKey, next: Partial<RegistrationFieldConfig>) {
+    onChange({
+      ...value,
+      personalFields: {
+        ...value.personalFields,
+        [key]: {
+          ...value.personalFields[key],
+          ...next,
+        },
+      },
+    });
+  }
+
+  function updateContactField(key: RegistrationContactFieldKey, next: Partial<RegistrationFieldConfig>) {
+    onChange({
+      ...value,
+      contactFields: {
+        ...value.contactFields,
+        [key]: {
+          ...value.contactFields[key],
+          ...next,
+        },
+      },
+    });
+  }
+
+  function updateAdditionalField(id: string, next: Partial<RegistrationAdditionalField>) {
+    onChange({
+      ...value,
+      additionalFields: value.additionalFields.map((field) => (field.id === id ? { ...field, ...next } : field)),
+    });
+  }
+
+  function moveAdditionalField(index: number, direction: "up" | "down") {
+    onChange({
+      ...value,
+      additionalFields: moveListItem(value.additionalFields, index, direction),
+    });
+  }
+
+  function removeAdditionalField(id: string) {
+    onChange({
+      ...value,
+      additionalFields: value.additionalFields.filter((field) => field.id !== id),
+    });
+  }
+
+  function addAdditionalField() {
+    const label = newFieldLabel.trim();
+    if (!label) return;
+
+    onChange({
+      ...value,
+      additionalFields: [
+        ...value.additionalFields,
+        {
+          ...createRegistrationAdditionalFieldDraft(),
+          label,
+          type: newFieldType,
+        },
+      ],
+    });
+
+    setNewFieldLabel("");
+    setNewFieldType("Short Text");
+    setIsAddFieldOpen(false);
+  }
+
+  function renderStandardFieldRow(
+    label: string,
+    description: string,
+    config: RegistrationFieldConfig,
+    onRequiredChange: (checked: boolean) => void,
+    onHiddenChange: (hidden: boolean) => void
+  ) {
+    const status = config.hidden ? "Hidden" : config.required ? "Required" : "Optional";
+
+    return (
+      <div
+        className={[
+          "grid gap-4 border-b border-black/10 last:border-b-0",
+          mobile ? "px-0 py-5" : "grid-cols-[minmax(0,1fr)_auto] px-0 py-5",
+        ].join(" ")}
+      >
+        <div>
+          <div className="text-[16px] font-semibold text-black">{label}</div>
+          <p className="mt-1 max-w-[520px] text-sm leading-relaxed text-black/65">{description}</p>
+        </div>
+        <div className={`flex ${mobile ? "justify-between" : "justify-end"} flex-wrap items-center gap-4`}>
+          <span className="min-w-[64px] text-sm font-medium text-black/65">{status}</span>
+          <RegistrationRequiredToggle
+            checked={config.required}
+            disabled={config.hidden}
+            onChange={onRequiredChange}
+            label={`${label} required`}
+          />
+          <button
+            type="button"
+            onClick={() => onHiddenChange(!config.hidden)}
+            className="text-sm font-medium text-black underline underline-offset-2"
+          >
+            {config.hidden ? `Show ${label}` : `Hide ${label}`}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const sectionClass = mobile
+    ? "px-6 py-6"
+    : "grid gap-6 px-5 py-5 lg:grid-cols-[240px_minmax(0,1fr)]";
+  const addButtonClass = mobile
+    ? "inline-flex min-h-[44px] items-center rounded-[8px] bg-[#6282b2] px-5 text-[15px] font-medium text-white shadow-[0_2px_6px_rgba(72,102,176,0.25)]"
+    : "inline-flex min-h-11 items-center rounded-[8px] bg-[#6282b2] px-5 text-[15px] font-medium text-white shadow-[0_2px_6px_rgba(72,102,176,0.25)]";
+
+  return (
+    <>
+      <div className="divide-y divide-black/10">
+        <div className={sectionClass}>
+          <div>
+            <div className="text-[18px] font-semibold">Personal Information</div>
+            <p className="mt-2 text-sm leading-relaxed text-black/65">
+              Choose which personal details users will be required to enter when creating an account at your facility.
+            </p>
+          </div>
+          <div className="divide-y divide-black/10">
+            {registrationPersonalFieldMeta.map((field) =>
+              renderStandardFieldRow(
+                field.label,
+                field.description,
+                value.personalFields[field.key],
+                (checked) => updatePersonalField(field.key, { required: checked }),
+                (hidden) => updatePersonalField(field.key, { hidden })
+              )
+            )}
+          </div>
+        </div>
+
+        <div className={sectionClass}>
+          <div>
+            <div className="text-[18px] font-semibold">Contact Information</div>
+            <p className="mt-2 text-sm leading-relaxed text-black/65">
+              Choose which pieces of contact info. users will be required to enter when creating an account at your facility.
+            </p>
+          </div>
+          <div className="divide-y divide-black/10">
+            {registrationContactFieldMeta.map((field) =>
+              renderStandardFieldRow(
+                field.label,
+                field.description,
+                value.contactFields[field.key],
+                (checked) => updateContactField(field.key, { required: checked }),
+                (hidden) => updateContactField(field.key, { hidden })
+              )
+            )}
+          </div>
+        </div>
+
+        <div className={sectionClass}>
+          <div>
+            <div className="text-[18px] font-semibold">Additional Information</div>
+            <p className="mt-2 text-sm leading-relaxed text-black/65">
+              Request the client to fill out additional details during registration.
+            </p>
+          </div>
+          <div>
+            <div className="divide-y divide-black/10 border-t border-black/10">
+              {value.additionalFields.map((field, index) => (
+                <div
+                  key={field.id}
+                  className={`flex ${mobile ? "flex-col items-start" : "items-center"} justify-between gap-4 px-0 py-5`}
+                >
+                  <div className="min-w-0">
+                    <div className="text-[16px] font-semibold text-black">{field.label || "Untitled field"}</div>
+                    <div className="mt-1 inline-flex rounded-full bg-black/[0.06] px-3 py-1 text-[13px] font-medium text-black/65">
+                      {field.type}
+                    </div>
+                  </div>
+                  <div className={`flex ${mobile ? "w-full justify-between" : "justify-end"} flex-wrap items-center gap-3`}>
+                    <span className="min-w-[64px] text-sm font-medium text-black/65">
+                      {field.required ? "Required" : "Optional"}
+                    </span>
+                    <RegistrationRequiredToggle
+                      checked={field.required}
+                      onChange={(checked) => updateAdditionalField(field.id, { required: checked })}
+                      label={`${field.label} required`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => moveAdditionalField(index, "up")}
+                      disabled={index === 0}
+                      className="rounded-[8px] border border-black/10 p-2 text-black/55 transition hover:border-black/25 hover:text-black disabled:cursor-not-allowed disabled:opacity-30"
+                      aria-label={`Move ${field.label} up`}
+                    >
+                      <Icon name="chevron" className="h-4 w-4 rotate-90" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveAdditionalField(index, "down")}
+                      disabled={index === value.additionalFields.length - 1}
+                      className="rounded-[8px] border border-black/10 p-2 text-black/55 transition hover:border-black/25 hover:text-black disabled:cursor-not-allowed disabled:opacity-30"
+                      aria-label={`Move ${field.label} down`}
+                    >
+                      <Icon name="chevron" className="h-4 w-4 -rotate-90" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeAdditionalField(field.id)}
+                      className="rounded-[8px] border border-black/10 p-2 text-black/55 transition hover:border-[#ef4444]/30 hover:bg-[#fef2f2] hover:text-[#ef4444]"
+                      aria-label={`Remove ${field.label}`}
+                    >
+                      <Icon name="trash" className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button type="button" onClick={() => setIsAddFieldOpen(true)} className={addButtonClass}>
+                Add Custom Field
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {isAddFieldOpen ? (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-[520px] overflow-hidden rounded-[14px] bg-white shadow-[0_24px_48px_rgba(0,0,0,0.24)]">
+            <div className="flex items-center justify-between border-b border-black/10 px-6 py-5">
+              <h2 className="text-[28px] font-medium text-black">Add Custom Field</h2>
+              <button
+                type="button"
+                onClick={() => setIsAddFieldOpen(false)}
+                className="text-black/45 transition hover:text-black"
+                aria-label="Close custom field editor"
+              >
+                <Icon name="x" className="h-7 w-7" />
+              </button>
+            </div>
+
+            <div className="grid gap-5 px-6 py-6">
+              <TextField label="Field Name" value={newFieldLabel} onChange={setNewFieldLabel} placeholder="Organization" />
+              <SelectField
+                label="Field Type"
+                value={newFieldType}
+                onChange={(next) => setNewFieldType(next as RegistrationAdditionalField["type"])}
+                options={["Short Text", "Single-select"]}
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-black/10 px-6 py-5">
+              <button
+                type="button"
+                onClick={() => setIsAddFieldOpen(false)}
+                className="rounded-[10px] border border-black/10 px-5 py-2.5 text-[15px] font-medium text-black"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={addAdditionalField}
+                disabled={!newFieldLabel.trim()}
+                className="rounded-[10px] bg-[#1f1b1b] px-5 py-2.5 text-[15px] font-medium text-white shadow-[0_3px_8px_rgba(0,0,0,0.18)] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 function TaxesAndFeesSettingsEditor({
   value,
   onChange,
@@ -9312,6 +9809,7 @@ function SettingsView({
   const isProfile = section === "profile";
   const isBasics = section === "basics";
   const isRooms = section === "rooms";
+  const isRegistration = section === "registration";
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isUploadingWaiver, setIsUploadingWaiver] = useState(false);
   const [waiverUploadError, setWaiverUploadError] = useState("");
@@ -9419,6 +9917,8 @@ function SettingsView({
       ? "Basics"
       : isRooms
         ? "Rooms"
+        : isRegistration
+          ? "Registration"
         : isTaxesFees
           ? "Taxes & Fees"
           : "Policies";
@@ -9508,7 +10008,17 @@ function SettingsView({
           <div className="max-w-[1084px]">
             <PageHeader
               title={
-                isProfile ? "Profile" : isBasics ? "Basics" : isRooms ? "Rooms" : isTaxesFees ? "Taxes & Fees" : "Policies"
+                isProfile
+                  ? "Profile"
+                  : isBasics
+                    ? "Basics"
+                    : isRooms
+                      ? "Rooms"
+                      : isRegistration
+                        ? "Registration"
+                        : isTaxesFees
+                          ? "Taxes & Fees"
+                          : "Policies"
               }
               subtitle={
                 isProfile
@@ -9517,6 +10027,8 @@ function SettingsView({
                   ? "Manage your facility settings."
                   : isRooms
                     ? "Rooms are bookable spaces within your facility."
+                  : isRegistration
+                    ? "Configure registration policies and requirements for your facility"
                   : isTaxesFees
                     ? "Configure tax rates and custom fees for your facility"
                   : "Configure booking policies and rules for your facility."
@@ -9865,6 +10377,14 @@ function SettingsView({
                       </tbody>
                     </table>
                   </div>
+                </>
+              ) : isRegistration ? (
+                <>
+                  <div className="border-b border-black/10 px-5 py-4 text-[18px] font-semibold">Registration Policies</div>
+                  <RegistrationSettingsEditor
+                    value={draft.registration}
+                    onChange={(next) => setDraft((current) => ({ ...current, registration: next }))}
+                  />
                 </>
               ) : isTaxesFees ? (
                 <>
@@ -10373,6 +10893,15 @@ function SettingsView({
                   </tbody>
                 </table>
               </div>
+            </>
+          ) : isRegistration ? (
+            <>
+              <div className="border-b border-black/10 px-6 py-5 text-[18px] font-medium">Registration Policies</div>
+              <RegistrationSettingsEditor
+                value={draft.registration}
+                onChange={(next) => setDraft((current) => ({ ...current, registration: next }))}
+                mobile
+              />
             </>
           ) : isTaxesFees ? (
             <>

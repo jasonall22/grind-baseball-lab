@@ -18,6 +18,7 @@ export type BookingAdminView =
   | "settings-staff"
   | "settings-roles"
   | "settings-taxes-fees"
+  | "settings-registration"
   | "settings-policies";
 
 export const bookingAdminRouteByView: Record<BookingAdminView, string> = {
@@ -40,6 +41,7 @@ export const bookingAdminRouteByView: Record<BookingAdminView, string> = {
   "settings-staff": "/admin/settings/staff",
   "settings-roles": "/admin/settings/roles",
   "settings-taxes-fees": "/admin/settings/taxes-fees",
+  "settings-registration": "/admin/settings/registration",
   "settings-policies": "/admin/settings/policies",
 };
 
@@ -66,6 +68,7 @@ export function bookingAdminViewFromSection(
     case "settings-staff":
     case "settings-roles":
     case "settings-taxes-fees":
+    case "settings-registration":
     case "settings-policies":
       return section;
     default:
