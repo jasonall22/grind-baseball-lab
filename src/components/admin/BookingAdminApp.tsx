@@ -121,6 +121,19 @@ type Product = {
   stock: number;
 };
 
+type TaxRate = {
+  id: string;
+  name: string;
+  percentage: string;
+  taxId: string;
+};
+
+type CustomFee = {
+  id: string;
+  name: string;
+  amount: string;
+};
+
 type ServiceSection =
   | "rentals"
   | "lessons"
@@ -194,6 +207,8 @@ type BookingSettingsRow = {
   waiver_document_name: string | null;
   waiver_intro: string | null;
   waiver_allow_in_person: boolean | null;
+  tax_rates: unknown[] | null;
+  custom_fees: unknown[] | null;
 };
 
 type BookingServiceRow = {
@@ -320,6 +335,10 @@ type AppState = {
     waiverIntro: string;
     waiverAllowInPerson: boolean;
   };
+  taxesAndFees: {
+    taxRates: TaxRate[];
+    customFees: CustomFee[];
+  };
   resources: string[];
   services: Service[];
   customers: Customer[];
@@ -367,7 +386,7 @@ type ParsedCsvFile = {
 
 const storageKey = "grind_booking_admin_v1";
 const lastAppRouteKey = "grind_booking_admin_last_app_route";
-type SettingsSection = "basics" | "rooms" | "policies" | "schedules";
+type SettingsSection = "basics" | "rooms" | "policies" | "schedules" | "taxes-fees";
 
 type RoomEditorDraft = {
   name: string;
@@ -520,7 +539,12 @@ const settingsNavGroups: {
     title: "Payments",
     items: [
       { label: "Checkout", icon: "copy" },
-      { label: "Taxes & Fees", icon: "bar" },
+      {
+        label: "Taxes & Fees",
+        icon: "bar",
+        href: bookingAdminRouteByView["settings-taxes-fees"],
+        section: "taxes-fees",
+      },
     ],
   },
   {
@@ -580,6 +604,23 @@ const defaultState: AppState = {
     waiverIntro:
       "By clicking Agree & Continue, you confirm that the customer has had the opportunity to review this waiver and has agreed to its terms with full consent.",
     waiverAllowInPerson: true,
+  },
+  taxesAndFees: {
+    taxRates: [
+      {
+        id: "tax-state",
+        name: "State Tax",
+        percentage: "7",
+        taxId: "",
+      },
+    ],
+    customFees: [
+      {
+        id: "fee-service",
+        name: "Service Fee",
+        amount: "3.5",
+      },
+    ],
   },
   resources: ["Cage 1", "Cage 2", "Pitching Lane", "HitTrax"],
   services: [
@@ -912,6 +953,66 @@ function normalizeServices(services: Service[]) {
   return services.map(normalizeService);
 }
 
+function createTaxRateDraft(): TaxRate {
+  return {
+    id: makeId("tax-rate"),
+    name: "",
+    percentage: "",
+    taxId: "",
+  };
+}
+
+function createCustomFeeDraft(): CustomFee {
+  return {
+    id: makeId("custom-fee"),
+    name: "",
+    amount: "",
+  };
+}
+
+function normalizeTaxRateEntry(value: unknown): TaxRate | null {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Partial<TaxRate>;
+  return {
+    id: typeof item.id === "string" && item.id.trim() ? item.id : makeId("tax-rate"),
+    name: typeof item.name === "string" ? item.name : "",
+    percentage:
+      typeof item.percentage === "string"
+        ? item.percentage
+        : typeof item.percentage === "number"
+          ? String(item.percentage)
+          : "",
+    taxId: typeof item.taxId === "string" ? item.taxId : "",
+  };
+}
+
+function normalizeCustomFeeEntry(value: unknown): CustomFee | null {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Partial<CustomFee>;
+  return {
+    id: typeof item.id === "string" && item.id.trim() ? item.id : makeId("custom-fee"),
+    name: typeof item.name === "string" ? item.name : "",
+    amount:
+      typeof item.amount === "string"
+        ? item.amount
+        : typeof item.amount === "number"
+          ? String(item.amount)
+          : "",
+  };
+}
+
+function normalizeTaxRates(value: unknown): TaxRate[] {
+  if (!Array.isArray(value)) return defaultState.taxesAndFees.taxRates;
+  const items = value.map(normalizeTaxRateEntry).filter(Boolean) as TaxRate[];
+  return items.length ? items : defaultState.taxesAndFees.taxRates;
+}
+
+function normalizeCustomFees(value: unknown): CustomFee[] {
+  if (!Array.isArray(value)) return defaultState.taxesAndFees.customFees;
+  const items = value.map(normalizeCustomFeeEntry).filter(Boolean) as CustomFee[];
+  return items.length ? items : defaultState.taxesAndFees.customFees;
+}
+
 function normalizeBookings(bookings: Booking[], services: Service[]) {
   const servicesById = new Map(normalizeServices(services).map((service) => [service.id, service]));
   return bookings.map((booking) => {
@@ -1149,7 +1250,8 @@ async function uploadWaiverPdf(file: File) {
 
 async function upsertFacilitySettings(
   facility: FacilitySettings,
-  policies: BookingPolicies
+  policies: BookingPolicies,
+  taxesAndFees: AppState["taxesAndFees"]
 ) {
   const { error } = await supabase.from("booking_settings").upsert({
     key: "default",
@@ -1171,6 +1273,8 @@ async function upsertFacilitySettings(
     waiver_document_name: policies.waiverDocumentName || null,
     waiver_intro: policies.waiverIntro,
     waiver_allow_in_person: policies.waiverAllowInPerson,
+    tax_rates: taxesAndFees.taxRates,
+    custom_fees: taxesAndFees.customFees,
   });
 
   if (error) throw error;
@@ -2647,6 +2751,10 @@ export default function BookingAdminApp({
             settings?.waiver_allow_in_person ??
             defaultState.policies.waiverAllowInPerson,
         },
+        taxesAndFees: {
+          taxRates: normalizeTaxRates(settings?.tax_rates),
+          customFees: normalizeCustomFees(settings?.custom_fees),
+        },
         resources: resources.map((resource) => resource.name),
         services: serviceRows.map((service) => ({
           id: service.id,
@@ -2774,7 +2882,11 @@ export default function BookingAdminApp({
     setState(normalizedNext);
 
     try {
-      await upsertFacilitySettings(normalizedNext.facility, normalizedNext.policies);
+      await upsertFacilitySettings(
+        normalizedNext.facility,
+        normalizedNext.policies,
+        normalizedNext.taxesAndFees
+      );
       const resources = await upsertResources(normalizedNext.resources);
       const lookup = resourceLookup(resources);
       setResourceIdsByName(lookup.idsByName);
@@ -3854,12 +3966,15 @@ export default function BookingAdminApp({
             view === "settings" ||
             view === "settings-basics" ||
             view === "settings-rooms" ||
+            view === "settings-taxes-fees" ||
             view === "settings-policies") ? (
             <SettingsView
               backHref={backToAppHref}
               section={
                 view === "settings-policies"
                   ? "policies"
+                  : view === "settings-taxes-fees"
+                    ? "taxes-fees"
                   : view === "settings-rooms"
                     ? "rooms"
                     : "basics"
@@ -7303,6 +7418,301 @@ function MetricPanel({ title, rows }: { title: string; rows: [string, React.Reac
   );
 }
 
+function TaxesAndFeesSettingsEditor({
+  value,
+  onChange,
+  mobile = false,
+}: {
+  value: AppState["taxesAndFees"];
+  onChange: (next: AppState["taxesAndFees"]) => void;
+  mobile?: boolean;
+}) {
+  const [expandedTaxRateId, setExpandedTaxRateId] = useState<string | null>(value.taxRates[0]?.id ?? null);
+  const [expandedCustomFeeId, setExpandedCustomFeeId] = useState<string | null>(value.customFees[0]?.id ?? null);
+
+  useEffect(() => {
+    if (value.taxRates.length === 0) {
+      setExpandedTaxRateId(null);
+    } else if (!value.taxRates.some((item) => item.id === expandedTaxRateId)) {
+      setExpandedTaxRateId(value.taxRates[0]?.id ?? null);
+    }
+  }, [expandedTaxRateId, value.taxRates]);
+
+  useEffect(() => {
+    if (value.customFees.length === 0) {
+      setExpandedCustomFeeId(null);
+    } else if (!value.customFees.some((item) => item.id === expandedCustomFeeId)) {
+      setExpandedCustomFeeId(value.customFees[0]?.id ?? null);
+    }
+  }, [expandedCustomFeeId, value.customFees]);
+
+  function updateTaxRate(id: string, next: Partial<TaxRate>) {
+    onChange({
+      ...value,
+      taxRates: value.taxRates.map((item) => (item.id === id ? { ...item, ...next } : item)),
+    });
+  }
+
+  function updateCustomFee(id: string, next: Partial<CustomFee>) {
+    onChange({
+      ...value,
+      customFees: value.customFees.map((item) => (item.id === id ? { ...item, ...next } : item)),
+    });
+  }
+
+  function addTaxRate() {
+    const next = createTaxRateDraft();
+    onChange({
+      ...value,
+      taxRates: [...value.taxRates, next],
+    });
+    setExpandedTaxRateId(next.id);
+  }
+
+  function addCustomFee() {
+    const next = createCustomFeeDraft();
+    onChange({
+      ...value,
+      customFees: [...value.customFees, next],
+    });
+    setExpandedCustomFeeId(next.id);
+  }
+
+  function removeTaxRate(id: string) {
+    const nextTaxRates = value.taxRates.filter((item) => item.id !== id);
+    onChange({
+      ...value,
+      taxRates: nextTaxRates.length ? nextTaxRates : [createTaxRateDraft()],
+    });
+  }
+
+  function removeCustomFee(id: string) {
+    const nextCustomFees = value.customFees.filter((item) => item.id !== id);
+    onChange({
+      ...value,
+      customFees: nextCustomFees.length ? nextCustomFees : [createCustomFeeDraft()],
+    });
+  }
+
+  const summaryPadding = mobile ? "px-6 py-5" : "px-0 py-0";
+  const detailPadding = mobile ? "px-0 py-0" : "px-0 py-0";
+  const addButtonClass = mobile
+    ? "inline-flex min-h-[44px] items-center rounded-[8px] bg-[#6282b2] px-5 text-[15px] font-medium text-white shadow-[0_2px_6px_rgba(72,102,176,0.25)]"
+    : "inline-flex min-h-11 items-center rounded-[8px] bg-[#6282b2] px-5 text-[15px] font-medium text-white shadow-[0_2px_6px_rgba(72,102,176,0.25)]";
+
+  return (
+    <div className="divide-y divide-black/10">
+      <div className={`${mobile ? "px-6 py-6" : "px-5 py-5"} grid gap-6 lg:grid-cols-[240px_minmax(0,1fr)]`}>
+        <div>
+          <div className="text-[18px] font-semibold">Tax Rates</div>
+          <p className="mt-2 text-sm leading-relaxed text-black/65">
+            Set up tax rates to charge for products &amp; services at your facility.{" "}
+            <a
+              href="https://help.runswiftapp.com/article/424-tax-rates"
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-black underline"
+            >
+              Learn more
+            </a>
+          </p>
+        </div>
+        <div>
+          <div className="text-[18px] font-semibold">Tax Rates</div>
+          <div className="mt-3 overflow-hidden border-t border-black/10">
+            {value.taxRates.map((item) => {
+              const open = item.id === expandedTaxRateId;
+              const summary = `${item.name || "Untitled Tax Rate"} - ${item.percentage || "0"}%`;
+              return (
+                <div key={item.id} className="border-b border-black/10">
+                  <div className={`flex items-center justify-between gap-3 ${summaryPadding}`}>
+                    <button
+                      type="button"
+                      onClick={() => setExpandedTaxRateId(open ? null : item.id)}
+                      className="min-w-0 flex-1 text-left text-[16px] text-black/75"
+                    >
+                      {summary}
+                    </button>
+                    <div className="flex items-center gap-4 text-black/45">
+                      <button
+                        type="button"
+                        onClick={() => removeTaxRate(item.id)}
+                        className="text-[20px] leading-none transition hover:text-black"
+                        aria-label={`Delete ${item.name || "tax rate"}`}
+                      >
+                        …
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedTaxRateId(open ? null : item.id)}
+                        className="transition hover:text-black"
+                        aria-label={open ? "Collapse tax rate" : "Expand tax rate"}
+                      >
+                        <Icon name="chevron" className={`h-5 w-5 transition ${open ? "-rotate-90" : "rotate-90"}`} />
+                      </button>
+                    </div>
+                  </div>
+                  {open ? (
+                    <div className={`${detailPadding} border-t border-black/10`}>
+                      <div className={`${mobile ? "px-6 py-5" : "px-5 py-5"} text-[18px] font-semibold`}>
+                        Tax Rate Details
+                      </div>
+                      <div className={`${mobile ? "px-6 pb-6" : "px-5 pb-5"} grid gap-4`}>
+                        <label className="grid gap-1.5">
+                          <span className="text-sm font-semibold text-black/70">Name</span>
+                          <input
+                            value={item.name}
+                            onChange={(event) => updateTaxRate(item.id, { name: event.target.value })}
+                            placeholder="Sales Tax"
+                            className="min-h-12 rounded-lg border border-black/10 px-4 text-[15px] outline-none focus:border-black/30"
+                          />
+                        </label>
+                        <div className="grid gap-4 sm:grid-cols-[minmax(0,220px)_minmax(0,1fr)]">
+                          <label className="grid gap-1.5">
+                            <span className="text-sm font-semibold text-black/70">Percentage</span>
+                            <div className="relative">
+                              <input
+                                value={item.percentage}
+                                onChange={(event) =>
+                                  updateTaxRate(item.id, {
+                                    percentage: event.target.value.replace(/[^\d.]/g, "").slice(0, 6),
+                                  })
+                                }
+                                placeholder="13"
+                                className="min-h-12 w-full rounded-lg border border-black/10 px-4 pr-8 text-[15px] outline-none focus:border-black/30"
+                              />
+                              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[15px] text-black/45">
+                                %
+                              </span>
+                            </div>
+                          </label>
+                          <label className="grid gap-1.5">
+                            <span className="text-sm font-semibold text-black/70">Tax ID</span>
+                            <input
+                              value={item.taxId}
+                              onChange={(event) => updateTaxRate(item.id, { taxId: event.target.value })}
+                              placeholder="12-3456789"
+                              className="min-h-12 rounded-lg border border-black/10 px-4 text-[15px] outline-none focus:border-black/30"
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-6 flex justify-end">
+            <button type="button" onClick={addTaxRate} className={addButtonClass}>
+              Add another tax rate
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className={`${mobile ? "px-6 py-6" : "px-5 py-5"} grid gap-6 lg:grid-cols-[240px_minmax(0,1fr)]`}>
+        <div>
+          <div className="text-[18px] font-semibold">Custom Fees</div>
+          <p className="mt-2 text-sm leading-relaxed text-black/65">
+            Set up custom fees to charge for products &amp; services at your facility.{" "}
+            <a
+              href="https://help.runswiftapp.com/article/424-tax-and-fees"
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-black underline"
+            >
+              Learn more
+            </a>
+          </p>
+        </div>
+        <div>
+          <div className="text-[18px] font-semibold">Custom Fees</div>
+          <div className="mt-3 overflow-hidden border-t border-black/10">
+            {value.customFees.map((item) => {
+              const open = item.id === expandedCustomFeeId;
+              const summary = `${item.name || "Untitled Custom Fee"} - ${item.amount || "0"}%`;
+              return (
+                <div key={item.id} className="border-b border-black/10">
+                  <div className={`flex items-center justify-between gap-3 ${summaryPadding}`}>
+                    <button
+                      type="button"
+                      onClick={() => setExpandedCustomFeeId(open ? null : item.id)}
+                      className="min-w-0 flex-1 text-left text-[16px] text-black/75"
+                    >
+                      {summary}
+                    </button>
+                    <div className="flex items-center gap-4 text-black/45">
+                      <button
+                        type="button"
+                        onClick={() => removeCustomFee(item.id)}
+                        className="text-[20px] leading-none transition hover:text-black"
+                        aria-label={`Delete ${item.name || "custom fee"}`}
+                      >
+                        …
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedCustomFeeId(open ? null : item.id)}
+                        className="transition hover:text-black"
+                        aria-label={open ? "Collapse custom fee" : "Expand custom fee"}
+                      >
+                        <Icon name="chevron" className={`h-5 w-5 transition ${open ? "-rotate-90" : "rotate-90"}`} />
+                      </button>
+                    </div>
+                  </div>
+                  {open ? (
+                    <div className={`${detailPadding} border-t border-black/10`}>
+                      <div className={`${mobile ? "px-6 py-5" : "px-5 py-5"} text-[18px] font-semibold`}>
+                        Custom Fee Details
+                      </div>
+                      <div className={`${mobile ? "px-6 pb-6" : "px-5 pb-5"} grid gap-4`}>
+                        <label className="grid gap-1.5">
+                          <span className="text-sm font-semibold text-black/70">Name</span>
+                          <input
+                            value={item.name}
+                            onChange={(event) => updateCustomFee(item.id, { name: event.target.value })}
+                            placeholder="Technology Fee"
+                            className="min-h-12 rounded-lg border border-black/10 px-4 text-[15px] outline-none focus:border-black/30"
+                          />
+                          <span className="text-[13px] text-black/45">This name will be visible during checkout</span>
+                        </label>
+                        <label className="grid max-w-[220px] gap-1.5">
+                          <span className="text-sm font-semibold text-black/70">Amount</span>
+                          <div className="relative">
+                            <input
+                              value={item.amount}
+                              onChange={(event) =>
+                                updateCustomFee(item.id, {
+                                  amount: event.target.value.replace(/[^\d.]/g, "").slice(0, 6),
+                                })
+                              }
+                              placeholder="10"
+                              className="min-h-12 w-full rounded-lg border border-black/10 px-4 pr-8 text-[15px] outline-none focus:border-black/30"
+                            />
+                            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[15px] text-black/45">
+                              %
+                            </span>
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-6 flex justify-end">
+            <button type="button" onClick={addCustomFee} className={addButtonClass}>
+              Add another fee
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SettingsView({
   backHref,
   section,
@@ -7331,6 +7741,7 @@ function SettingsView({
   const [waiverUploadError, setWaiverUploadError] = useState("");
   const [roomsExpanded, setRoomsExpanded] = useState(true);
   const [roomSearch, setRoomSearch] = useState("");
+  const isTaxesFees = section === "taxes-fees";
 
   useEffect(() => {
     setDraft(state);
@@ -7360,6 +7771,13 @@ function SettingsView({
         ...current.policies,
         ...next,
       },
+    }));
+  }
+
+  function updateTaxesAndFees(next: AppState["taxesAndFees"]) {
+    setDraft((current) => ({
+      ...current,
+      taxesAndFees: next,
     }));
   }
 
@@ -7409,7 +7827,7 @@ function SettingsView({
     }
   }
 
-  const sectionTitle = isBasics ? "Basics" : isRooms ? "Rooms" : "Policies";
+  const sectionTitle = isBasics ? "Basics" : isRooms ? "Rooms" : isTaxesFees ? "Taxes & Fees" : "Policies";
   const filteredRooms = draft.resources.filter((resource) =>
     resource.toLowerCase().includes(roomSearch.trim().toLowerCase())
   );
@@ -7495,12 +7913,14 @@ function SettingsView({
         <div className="px-7 py-8 lg:px-8">
           <div className="max-w-[1084px]">
             <PageHeader
-              title={isBasics ? "Basics" : isRooms ? "Rooms" : "Policies"}
+              title={isBasics ? "Basics" : isRooms ? "Rooms" : isTaxesFees ? "Taxes & Fees" : "Policies"}
               subtitle={
                 isBasics
                   ? "Manage your facility settings."
                   : isRooms
                     ? "Rooms are bookable spaces within your facility."
+                  : isTaxesFees
+                    ? "Configure tax rates and custom fees for your facility"
                   : "Configure booking policies and rules for your facility."
               }
             >
@@ -7788,6 +8208,14 @@ function SettingsView({
                       </tbody>
                     </table>
                   </div>
+                </>
+              ) : isTaxesFees ? (
+                <>
+                  <div className="border-b border-black/10 px-5 py-4 text-[18px] font-semibold">Taxes &amp; Fees</div>
+                  <TaxesAndFeesSettingsEditor
+                    value={draft.taxesAndFees}
+                    onChange={updateTaxesAndFees}
+                  />
                 </>
               ) : (
                 <>
@@ -8235,6 +8663,15 @@ function SettingsView({
                   </tbody>
                 </table>
               </div>
+            </>
+          ) : isTaxesFees ? (
+            <>
+              <div className="border-b border-black/10 px-6 py-5 text-[18px] font-medium">Taxes &amp; Fees</div>
+              <TaxesAndFeesSettingsEditor
+                value={draft.taxesAndFees}
+                onChange={updateTaxesAndFees}
+                mobile
+              />
             </>
           ) : (
             <>
