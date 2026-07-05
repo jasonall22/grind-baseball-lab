@@ -8763,6 +8763,10 @@ function ScheduleEditorView({
     }));
   }
 
+  function sortOverrides(overrides: ScheduleOverride[]) {
+    return [...overrides].sort((a, b) => a.date.localeCompare(b.date));
+  }
+
   function addClosedOverride() {
     appendOverride({
       id: makeId("override"),
@@ -8787,8 +8791,19 @@ function ScheduleEditorView({
   function updateOverride(overrideId: string, recipe: (current: ScheduleOverride) => ScheduleOverride) {
     setDraft((current) => ({
       ...current,
-      overrides: current.overrides.map((override) => (override.id === overrideId ? recipe(override) : override)),
+      overrides: sortOverrides(
+        current.overrides.map((override) => (override.id === overrideId ? recipe(override) : override))
+      ),
     }));
+  }
+
+  function resetOverrideToRegularHours(overrideId: string, date: string) {
+    updateOverride(overrideId, (current) => ({
+      ...current,
+      isClosed: false,
+      slots: buildOverrideSlots(date),
+    }));
+    showToast("Override reset to regular hours.");
   }
 
   async function handleSave() {
@@ -9193,19 +9208,28 @@ function ScheduleEditorView({
                                 ) : (
                                   <div className="pt-5 text-[14px] text-black/55 lg:pt-0">Closed all day</div>
                                 )}
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setDraft((current) => ({
-                                      ...current,
-                                      overrides: current.overrides.filter((item) => item.id !== override.id),
-                                    }))
-                                  }
-                                  className="pt-5 text-black/55 transition hover:text-black lg:pt-0"
-                                  aria-label={`Remove ${override.date} override`}
-                                >
-                                  <Icon name="trash" className="h-5 w-5" />
-                                </button>
+                                <div className="flex items-center gap-3 pt-5 lg:pt-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => resetOverrideToRegularHours(override.id, override.date)}
+                                    className="rounded-full border border-black/10 px-3 py-1.5 text-[12px] font-medium text-black/70 transition hover:border-black/20 hover:bg-black/[0.03] hover:text-black"
+                                  >
+                                    Use regular hours
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setDraft((current) => ({
+                                        ...current,
+                                        overrides: current.overrides.filter((item) => item.id !== override.id),
+                                      }))
+                                    }
+                                    className="text-black/55 transition hover:text-black"
+                                    aria-label={`Remove ${override.date} override`}
+                                  >
+                                    <Icon name="trash" className="h-5 w-5" />
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           ))}
@@ -9506,6 +9530,16 @@ function ScheduleEditorView({
                               label={`${override.date} custom hours`}
                             />
                             <span className="text-[14px] text-black/70">{override.isClosed ? "Closed" : "Custom hours"}</span>
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => resetOverrideToRegularHours(override.id, override.date)}
+                              className="inline-flex min-h-[34px] items-center rounded-full border border-black/12 px-3 py-1 text-[12px] font-medium text-black/70"
+                            >
+                              Use regular hours
+                            </button>
                           </div>
 
                           {!override.isClosed && override.slots.length ? (
