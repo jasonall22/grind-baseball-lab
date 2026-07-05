@@ -8712,19 +8712,41 @@ function ScheduleEditorView({
     }));
   }
 
-  function addOverride() {
+  function makeDefaultScheduleSlot() {
+    return { id: makeId("override-slot"), start: "09:00", end: "17:00", sortOrder: 1 };
+  }
+
+  function buildOverrideSlots(date: string) {
+    const baseConfig = dayConfigForDate(draft, date);
+    return baseConfig.enabled && baseConfig.slots.length ? cloneScheduleSlots(baseConfig.slots) : [makeDefaultScheduleSlot()];
+  }
+
+  function appendOverride(override: ScheduleOverride) {
     setDraft((current) => ({
       ...current,
-      overrides: [
-        ...current.overrides,
-        {
-          id: makeId("override"),
-          date: isoDate(new Date()),
-          isClosed: true,
-          slots: [],
-        },
-      ],
+      overrides: [...current.overrides, override].sort((a, b) => a.date.localeCompare(b.date)),
     }));
+  }
+
+  function addClosedOverride() {
+    appendOverride({
+      id: makeId("override"),
+      date: isoDate(new Date()),
+      isClosed: true,
+      slots: [],
+    });
+    showToast("Closed date added.");
+  }
+
+  function addCustomHoursOverride() {
+    const date = isoDate(new Date());
+    appendOverride({
+      id: makeId("override"),
+      date,
+      isClosed: false,
+      slots: buildOverrideSlots(date),
+    });
+    showToast("Custom hours date added.");
   }
 
   function updateOverride(overrideId: string, recipe: (current: ScheduleOverride) => ScheduleOverride) {
@@ -8992,12 +9014,30 @@ function ScheduleEditorView({
                 <div className="px-5 py-5">
                   <div className="overflow-hidden rounded-[10px] border border-black/10 bg-white">
                     <div className="border-b border-black/10 px-5 py-4 text-[18px] font-semibold text-black">
-                      Date Overrides
+                      Date Overrides ({draft.overrides.length})
                     </div>
                     <div className="flex flex-col items-start gap-4 px-5 py-5">
                       <p className="text-[15px] leading-7 text-black/65">
                         Add specific dates when your schedule changes from your regular hours.
                       </p>
+                      <div className="flex flex-wrap gap-3">
+                        <button
+                          type="button"
+                          onClick={addClosedOverride}
+                          className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-black/10 bg-white px-5 py-2.5 text-[15px] font-medium text-black"
+                        >
+                          <Icon name="plus" className="h-4 w-4" />
+                          Add closed date
+                        </button>
+                        <button
+                          type="button"
+                          onClick={addCustomHoursOverride}
+                          className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-black/10 bg-white px-5 py-2.5 text-[15px] font-medium text-black"
+                        >
+                          <Icon name="plus" className="h-4 w-4" />
+                          Add custom hours date
+                        </button>
+                      </div>
                       {draft.overrides.length ? (
                         <div className="grid w-full gap-4">
                           {draft.overrides.map((override) => (
@@ -9136,14 +9176,6 @@ function ScheduleEditorView({
                           ))}
                         </div>
                       ) : null}
-                      <button
-                        type="button"
-                        onClick={addOverride}
-                        className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-black/10 bg-white px-5 py-2.5 text-[15px] font-medium text-black"
-                      >
-                        <Icon name="plus" className="h-4 w-4" />
-                        Add an override
-                      </button>
                     </div>
                   </div>
                 </div>
@@ -9381,11 +9413,31 @@ function ScheduleEditorView({
 
             <div className="px-6 py-6">
               <div className="overflow-hidden rounded-[10px] border border-black/12 bg-white">
-                <div className="border-b border-black/10 px-5 py-4 text-[16px] font-medium">Date Overrides</div>
+                <div className="border-b border-black/10 px-5 py-4 text-[16px] font-medium">
+                  Date Overrides ({draft.overrides.length})
+                </div>
                 <div className="px-5 py-5">
                   <p className="text-[14px] leading-6 text-black/70">
                     Add specific dates when your schedule changes from your regular hours.
                   </p>
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={addClosedOverride}
+                      className="inline-flex min-h-11 items-center gap-2 rounded-[10px] border border-black/12 bg-white px-5 py-2.5 text-[15px] font-medium text-black"
+                    >
+                      <Icon name="plus" className="h-4 w-4" />
+                      Add closed date
+                    </button>
+                    <button
+                      type="button"
+                      onClick={addCustomHoursOverride}
+                      className="inline-flex min-h-11 items-center gap-2 rounded-[10px] border border-black/12 bg-white px-5 py-2.5 text-[15px] font-medium text-black"
+                    >
+                      <Icon name="plus" className="h-4 w-4" />
+                      Add custom hours date
+                    </button>
+                  </div>
                   {draft.overrides.length ? (
                     <div className="mt-4 grid gap-4">
                       {draft.overrides.map((override) => (
@@ -9510,14 +9562,6 @@ function ScheduleEditorView({
                       ))}
                     </div>
                   ) : null}
-                  <button
-                    type="button"
-                    onClick={addOverride}
-                    className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-[10px] border border-black/12 bg-white px-5 py-2.5 text-[15px] font-medium text-black"
-                  >
-                    <Icon name="plus" className="h-4 w-4" />
-                    Add an override
-                  </button>
                 </div>
               </div>
             </div>
