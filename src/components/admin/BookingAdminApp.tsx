@@ -9069,7 +9069,7 @@ function StaffRoleEditorView({
 
   const renderPermissionGroup = (group: RolePermissionGroup) => (
     <div key={group.title} className="border-b border-black/10 pb-5 last:border-b-0 last:pb-0">
-      <div className="mb-4 text-[24px] font-semibold text-black">{group.title}</div>
+      <div className="mb-4 text-[20px] font-semibold text-black">{group.title}</div>
       <div className="grid gap-3">
         {group.permissions.map((permission) => {
           const checked = enabledKeys.includes(permission.key);
@@ -9077,7 +9077,7 @@ function StaffRoleEditorView({
             <label
               key={permission.key}
               className={[
-                "flex items-center gap-3 text-[16px] leading-snug text-black",
+                "flex items-center gap-3 text-[15px] leading-snug text-black",
                 permission.disabled ? "cursor-not-allowed opacity-45" : "cursor-pointer",
               ].join(" ")}
             >
@@ -9204,29 +9204,39 @@ function StaffRoleEditorCard({
 }) {
   return (
     <div className={mobile ? "space-y-4" : "max-w-[1240px]"}>
-      <div className={mobile ? "mb-5" : "mb-8"}>
+      <div className={mobile ? "mb-5" : "mb-7"}>
         <div className="text-[14px] font-medium text-black/55">
           <Link href={backHref} className="transition hover:text-black">
             Roles
           </Link>{" "}
           / <span className="text-black">{role}</span>
         </div>
-        <h1 className="mt-2 text-[42px] font-medium leading-none text-black">{role}</h1>
+        <h1
+          className={[
+            "mt-2 font-medium leading-tight text-black",
+            mobile ? "text-[28px]" : "text-[24px]",
+          ].join(" ")}
+        >
+          {role}
+        </h1>
       </div>
 
       <div className="overflow-hidden rounded-[10px] border border-black/10 bg-white shadow-sm">
-        <div className="border-t-[4px] border-[#4f76b8] px-5 py-5 text-[24px] font-medium text-black">
+        <div className="border-t-[4px] border-[#4f76b8] px-5 py-5 text-[20px] font-medium text-black">
           Role Details
         </div>
 
         <div className={mobile ? "px-5 py-5" : "px-6 py-6"}>
-          <div className={mobile ? "grid gap-6" : "grid gap-6 xl:grid-cols-[220px_minmax(0,1fr)]"}>
-            <div className="text-[18px] font-semibold text-black">
-              Name
-            </div>
-            <div className="grid gap-4">
+          <div className={mobile ? "grid gap-6" : "grid gap-0"}>
+            <div
+              className={[
+                "border-b border-black/10 pb-6",
+                mobile ? "grid gap-4" : "grid grid-cols-[220px_minmax(0,1fr)] gap-8",
+              ].join(" ")}
+            >
+              <div className="text-[16px] font-semibold text-black">Name</div>
               <label className="grid gap-2">
-                <span className="text-[15px] font-semibold text-black/75">Name</span>
+                <span className="sr-only">Name</span>
                 <input
                   value={role}
                   disabled
@@ -9234,7 +9244,15 @@ function StaffRoleEditorCard({
                   readOnly
                 />
               </label>
+            </div>
 
+            <div
+              className={[
+                "py-6",
+                mobile ? "grid gap-4" : "grid grid-cols-[220px_minmax(0,1fr)] gap-8",
+              ].join(" ")}
+            >
+              <div className="text-[16px] font-semibold text-black">Permissions</div>
               <div className="flex justify-start">
                 <button
                   type="button"
@@ -9245,12 +9263,12 @@ function StaffRoleEditorCard({
                 </button>
               </div>
             </div>
-          </div>
 
-          <div className="mt-8 border-t border-black/10 pt-8">
-            <div className={mobile ? "grid gap-8" : "grid gap-10 xl:grid-cols-2"}>
-              <div className="space-y-8">{leftGroups.map(renderPermissionGroup)}</div>
-              <div className="space-y-8">{rightGroups.map(renderPermissionGroup)}</div>
+            <div className="border-t border-black/10 pt-8">
+              <div className={mobile ? "grid gap-8" : "grid gap-10 xl:grid-cols-2"}>
+                <div className="space-y-8">{leftGroups.map(renderPermissionGroup)}</div>
+                <div className="space-y-8">{rightGroups.map(renderPermissionGroup)}</div>
+              </div>
             </div>
           </div>
         </div>
