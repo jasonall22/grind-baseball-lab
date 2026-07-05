@@ -24,6 +24,7 @@ type Service = {
   description?: string;
   mediaUrl?: string;
   calendarColor: string;
+  scheduleId?: string | null;
 };
 
 type ScheduleSlot = {
@@ -148,6 +149,7 @@ type RentalDraft = {
   collectFee: boolean;
   slotRestrictionSummary: string;
   serviceScheduleEnabled: boolean;
+  scheduleId: string;
   emergencyContactInfo: boolean;
   customFieldsSummary: string;
   private: boolean;
@@ -902,6 +904,7 @@ function normalizeService(service: Service): Service {
   return {
     ...service,
     calendarColor: normalizeCalendarColor(service.calendarColor),
+    scheduleId: service.scheduleId ?? null,
   };
 }
 
@@ -1199,6 +1202,7 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
       service_type: item.category,
       status: item.status,
       calendar_color: normalizeCalendarColor(item.calendarColor),
+      schedule_id: item.scheduleId ?? null,
     });
     if (error) throw error;
   }
@@ -2069,7 +2073,7 @@ function loadInitialState() {
   }
 }
 
-function createRentalDraft(resources: string[]): RentalDraft {
+function createRentalDraft(resources: string[], defaultScheduleId: string): RentalDraft {
   return {
     name: "",
     previewText: "",
@@ -2084,6 +2088,7 @@ function createRentalDraft(resources: string[]): RentalDraft {
     collectFee: false,
     slotRestrictionSummary: "No slot restrictions",
     serviceScheduleEnabled: false,
+    scheduleId: defaultScheduleId,
     emergencyContactInfo: false,
     customFieldsSummary: "No custom fields",
     private: false,
@@ -2091,7 +2096,7 @@ function createRentalDraft(resources: string[]): RentalDraft {
   };
 }
 
-function createRentalDraftFromService(service: Service): RentalDraft {
+function createRentalDraftFromService(service: Service, defaultScheduleId: string): RentalDraft {
   return {
     name: service.name,
     previewText: service.previewText ?? "",
@@ -2105,7 +2110,8 @@ function createRentalDraftFromService(service: Service): RentalDraft {
     collectTax: false,
     collectFee: false,
     slotRestrictionSummary: "No slot restrictions",
-    serviceScheduleEnabled: false,
+    serviceScheduleEnabled: Boolean(service.scheduleId),
+    scheduleId: service.scheduleId ?? defaultScheduleId,
     emergencyContactInfo: false,
     customFieldsSummary: "No custom fields",
     private: service.status !== "Active",
@@ -2484,6 +2490,7 @@ export default function BookingAdminApp({
           category: service.service_type ?? inferServiceCategory(service.name),
           status: service.status,
           calendarColor: normalizeCalendarColor(service.calendar_color),
+          scheduleId: service.schedule_id,
         })),
         customers: customerRows.map((customer) => ({
           id: customer.id,
@@ -2910,6 +2917,7 @@ export default function BookingAdminApp({
 
   async function saveRentalDraft(rentalDraft: RentalDraft, existingService?: Service | null) {
     const firstDefaultPrice = rentalDraft.defaultPricing[0];
+    const scheduleId = rentalDraft.serviceScheduleEnabled ? rentalDraft.scheduleId || null : null;
     const item: Service = {
       id: existingService?.id ?? makeId("svc"),
       name: rentalDraft.name.trim(),
@@ -2923,6 +2931,7 @@ export default function BookingAdminApp({
       description: rentalDraft.description,
       mediaUrl: rentalDraft.mediaUrl,
       calendarColor: normalizeCalendarColor(rentalDraft.calendarColor),
+      scheduleId,
     };
     const next = { ...state, services: upsert(state.services, item) };
     const successMessage = existingService ? "Rental updated." : "Rental saved.";
@@ -3287,6 +3296,7 @@ export default function BookingAdminApp({
                 mode={isRentalEditPage ? "edit" : "add"}
                 facilityName={state.facility.name}
                 resources={state.resources}
+                schedules={state.schedules.length ? state.schedules : defaultState.schedules}
                 onCancel={() => router.push("/admin/services/rentals")}
                 activeSection={serviceSection}
                 onSectionChange={(section) => {
@@ -4179,6 +4189,7 @@ function RentalEditorView({
   mode,
   facilityName,
   resources,
+  schedules,
   activeSection,
   onSectionChange,
   service,
@@ -4192,6 +4203,7 @@ function RentalEditorView({
   mode: "add" | "edit";
   facilityName: string;
   resources: string[];
+  schedules: ScheduleRecord[];
   activeSection: ServiceSection;
   onSectionChange: (section: ServiceSection) => void;
   service?: Service | null;
@@ -4202,8 +4214,17 @@ function RentalEditorView({
   onCancel: () => void;
   onSave: (draft: RentalDraft) => void;
 }) {
+  const scheduleOptions = useMemo(
+    () =>
+      schedules.map((schedule) => ({
+        label: schedule.name,
+        value: schedule.id,
+      })),
+    [schedules]
+  );
+  const fallbackScheduleId = scheduleOptions[0]?.value ?? "schedule-working-hours";
   const [draft, setDraft] = useState<RentalDraft>(() =>
-    service ? createRentalDraftFromService(service) : createRentalDraft(resources)
+    service ? createRentalDraftFromService(service, fallbackScheduleId) : createRentalDraft(resources, fallbackScheduleId)
   );
   const [activePriceTab, setActivePriceTab] = useState<"default" | "membership">("default");
   const [advancedOpen, setAdvancedOpen] = useState(true);
@@ -4215,6 +4236,10 @@ function RentalEditorView({
 
   const priceRows = activePriceTab === "default" ? draft.defaultPricing : draft.membershipPricing;
   const canSave = Boolean(draft.name.trim());
+
+  useEffect(() => {
+    setDraft(service ? createRentalDraftFromService(service, fallbackScheduleId) : createRentalDraft(resources, fallbackScheduleId));
+  }, [fallbackScheduleId, resources, service]);
 
   function patch(next: Partial<RentalDraft>) {
     setDraft((current) => ({ ...current, ...next }));
@@ -4611,12 +4636,43 @@ function RentalEditorView({
                   title="Schedule"
                   description="Choose to offer this service only on certain days or times."
                 >
-                  <div>
+                  <div className="grid gap-4">
                     <div className="flex items-center gap-4">
-                      <ToggleSwitch checked={draft.serviceScheduleEnabled} onChange={(checked) => patch({ serviceScheduleEnabled: checked })} label="Set service schedule" />
+                      <ToggleSwitch
+                        checked={draft.serviceScheduleEnabled}
+                        onChange={(checked) =>
+                          patch({
+                            serviceScheduleEnabled: checked,
+                            scheduleId: checked ? draft.scheduleId || fallbackScheduleId : draft.scheduleId,
+                          })
+                        }
+                        label="Set service schedule"
+                      />
                       <span className="text-[15px] text-black/85">Set service schedule</span>
                     </div>
                     <div className="mt-2 text-[14px] text-black/65">Enable this to only allow this service to be booked on certain days or times.</div>
+                    {draft.serviceScheduleEnabled ? (
+                      scheduleOptions.length ? (
+                        <div className="max-w-[360px]">
+                          <label className="grid gap-2">
+                            <span className="text-[14px] font-medium text-black/85">Schedule</span>
+                            <select
+                              value={draft.scheduleId}
+                              onChange={(event) => patch({ scheduleId: event.target.value })}
+                              className="min-h-[42px] rounded-[6px] border border-black/12 bg-white px-3 text-[14px] outline-none"
+                            >
+                              {scheduleOptions.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                      ) : (
+                        <div className="text-[14px] text-black/55">Add a schedule under Settings &gt; Schedules first.</div>
+                      )
+                    ) : null}
                   </div>
                 </AdvancedSettingsRow>
 
