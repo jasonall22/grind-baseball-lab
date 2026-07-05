@@ -4581,7 +4581,7 @@ export default function BookingAdminApp({
                 bookings={state.bookings}
                 servicesById={servicesById}
                 onSaveCustomer={(item, options) =>
-                  void saveCustomerDetail(item, options?.message ?? "Customer updated.", {
+                  saveCustomerDetail(item, options?.message ?? "Customer updated.", {
                     silent: options?.silent,
                   })
                 }
@@ -6095,7 +6095,7 @@ function ServiceDescriptionEditor({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const toolbar = ["↺", "↻", "Normal", "B", "I", "U", "S", "<>", "↗", "≡", "☰", "☷"];
+  const toolbar = ["â†º", "â†»", "Normal", "B", "I", "U", "S", "<>", "â†—", "â‰¡", "â˜°", "â˜·"];
 
   return (
     <div className="overflow-hidden rounded-[4px] border border-black/15">
@@ -7138,7 +7138,7 @@ function CustomersView({
                   />
                 </th>
                 <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Name</th>
-                <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Created At ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬Å“</th>
+                <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Created At ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ</th>
                 <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Email</th>
                 <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Phone Number</th>
                 <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Age</th>
@@ -7380,7 +7380,7 @@ function FamilyMemberModal({
 }: {
   initialMember?: FamilyMember | null;
   onClose: () => void;
-  onSave: (member: FamilyMember) => void;
+  onSave: (member: FamilyMember) => void | Promise<void>;
 }) {
   const [firstName, setFirstName] = useState(initialMember?.firstName ?? "");
   const [lastName, setLastName] = useState(initialMember?.lastName ?? "");
@@ -7391,6 +7391,7 @@ function FamilyMemberModal({
   const [showBirthMonthYearPicker, setShowBirthMonthYearPicker] = useState(false);
   const [visibleBirthMonth, setVisibleBirthMonth] = useState(() => startOfMonth(new Date()));
   const [photoPreview, setPhotoPreview] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const birthCalendarRef = useRef<HTMLDivElement | null>(null);
 
@@ -7438,6 +7439,23 @@ function FamilyMemberModal({
     setVisibleBirthMonth(startOfMonth(date));
     setShowBirthMonthYearPicker(false);
     setShowBirthCalendar(false);
+  }
+
+  async function handleSave() {
+    if (!canSave || isSaving) return;
+    setIsSaving(true);
+    try {
+      await onSave({
+        id: initialMember?.id ?? makeId("family"),
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        relationship,
+        gender,
+        birthDate,
+      });
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   return (
@@ -7671,20 +7689,11 @@ function FamilyMemberModal({
           </button>
           <button
             type="button"
-            disabled={!canSave}
-            onClick={() =>
-              onSave({
-                id: initialMember?.id ?? makeId("family"),
-                firstName: firstName.trim(),
-                lastName: lastName.trim(),
-                relationship,
-                gender,
-                birthDate,
-              })
-            }
+            disabled={!canSave || isSaving}
+            onClick={() => void handleSave()}
             className="rounded-md bg-black px-5 py-2.5 text-[15px] font-medium text-white disabled:bg-black/10 disabled:text-black/30"
           >
-            Done
+            {isSaving ? "Saving..." : "Done"}
           </button>
         </div>
       </div>
@@ -7703,13 +7712,28 @@ function EmergencyContactModal({
   initialName: string;
   initialPhone: string;
   onClose: () => void;
-  onSave: (contact: { name: string; email: string; phone: string }) => void;
+  onSave: (contact: { name: string; email: string; phone: string }) => void | Promise<void>;
 }) {
   const [name, setName] = useState(initialName);
   const [email, setEmail] = useState(initialEmail);
   const [phone, setPhone] = useState(formatUsPhoneInput(initialPhone));
+  const [isSaving, setIsSaving] = useState(false);
 
   const canSave = Boolean(name.trim() || email.trim() || phone.trim());
+
+  async function handleSave() {
+    if (!canSave || isSaving) return;
+    setIsSaving(true);
+    try {
+      await onSave({
+        name: name.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/45 p-4">
@@ -7766,17 +7790,11 @@ function EmergencyContactModal({
           </button>
           <button
             type="button"
-            disabled={!canSave}
-            onClick={() =>
-              onSave({
-                name: name.trim(),
-                email: email.trim(),
-                phone: phone.trim(),
-              })
-            }
+            disabled={!canSave || isSaving}
+            onClick={() => void handleSave()}
             className="rounded-md bg-black px-6 py-3 text-[15px] font-medium text-white disabled:bg-black/10 disabled:text-black/30"
           >
-            Done
+            {isSaving ? "Saving..." : "Done"}
           </button>
         </div>
       </div>
@@ -7786,16 +7804,44 @@ function EmergencyContactModal({
 
 function CustomerDetailView({
   customer,
+  bookings,
+  servicesById,
   onSaveCustomer,
 }: {
   customer: Customer | null;
-  onSaveCustomer: (item: Customer) => void;
+  bookings: Booking[];
+  servicesById: Map<string, Service>;
+  onSaveCustomer: (item: Customer, options?: { message?: string; silent?: boolean }) => Promise<boolean>;
 }) {
+  const tabLabels = ["Profile", "Billing", "Memberships", "Packages", "Activity", "Invoices", "Credits"] as const;
+  type CustomerDetailTab = (typeof tabLabels)[number];
+
+  const [activeTab, setActiveTab] = useState<CustomerDetailTab>("Profile");
+  const [contactOpen, setContactOpen] = useState(true);
   const [showFamilyModal, setShowFamilyModal] = useState(false);
   const [showEmergencyContactModal, setShowEmergencyContactModal] = useState(false);
   const [editingFamilyMember, setEditingFamilyMember] = useState<FamilyMember | null>(null);
+  const [firstNameDraft, setFirstNameDraft] = useState(splitName(customer?.name ?? "").first);
+  const [lastNameDraft, setLastNameDraft] = useState(splitName(customer?.name ?? "").last);
+  const [emailDraft, setEmailDraft] = useState(customer?.email ?? "");
   const [profilePhone, setProfilePhone] = useState(formatUsPhoneInput(customer?.phone ?? ""));
+  const [addressDraft, setAddressDraft] = useState(customer?.address ?? "");
+  const [birthDateDraft, setBirthDateDraft] = useState(customer ? customerBirthDate(customer) : "");
+  const [genderDraft, setGenderDraft] = useState(customer?.gender ?? "");
+  const [noteDraft, setNoteDraft] = useState(customer?.notes ?? "");
+  const [isEditingNote, setIsEditingNote] = useState(false);
+  const [marketingEnabled, setMarketingEnabled] = useState(true);
   const [emergencyDeleted, setEmergencyDeleted] = useState(false);
+
+  const customerBookings = useMemo(
+    () =>
+      customer
+        ? bookings
+            .filter((item) => item.customerId === customer.id)
+            .sort((left, right) => `${right.date} ${right.start}`.localeCompare(`${left.date} ${left.start}`))
+        : [],
+    [bookings, customer]
+  );
 
   if (!customer) {
     return (
@@ -7807,49 +7853,100 @@ function CustomerDetailView({
     );
   }
 
-  const currentCustomer: Customer = customer;
-  const { first, last } = splitName(customer.name);
   const joinedLabel = customerJoinedLabel(customer.createdAt);
   const initials = customerInitials(customer);
   const birthDate = customerBirthDate(customer);
   const age = calculateAge(customer.birthYear, customer.birthMonth, customer.birthDay);
   const familyMembers = customer.familyMembers;
-  const hasEmergencyContact = !emergencyDeleted && Boolean(
-    customer.emergencyContactName.trim() ||
-    customer.emergencyContactEmail.trim() ||
-    customer.emergencyContactPhone.trim()
-  );
+  const memberships = customer.memberships.filter(Boolean);
+  const hasEmergencyContact =
+    !emergencyDeleted &&
+    Boolean(
+      customer.emergencyContactName.trim() ||
+        customer.emergencyContactEmail.trim() ||
+        customer.emergencyContactPhone.trim()
+    );
+  const billedTotal = customerBookings.reduce((total, booking) => {
+    const servicePrice = servicesById.get(booking.serviceId)?.price ?? 0;
+    return total + servicePrice;
+  }, 0);
+  const paidTotal = customerBookings.reduce((total, booking) => {
+    const servicePrice = servicesById.get(booking.serviceId)?.price ?? 0;
+    return total + (booking.paid ? servicePrice : 0);
+  }, 0);
+  const pendingCount = customerBookings.filter((item) => !item.paid && item.status !== "Cancelled").length;
+  const topPackages = Array.from(
+    customerBookings.reduce((map, booking) => {
+      const serviceName = booking.serviceName || servicesById.get(booking.serviceId)?.name || "Service";
+      map.set(serviceName, (map.get(serviceName) ?? 0) + 1);
+      return map;
+    }, new Map<string, number>())
+  )
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 5);
+
+  async function saveCustomerPatch(
+    patch: Partial<Customer>,
+    message: string,
+    options?: { silent?: boolean }
+  ) {
+    return onSaveCustomer(
+      {
+        ...customer,
+        ...patch,
+      },
+      {
+        message,
+        silent: options?.silent,
+      }
+    );
+  }
+
+  function openAddNote() {
+    setActiveTab("Profile");
+    setIsEditingNote(true);
+  }
 
   function clearEmergencyContact() {
     setEmergencyDeleted(true);
   }
 
-  function saveEmergencyContact() {
-    onSaveCustomer({
-      ...currentCustomer,
-      emergencyContactName: "",
-      emergencyContactEmail: "",
-      emergencyContactPhone: "",
-    });
-    setEmergencyDeleted(false);
+  async function saveEmergencyContact() {
+    const saved = await saveCustomerPatch(
+      {
+        emergencyContactName: "",
+        emergencyContactEmail: "",
+        emergencyContactPhone: "",
+      },
+      "Emergency contact removed."
+    );
+    if (saved) {
+      setEmergencyDeleted(false);
+    }
   }
 
-  function saveEmergencyContactValues(contact: { name: string; email: string; phone: string }) {
-    onSaveCustomer({
-      ...currentCustomer,
-      emergencyContactName: contact.name,
-      emergencyContactEmail: contact.email,
-      emergencyContactPhone: contact.phone,
-    });
-    setEmergencyDeleted(false);
-    setShowEmergencyContactModal(false);
+  async function saveEmergencyContactValues(contact: { name: string; email: string; phone: string }) {
+    const saved = await saveCustomerPatch(
+      {
+        emergencyContactName: contact.name,
+        emergencyContactEmail: contact.email,
+        emergencyContactPhone: contact.phone.replace(/\D/g, "").slice(0, 10),
+      },
+      "Emergency contact updated."
+    );
+    if (saved) {
+      setEmergencyDeleted(false);
+      setShowEmergencyContactModal(false);
+    }
   }
 
-  function saveFamilyMembers(nextFamilyMembers: FamilyMember[]) {
-    onSaveCustomer({
-      ...currentCustomer,
-      familyMembers: nextFamilyMembers,
-    });
+  async function saveFamilyMembers(nextFamilyMembers: FamilyMember[], message: string) {
+    return saveCustomerPatch(
+      {
+        familyMembers: nextFamilyMembers,
+      },
+      message
+    );
   }
 
   function openNewFamilyMemberModal() {
@@ -7861,6 +7958,630 @@ function CustomerDetailView({
     setEditingFamilyMember(member);
     setShowFamilyModal(true);
   }
+
+  async function saveName() {
+    const nextName = joinName(firstNameDraft, lastNameDraft);
+    if (nextName === customer.name) return;
+    await saveCustomerPatch({ name: nextName }, "Customer updated.", { silent: true });
+  }
+
+  async function saveEmail() {
+    const nextEmail = emailDraft.trim();
+    if (nextEmail === customer.email) return;
+    await saveCustomerPatch({ email: nextEmail }, "Customer updated.", { silent: true });
+  }
+
+  async function savePhone() {
+    const digits = profilePhone.replace(/\D/g, "").slice(0, 10);
+    const nextDisplay = formatUsPhoneInput(digits);
+    setProfilePhone(nextDisplay);
+    if (digits === customer.phone) return;
+    await saveCustomerPatch({ phone: digits }, "Customer updated.", { silent: true });
+  }
+
+  async function saveAddress() {
+    const nextAddress = addressDraft.trim();
+    if (nextAddress === customer.address) return;
+    await saveCustomerPatch({ address: nextAddress }, "Customer updated.", { silent: true });
+  }
+
+  async function saveBirthDate() {
+    const nextValue = birthDateDraft.trim();
+    if (!nextValue) {
+      if (!customer.birthYear && !customer.birthMonth && !customer.birthDay) return;
+      const saved = await saveCustomerPatch(
+        {
+          birthYear: "",
+          birthMonth: "",
+          birthDay: "",
+          age: "",
+        },
+        "Customer updated.",
+        { silent: true }
+      );
+      if (saved) {
+        setBirthDateDraft("");
+      }
+      return;
+    }
+
+    const parsed = parseUsDateInput(nextValue);
+    if (!parsed) {
+      setBirthDateDraft(birthDate);
+      return;
+    }
+
+    const birthYear = String(parsed.getFullYear());
+    const birthMonth = String(parsed.getMonth() + 1).padStart(2, "0");
+    const birthDay = String(parsed.getDate()).padStart(2, "0");
+    const nextAge = calculateAge(birthYear, birthMonth, birthDay);
+
+    if (
+      birthYear === customer.birthYear &&
+      birthMonth === customer.birthMonth &&
+      birthDay === customer.birthDay
+    ) {
+      setBirthDateDraft(formatDateToUs(parsed));
+      return;
+    }
+
+    const saved = await saveCustomerPatch(
+      {
+        birthYear,
+        birthMonth,
+        birthDay,
+        age: nextAge,
+      },
+      "Customer updated.",
+      { silent: true }
+    );
+    if (saved) {
+      setBirthDateDraft(formatDateToUs(parsed));
+    }
+  }
+
+  async function saveGender(nextGender: string) {
+    setGenderDraft(nextGender);
+    if (nextGender === customer.gender) return;
+    await saveCustomerPatch({ gender: nextGender }, "Customer updated.", { silent: true });
+  }
+
+  async function saveNotes() {
+    const nextNotes = noteDraft.trim();
+    if (nextNotes === customer.notes.trim()) {
+      setIsEditingNote(false);
+      return;
+    }
+
+    const saved = await saveCustomerPatch({ notes: nextNotes }, "Customer updated.");
+    if (saved) {
+      setIsEditingNote(false);
+    }
+  }
+
+  function bookingDateLabel(value: string) {
+    return new Date(`${value}T12:00:00`).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  }
+
+  function BookingRows() {
+    if (!customerBookings.length) {
+      return <div className="p-6 text-sm text-black/45">No bookings yet.</div>;
+    }
+
+    return (
+      <div className="divide-y divide-black/10">
+        {customerBookings.map((booking) => {
+          const service = servicesById.get(booking.serviceId);
+          return (
+            <div key={booking.id} className="grid gap-2 px-4 py-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+              <div>
+                <div className="text-[14px] font-medium text-black">
+                  {booking.serviceName || service?.name || "Service"}
+                </div>
+                <div className="mt-1 text-[13px] text-black/55">
+                  {bookingDateLabel(booking.date)} · {booking.start} - {booking.end} · {booking.resource}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span
+                  className={[
+                    "rounded-full px-3 py-1 text-[12px] font-semibold",
+                    booking.status === "Cancelled"
+                      ? "bg-red-50 text-red-700"
+                      : booking.paid
+                        ? "bg-emerald-50 text-emerald-700"
+                        : "bg-amber-50 text-amber-700",
+                  ].join(" ")}
+                >
+                  {booking.status === "Cancelled" ? "Cancelled" : booking.paid ? "Paid" : "Pending"}
+                </span>
+                <span className="text-[13px] font-medium text-black/65">{money(service?.price ?? 0)}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  function renderProfileTab() {
+    return (
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
+        <DetailPanel title="About">
+          <div className="grid gap-5 p-5">
+            <div className="grid gap-4 md:grid-cols-[104px_minmax(0,1fr)]">
+              <div className="grid place-items-start pt-1">
+                <div className="grid h-[82px] w-[82px] place-items-center rounded-full border border-black/12 bg-black/[0.05] text-black/35">
+                  <Icon name="user" className="h-11 w-11" />
+                </div>
+              </div>
+
+              <div className="grid gap-1.5">
+                <span className="text-[13px] font-medium text-black/85">Name</span>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input
+                    value={firstNameDraft}
+                    onChange={(event) => setFirstNameDraft(event.target.value)}
+                    onBlur={() => void saveName()}
+                    className="min-h-10 w-full rounded-md border border-black/15 px-4 text-[14px] outline-none"
+                  />
+                  <input
+                    value={lastNameDraft}
+                    onChange={(event) => setLastNameDraft(event.target.value)}
+                    onBlur={() => void saveName()}
+                    className="min-h-10 w-full rounded-md border border-black/15 px-4 text-[14px] outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <label className="grid gap-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[13px] font-medium text-black/85">Date of Birth</span>
+                {age === "" ? null : <span className="text-[13px] text-black/45">Age: {age}</span>}
+              </div>
+              <div className="relative">
+                <input
+                  value={birthDateDraft}
+                  onChange={(event) => setBirthDateDraft(formatUsDateInput(event.target.value))}
+                  onBlur={() => void saveBirthDate()}
+                  placeholder="MM/DD/YYYY"
+                  inputMode="numeric"
+                  maxLength={10}
+                  className="min-h-10 w-full rounded-md border border-black/15 px-4 pr-10 text-[14px] outline-none"
+                />
+                <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-black/45">
+                  <Icon name="calendar" className="h-4 w-4" />
+                </div>
+              </div>
+            </label>
+
+            <label className="grid gap-1.5">
+              <span className="text-[13px] font-medium text-black/85">Gender</span>
+              <select
+                value={genderDraft || ""}
+                onChange={(event) => void saveGender(event.target.value)}
+                className="min-h-10 rounded-md border border-black/15 px-4 text-[14px] outline-none"
+              >
+                <option value="">Select gender</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Non-binary">Non-binary</option>
+              </select>
+            </label>
+
+            <div className="overflow-hidden rounded-md border border-black/10">
+              <button
+                type="button"
+                onClick={() => setContactOpen((current) => !current)}
+                className="flex min-h-10 w-full items-center justify-between bg-black/[0.02] px-4 text-left text-[14px] text-black/55"
+              >
+                <span>Contact Information</span>
+                <Icon
+                  name="chevron"
+                  className={["h-4 w-4 transition-transform", contactOpen ? "-rotate-90" : "rotate-90"].join(" ")}
+                />
+              </button>
+              {contactOpen ? (
+                <div className="grid gap-4 p-4">
+                  <label className="grid gap-1.5">
+                    <span className="text-[13px] font-medium text-black/85">Email</span>
+                    <div className="relative">
+                      <input
+                        value={emailDraft}
+                        onChange={(event) => setEmailDraft(event.target.value)}
+                        onBlur={() => void saveEmail()}
+                        className="min-h-10 w-full rounded-md border border-black/15 px-4 pr-16 text-[14px] outline-none"
+                      />
+                      <div className="absolute inset-y-0 right-3 flex items-center gap-2 text-black/45">
+                        <Icon name="edit" className="h-4 w-4" />
+                        <Icon name="copy" className="h-4 w-4" />
+                      </div>
+                    </div>
+                  </label>
+
+                  <label className="grid gap-1.5">
+                    <span className="text-[13px] font-medium text-black/85">Phone</span>
+                    <input
+                      value={profilePhone}
+                      onChange={(event) => setProfilePhone(formatUsPhoneInput(event.target.value))}
+                      onBlur={() => void savePhone()}
+                      inputMode="numeric"
+                      maxLength={14}
+                      className="min-h-10 rounded-md border border-black/15 px-4 text-[14px] outline-none"
+                    />
+                  </label>
+
+                  <label className="grid gap-1.5">
+                    <span className="text-[13px] font-medium text-black/85">Address</span>
+                    <input
+                      value={addressDraft}
+                      onChange={(event) => setAddressDraft(event.target.value)}
+                      onBlur={() => void saveAddress()}
+                      className="min-h-10 rounded-md border border-black/15 px-4 text-[14px] outline-none"
+                    />
+                  </label>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </DetailPanel>
+
+        <div className="grid gap-4">
+          <DetailPanel
+            title="Emergency Contact"
+            action={
+              !hasEmergencyContact ? (
+                <button
+                  type="button"
+                  onClick={() => setShowEmergencyContactModal(true)}
+                  className="text-2xl leading-none text-black/45"
+                >
+                  +
+                </button>
+              ) : undefined
+            }
+          >
+            {hasEmergencyContact ? (
+              <div className="flex items-center justify-between gap-4 p-4">
+                <div>
+                  <div className="text-[14px] font-medium text-black">
+                    {customer.emergencyContactName || "Emergency Contact"}
+                  </div>
+                  <div className="mt-1 text-[13px] text-black/55">
+                    {[
+                      customer.emergencyContactEmail,
+                      customer.emergencyContactPhone ? formatUsPhoneInput(customer.emergencyContactPhone) : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </div>
+                </div>
+                <div className="flex gap-3 text-black/45">
+                  <HoverIconButton
+                    icon="edit"
+                    label="Edit Contact"
+                    onClick={() => setShowEmergencyContactModal(true)}
+                  />
+                  <HoverIconButton icon="trash" label="Delete" onClick={clearEmergencyContact} tone="danger" />
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="px-4 py-10 text-center text-[14px] text-black/45">No emergency contact added.</div>
+                {emergencyDeleted ? (
+                  <div className="flex items-center justify-end gap-6 border-t border-black/10 bg-black/[0.02] px-4 py-3">
+                    <span className="text-[14px] font-medium text-[#d4571d]">Changes made</span>
+                    <button
+                      type="button"
+                      onClick={() => void saveEmergencyContact()}
+                      className="inline-flex min-h-10 items-center rounded-lg bg-black px-6 text-[14px] font-semibold text-white"
+                    >
+                      Save
+                    </button>
+                  </div>
+                ) : null}
+              </>
+            )}
+          </DetailPanel>
+
+          <DetailPanel
+            title="Custom Fields"
+            action={<button type="button" className="text-2xl leading-none text-black/45">+</button>}
+          >
+            <div className="flex items-center justify-between gap-4 p-4 text-[14px]">
+              <div className="flex items-center gap-3 text-black/65">
+                <Icon name="send" className="h-4 w-4" />
+                <span>Referral</span>
+              </div>
+              <div className="ml-auto text-black/85">{customer.notes ? "From notes" : "-"}</div>
+              <div className="flex gap-3 text-black/45">
+                <button type="button">
+                  <Icon name="edit" className="h-4 w-4" />
+                </button>
+                <button type="button" className="text-xl leading-none">
+                  ...
+                </button>
+              </div>
+            </div>
+          </DetailPanel>
+
+          <DetailPanel
+            title="Family Members"
+            action={
+              <button
+                type="button"
+                onClick={openNewFamilyMemberModal}
+                className="text-2xl leading-none text-black/45"
+              >
+                +
+              </button>
+            }
+          >
+            {familyMembers.length ? (
+              <div className="divide-y divide-black/10">
+                {familyMembers.map((member) => {
+                  const memberName = [member.firstName, member.lastName].filter(Boolean).join(" ");
+                  const memberMeta = [
+                    member.gender !== "Unspecified" ? member.gender : "",
+                    familyMemberAgeLabel(member),
+                  ]
+                    .filter(Boolean)
+                    .join(" · ");
+
+                  return (
+                    <div key={member.id} className="flex items-center justify-between gap-4 p-4">
+                      <div className="flex items-center gap-4">
+                        <div className="grid h-10 w-10 place-items-center rounded-full border border-black/10 bg-black/[0.04] text-[13px] font-medium text-black/60">
+                          {`${member.firstName[0] ?? ""}${member.lastName[0] ?? ""}`.toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="text-[14px] font-medium text-black">{memberName || "Family Member"}</div>
+                          <div className="mt-0.5 text-[13px] text-black/55">{memberMeta || "Member"}</div>
+                        </div>
+                      </div>
+                      <div className="flex gap-3 text-black/45">
+                        <HoverIconButton
+                          icon="edit"
+                          label="Edit Member"
+                          onClick={() => openEditFamilyMemberModal(member)}
+                        />
+                        <HoverIconButton
+                          icon="trash"
+                          label="Delete"
+                          onClick={() => {
+                            void saveFamilyMembers(
+                              familyMembers.filter((item) => item.id !== member.id),
+                              "Family member removed."
+                            );
+                          }}
+                          tone="danger"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="p-4 text-sm text-black/45">No family members yet.</div>
+            )}
+          </DetailPanel>
+
+          <DetailPanel title="Preferences">
+            <div className="grid gap-4 p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-[14px] font-medium text-black">Liability Waiver</div>
+                  <div className="mt-1 text-[13px] text-black/55">
+                    {customer.waiverAgreed ? "Agreed" : "Not yet agreed"}
+                  </div>
+                </div>
+                <span
+                  className={`rounded-full px-3 py-1 text-[12px] font-semibold ${
+                    customer.waiverAgreed ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
+                  }`}
+                >
+                  {customer.waiverAgreed ? "Agreed" : "Pending"}
+                </span>
+              </div>
+
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-[14px] font-medium text-black">Email marketing</div>
+                  <div className="mt-1 text-[13px] text-black/55">Opted in to receive marketing emails</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMarketingEnabled((current) => !current)}
+                  className={[
+                    "relative h-6 w-11 rounded-full transition-colors",
+                    marketingEnabled ? "bg-black" : "bg-black/15",
+                  ].join(" ")}
+                >
+                  <span
+                    className={[
+                      "absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all",
+                      marketingEnabled ? "right-0.5" : "left-0.5",
+                    ].join(" ")}
+                  />
+                </button>
+              </div>
+            </div>
+          </DetailPanel>
+
+          <DetailPanel
+            title="Notes"
+            action={
+              !isEditingNote ? (
+                <button type="button" onClick={openAddNote} className="text-2xl leading-none text-black/45">
+                  +
+                </button>
+              ) : undefined
+            }
+          >
+            {isEditingNote ? (
+              <div className="grid gap-3 p-4">
+                <textarea
+                  value={noteDraft}
+                  onChange={(event) => setNoteDraft(event.target.value)}
+                  rows={5}
+                  className="w-full rounded-md border border-black/15 px-4 py-3 text-[14px] outline-none"
+                  placeholder="Add a note..."
+                />
+                <div className="flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNoteDraft(customer.notes ?? "");
+                      setIsEditingNote(false);
+                    }}
+                    className="rounded-md border border-black/10 px-4 py-2 text-[14px] font-medium text-black/65"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void saveNotes()}
+                    className="rounded-md bg-black px-5 py-2 text-[14px] font-medium text-white"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="p-7 text-center text-[14px] text-black/45">
+                {customer.notes ? customer.notes : "No notes yet. Click + to add the first note."}
+              </div>
+            )}
+          </DetailPanel>
+        </div>
+      </div>
+    );
+  }
+
+  function renderBillingTab() {
+    return (
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+        <DetailPanel title="Billing Summary">
+          <div className="grid gap-3 p-5 sm:grid-cols-3">
+            <div className="rounded-xl border border-black/10 bg-black/[0.02] p-4">
+              <div className="text-[12px] uppercase tracking-[0.12em] text-black/45">Billed</div>
+              <div className="mt-2 text-[22px] font-medium text-black">{money(billedTotal)}</div>
+            </div>
+            <div className="rounded-xl border border-black/10 bg-black/[0.02] p-4">
+              <div className="text-[12px] uppercase tracking-[0.12em] text-black/45">Paid</div>
+              <div className="mt-2 text-[22px] font-medium text-black">{money(paidTotal)}</div>
+            </div>
+            <div className="rounded-xl border border-black/10 bg-black/[0.02] p-4">
+              <div className="text-[12px] uppercase tracking-[0.12em] text-black/45">Pending</div>
+              <div className="mt-2 text-[22px] font-medium text-black">{pendingCount}</div>
+            </div>
+          </div>
+        </DetailPanel>
+        <DetailPanel title="Recent Charges">
+          <BookingRows />
+        </DetailPanel>
+      </div>
+    );
+  }
+
+  function renderMembershipTab() {
+    return (
+      <DetailPanel title="Memberships">
+        {memberships.length ? (
+          <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+            {memberships.map((membership) => (
+              <div key={membership} className="rounded-xl border border-black/10 bg-black/[0.02] p-4">
+                <div className="text-[15px] font-medium text-black">{membership}</div>
+                <div className="mt-1 text-[13px] text-black/55">Active membership</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-6 text-sm text-black/45">No memberships assigned.</div>
+        )}
+      </DetailPanel>
+    );
+  }
+
+  function renderPackagesTab() {
+    return (
+      <DetailPanel title="Packages">
+        {topPackages.length ? (
+          <div className="divide-y divide-black/10">
+            {topPackages.map(([serviceName, count]) => (
+              <div key={serviceName} className="flex items-center justify-between px-4 py-4 text-[14px]">
+                <span className="font-medium text-black">{serviceName}</span>
+                <span className="rounded-full bg-black/[0.05] px-3 py-1 text-[12px] font-semibold text-black/65">
+                  {count} booking{count === 1 ? "" : "s"}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-6 text-sm text-black/45">No package activity yet.</div>
+        )}
+      </DetailPanel>
+    );
+  }
+
+  function renderActivityTab() {
+    return (
+      <DetailPanel title="Activity">
+        <BookingRows />
+      </DetailPanel>
+    );
+  }
+
+  function renderInvoicesTab() {
+    return (
+      <DetailPanel title="Invoices">
+        {customerBookings.length ? (
+          <div className="divide-y divide-black/10">
+            {customerBookings.map((booking) => {
+              const service = servicesById.get(booking.serviceId);
+              return (
+                <div key={booking.id} className="flex items-center justify-between gap-4 px-4 py-4 text-[14px]">
+                  <div>
+                    <div className="font-medium text-black">{booking.serviceName || service?.name || "Service"}</div>
+                    <div className="mt-1 text-[13px] text-black/55">{bookingDateLabel(booking.date)}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-medium text-black">{money(service?.price ?? 0)}</div>
+                    <div className="mt-1 text-[13px] text-black/55">{booking.paid ? "Paid" : "Awaiting payment"}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="p-6 text-sm text-black/45">No invoices available.</div>
+        )}
+      </DetailPanel>
+    );
+  }
+
+  function renderCreditsTab() {
+    return (
+      <DetailPanel title="Credits">
+        <div className="p-6 text-sm text-black/45">Credits and wallet balance will appear here.</div>
+      </DetailPanel>
+    );
+  }
+
+  const tabContent: Record<CustomerDetailTab, React.ReactNode> = {
+    Profile: renderProfileTab(),
+    Billing: renderBillingTab(),
+    Memberships: renderMembershipTab(),
+    Packages: renderPackagesTab(),
+    Activity: renderActivityTab(),
+    Invoices: renderInvoicesTab(),
+    Credits: renderCreditsTab(),
+  };
 
   return (
     <section className="min-h-screen px-5 py-6">
@@ -7886,7 +8607,7 @@ function CustomerDetailView({
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <Icon name="phone" className="h-3.5 w-3.5" />
-                {customer.phone || "No phone"}
+                {customer.phone ? formatUsPhoneInput(customer.phone) : "No phone"}
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <Icon name="calendar" className="h-3.5 w-3.5" />
@@ -7897,11 +8618,23 @@ function CustomerDetailView({
         </div>
 
         <div className="flex flex-wrap gap-2.5 lg:justify-end">
-          <button type="button" className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-black/12 bg-white px-4 text-[14px] font-medium">
+          <button
+            type="button"
+            onClick={() => {
+              if (customer.email) {
+                window.location.href = `mailto:${customer.email}`;
+              }
+            }}
+            className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-black/12 bg-white px-4 text-[14px] font-medium"
+          >
             <Icon name="message" className="h-3.5 w-3.5" />
             Email
           </button>
-          <button type="button" className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-black/12 bg-white px-4 text-[14px] font-medium">
+          <button
+            type="button"
+            onClick={openAddNote}
+            className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-black/12 bg-white px-4 text-[14px] font-medium"
+          >
             <Icon name="plus" className="h-3.5 w-3.5" />
             Add note
           </button>
@@ -7912,13 +8645,14 @@ function CustomerDetailView({
       </div>
 
       <div className="mt-4 inline-flex flex-wrap gap-1 rounded-xl bg-black/[0.05] p-1 text-[14px]">
-        {["Profile", "Billing", "Memberships", "Packages", "Activity", "Invoices", "Credits"].map((tab, index) => (
+        {tabLabels.map((tab) => (
           <button
             key={tab}
             type="button"
+            onClick={() => setActiveTab(tab)}
             className={[
-              "rounded-lg px-3.5 py-1.5 font-medium",
-              index === 0 ? "bg-white text-black shadow-sm" : "text-black/55",
+              "rounded-lg px-3.5 py-1.5 font-medium transition-colors",
+              activeTab === tab ? "bg-white text-black shadow-sm" : "text-black/55 hover:text-black",
             ].join(" ")}
           >
             {tab}
@@ -7926,239 +8660,7 @@ function CustomerDetailView({
         ))}
       </div>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
-        <DetailPanel title="About">
-          <div className="grid gap-5 p-5">
-            <div className="grid gap-4 md:grid-cols-[104px_minmax(0,1fr)]">
-              <div className="grid place-items-start pt-1">
-                <div className="grid h-[82px] w-[82px] place-items-center rounded-full border border-black/12 bg-black/[0.05] text-black/35">
-                  <Icon name="user" className="h-11 w-11" />
-                </div>
-              </div>
-              <div className="grid gap-1.5">
-                <span className="text-[13px] font-medium text-black/85">Name</span>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <input
-                    defaultValue={first}
-                    className="min-h-10 w-full rounded-md border border-black/15 px-4 text-[14px] outline-none"
-                  />
-                  <input
-                    defaultValue={last}
-                    className="min-h-10 w-full rounded-md border border-black/15 px-4 text-[14px] outline-none"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <ProfileField
-              label="Date of Birth"
-              value={birthDate}
-              rightLabel={age === "" ? undefined : `Age: ${age}`}
-              trailing={<Icon name="calendar" className="h-4 w-4" />}
-            />
-
-            <label className="grid gap-1.5">
-              <span className="text-[13px] font-medium text-black/85">Gender</span>
-              <select defaultValue={customer.gender || ""} className="min-h-10 rounded-md border border-black/15 px-4 text-[14px] outline-none">
-                <option value="">Select gender</option>
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-                <option value="Non-binary">Non-binary</option>
-              </select>
-            </label>
-
-            <div className="overflow-hidden rounded-md border border-black/10">
-              <div className="flex min-h-10 items-center justify-between bg-black/[0.02] px-4 text-[14px] text-black/55">
-                <span>Contact Information</span>
-                <Icon name="chevron" className="h-4 w-4 -rotate-90" />
-              </div>
-              <div className="grid gap-4 p-4">
-                <ProfileField
-                  label="Email"
-                  value={customer.email}
-                  trailing={
-                    <>
-                      <Icon name="edit" className="h-4 w-4" />
-                      <Icon name="copy" className="h-4 w-4" />
-                    </>
-                  }
-                />
-
-                <label className="grid gap-1.5">
-                  <span className="text-[13px] font-medium text-black/85">Phone</span>
-                  <input
-                    value={profilePhone}
-                    onChange={(event) => setProfilePhone(formatUsPhoneInput(event.target.value))}
-                    inputMode="numeric"
-                    maxLength={14}
-                    className="min-h-10 rounded-md border border-black/15 px-4 text-[14px] outline-none"
-                  />
-                </label>
-
-                <ProfileField label="Address" value={customer.address} />
-              </div>
-            </div>
-          </div>
-        </DetailPanel>
-
-        <div className="grid gap-4">
-          <DetailPanel
-            title="Emergency Contact"
-            action={
-              !hasEmergencyContact ? (
-                <button
-                  type="button"
-                  onClick={() => setShowEmergencyContactModal(true)}
-                  className="text-2xl leading-none text-black/45"
-                >
-                  +
-                </button>
-              ) : undefined
-            }
-          >
-            {hasEmergencyContact ? (
-              <div className="flex items-center justify-between gap-4 p-4">
-                <div>
-                  <div className="text-[14px] font-medium text-black">{customer.emergencyContactName}</div>
-                  <div className="mt-1 text-[13px] text-black/55">
-                    {[
-                      customer.emergencyContactEmail,
-                      customer.emergencyContactPhone ? formatUsPhoneInput(customer.emergencyContactPhone) : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" \u00B7 ")}
-                  </div>
-                </div>
-                <div className="flex gap-3 text-black/45">
-                  <HoverIconButton
-                    icon="edit"
-                    label="Edit Contact"
-                    onClick={() => setShowEmergencyContactModal(true)}
-                  />
-                  <HoverIconButton icon="trash" label="Delete" onClick={clearEmergencyContact} tone="danger" />
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="px-4 py-10 text-center text-[14px] text-black/45">No emergency contact added.</div>
-                {emergencyDeleted ? (
-                  <div className="flex items-center justify-end gap-6 border-t border-black/10 bg-black/[0.02] px-4 py-3">
-                    <span className="text-[14px] font-medium text-[#d4571d]">Changes made</span>
-                    <button
-                      type="button"
-                      onClick={saveEmergencyContact}
-                      className="inline-flex min-h-10 items-center rounded-lg bg-black px-6 text-[14px] font-semibold text-white"
-                    >
-                      Save
-                    </button>
-                  </div>
-                ) : null}
-              </>
-            )}
-          </DetailPanel>
-
-          <DetailPanel title="Custom Fields" action={<button type="button" className="text-2xl leading-none text-black/45">+</button>}>
-            <div className="flex items-center justify-between gap-4 p-4 text-[14px]">
-              <div className="flex items-center gap-3 text-black/65">
-                <Icon name="send" className="h-4 w-4" />
-                <span>Referral</span>
-              </div>
-              <div className="ml-auto text-black/85">{customer.notes ? "From notes" : "-"}</div>
-              <div className="flex gap-3 text-black/45">
-                <button type="button"><Icon name="edit" className="h-4 w-4" /></button>
-                <button type="button" className="text-xl leading-none">...</button>
-              </div>
-            </div>
-          </DetailPanel>
-
-          <DetailPanel
-            title="Family Members"
-            action={
-              <button
-                type="button"
-                onClick={openNewFamilyMemberModal}
-                className="text-2xl leading-none text-black/45"
-              >
-                +
-              </button>
-            }
-          >
-            {familyMembers.length ? (
-              <div className="divide-y divide-black/10">
-                {familyMembers.map((member) => (
-                  <div key={member.id} className="flex items-center justify-between gap-4 p-4">
-                    <div className="flex items-center gap-4">
-                      <div className="grid h-10 w-10 place-items-center rounded-full border border-black/10 bg-black/[0.04] text-[13px] font-medium text-black/60">
-                        {`${member.firstName[0] ?? ""}${member.lastName[0] ?? ""}`.toUpperCase()}
-                      </div>
-                      <div>
-                        <div className="text-[14px] font-medium text-black">
-                          {[member.firstName, member.lastName].filter(Boolean).join(" ")}
-                        </div>
-                        <div className="mt-0.5 text-[13px] text-black/55">
-                          {[
-                            member.gender !== "Unspecified" ? member.gender : "",
-                            familyMemberAgeLabel(member),
-                          ]
-                            .filter(Boolean)
-                            .join(" Ã‚Â· ") || "Member"}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex gap-3 text-black/45">
-                      <HoverIconButton
-                        icon="edit"
-                        label="Edit Member"
-                        onClick={() => openEditFamilyMemberModal(member)}
-                      />
-                      <HoverIconButton
-                        icon="trash"
-                        label="Delete"
-                        onClick={() => saveFamilyMembers(familyMembers.filter((item) => item.id !== member.id))}
-                        tone="danger"
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="p-4 text-sm text-black/45">No family members yet.</div>
-            )}
-          </DetailPanel>
-
-          <DetailPanel title="Preferences">
-            <div className="grid gap-4 p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="text-[14px] font-medium text-black">Liability Waiver</div>
-                  <div className="mt-1 text-[13px] text-black/55">
-                    {customer.waiverAgreed ? "Agreed" : "Not yet agreed"}
-                  </div>
-                </div>
-                <span className={`rounded-full px-3 py-1 text-[12px] font-semibold ${customer.waiverAgreed ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
-                  {customer.waiverAgreed ? "Agreed" : "Pending"}
-                </span>
-              </div>
-
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="text-[14px] font-medium text-black">Email marketing</div>
-                  <div className="mt-1 text-[13px] text-black/55">Opted in to receive marketing emails</div>
-                </div>
-                <button type="button" className="relative h-6 w-11 rounded-full bg-black">
-                  <span className="absolute right-0.5 top-0.5 h-5 w-5 rounded-full bg-white" />
-                </button>
-              </div>
-            </div>
-          </DetailPanel>
-
-          <DetailPanel title="Notes" action={<button type="button" className="text-2xl leading-none text-black/45">+</button>}>
-            <div className="p-7 text-center text-[14px] text-black/45">
-              {customer.notes ? customer.notes : "No notes yet. Click + to add the first note."}
-            </div>
-          </DetailPanel>
-        </div>
-      </div>
+      <div className="mt-5">{tabContent[activeTab]}</div>
 
       {showFamilyModal ? (
         <FamilyMemberModal
@@ -8167,13 +8669,18 @@ function CustomerDetailView({
             setShowFamilyModal(false);
             setEditingFamilyMember(null);
           }}
-          onSave={(member) => {
+          onSave={async (member) => {
             const nextFamilyMembers = editingFamilyMember
               ? familyMembers.map((item) => (item.id === member.id ? member : item))
               : [...familyMembers, member];
-            saveFamilyMembers(nextFamilyMembers);
-            setShowFamilyModal(false);
-            setEditingFamilyMember(null);
+            const saved = await saveFamilyMembers(
+              nextFamilyMembers,
+              editingFamilyMember ? "Family member updated." : "Family member added."
+            );
+            if (saved) {
+              setShowFamilyModal(false);
+              setEditingFamilyMember(null);
+            }
           }}
         />
       ) : null}
@@ -8190,6 +8697,7 @@ function CustomerDetailView({
     </section>
   );
 }
+
 
 function SimpleTableView({
   title,
@@ -8782,7 +9290,7 @@ function TaxesAndFeesSettingsEditor({
                         className="text-[20px] leading-none transition hover:text-black"
                         aria-label={`Delete ${item.name || "tax rate"}`}
                       >
-                        …
+                        â€¦
                       </button>
                       <button
                         type="button"
@@ -8891,7 +9399,7 @@ function TaxesAndFeesSettingsEditor({
                         className="text-[20px] leading-none transition hover:text-black"
                         aria-label={`Delete ${item.name || "custom fee"}`}
                       >
-                        …
+                        â€¦
                       </button>
                       <button
                         type="button"
@@ -12668,7 +13176,7 @@ function NotesEditor({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const toolbarButtons = ["ÃƒÂ¢Ã¢â‚¬Â Ã‚Â¶", "ÃƒÂ¢Ã¢â‚¬Â Ã‚Â·", "ÃƒÂ¢Ã¢â‚¬Â°Ã‚Â¡", "B", "I", "U", "S", "<>", "ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬Â", "ÃƒÂ¢Ã‹Å“Ã‚Â°", "ÃƒÂ¢Ã‹Å“Ã‚Â·"];
+  const toolbarButtons = ["ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Ãƒâ€šÃ‚Â¶", "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Ãƒâ€šÃ‚·", "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â°Ãƒâ€šÃ‚Â¡", "B", "I", "U", "S", "<>", "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â", "ÃƒÆ’Ã‚Â¢Ãƒâ€¹Ã…â€œÃƒâ€šÃ‚Â°", "ÃƒÆ’Ã‚Â¢Ãƒâ€¹Ã…â€œÃƒâ€šÃ‚·"];
 
   return (
     <div className="mt-2 overflow-hidden rounded-lg border border-black/10">
@@ -13192,7 +13700,7 @@ function CustomerImportModal({
                           {header}
                         </div>
                         <div className="flex justify-center text-[30px] leading-none text-black/55">
-                          <span aria-hidden="true">ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢</span>
+                          <span aria-hidden="true">ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢</span>
                         </div>
                         <div className="pr-4">
                           <select
@@ -13619,7 +14127,7 @@ function EditorModal({
                       {effectiveBookingService?.name || "No matching service selected"}
                     </div>
                     <div className="mt-1 text-sm text-black/55">
-                      {bookingDraft ? `${bookingDurationMinutes(bookingDraft)} minutes • ${bookingDraft.resource || "No room selected"}` : ""}
+                      {bookingDraft ? `${bookingDurationMinutes(bookingDraft)} minutes â€¢ ${bookingDraft.resource || "No room selected"}` : ""}
                     </div>
                   </div>
                   <div className="text-right">
@@ -14023,4 +14531,6 @@ function exportReport(state: AppState, showToast: (message: string) => void) {
   URL.revokeObjectURL(url);
   showToast("Report exported.");
 }
+
+
 
