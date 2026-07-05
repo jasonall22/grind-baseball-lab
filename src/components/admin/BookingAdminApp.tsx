@@ -3005,6 +3005,39 @@ export default function BookingAdminApp({
         if (insertOverridesResult.error) throw insertOverridesResult.error;
       }
 
+      const currentResourcesResult = await supabase
+        .from("booking_resources")
+        .select("id,name,schedule_id")
+        .eq("is_active", true);
+      if (currentResourcesResult.error) throw currentResourcesResult.error;
+
+      const desiredScheduleIdsByRoom = new Map<string, string>();
+      persistedSchedule.forEach((item) => {
+        const resolvedScheduleId = item.id === normalizedSchedule.id ? scheduleId : item.id;
+        item.roomNames.forEach((roomName) => {
+          desiredScheduleIdsByRoom.set(roomName, resolvedScheduleId);
+        });
+      });
+
+      const roomScheduleUpdates = ((currentResourcesResult.data ?? []) as BookingResourceRow[])
+        .map((resource) => ({
+          id: resource.id,
+          currentScheduleId: resource.schedule_id ?? null,
+          nextScheduleId: desiredScheduleIdsByRoom.get(resource.name) ?? null,
+        }))
+        .filter((resource) => resource.currentScheduleId !== resource.nextScheduleId);
+
+      if (roomScheduleUpdates.length) {
+        const updateResults = await Promise.all(
+          roomScheduleUpdates.map((resource) =>
+            supabase.from("booking_resources").update({ schedule_id: resource.nextScheduleId }).eq("id", resource.id)
+          )
+        );
+
+        const failedUpdate = updateResults.find((result) => result.error);
+        if (failedUpdate?.error) throw failedUpdate.error;
+      }
+
       if (normalizedSchedule.isDefault) {
         const workingAvailability = availabilityFromSchedule({ ...normalizedSchedule, id: scheduleId });
         const availabilityResult = await supabase.from("booking_availability").upsert(
@@ -3673,6 +3706,7 @@ export default function BookingAdminApp({
                 })),
                 overrides: [],
               }}
+              resources={state.resources}
               onBack={() => router.push(bookingAdminRouteByView["settings-schedules"])}
               onSave={async (schedule) => {
                 const saved = await saveScheduleRecord(schedule, "add");
@@ -3690,6 +3724,7 @@ export default function BookingAdminApp({
               selectedSchedule ? (
                 <ScheduleEditorView
                   schedule={selectedSchedule}
+                  resources={state.resources}
                   onBack={() => router.push(bookingAdminRouteByView["settings-schedules"])}
                   onSave={(schedule) => saveScheduleRecord(schedule, "edit")}
                   onDelete={async () => {
@@ -8504,6 +8539,7 @@ function SchedulesSettingsView({
 
 function ScheduleEditorView({
   schedule,
+  resources,
   onBack,
   onSave,
   onDelete,
@@ -8511,6 +8547,7 @@ function ScheduleEditorView({
   mode = "add",
 }: {
   schedule: ScheduleRecord;
+  resources: string[];
   onBack: () => void;
   onSave: (schedule: ScheduleRecord) => Promise<boolean> | boolean;
   onDelete?: () => Promise<boolean> | boolean;
@@ -8522,6 +8559,7 @@ function ScheduleEditorView({
   const pageTitle = isEditMode ? schedule.name || "Schedule" : "Add Schedule";
   const breadcrumbLabel = isEditMode ? pageTitle : "Add Schedule";
   const deleteGuardMessage = isEditMode ? getScheduleDeleteGuard(schedule) : null;
+  const roomOptions = useMemo(() => Array.from(new Set(resources.filter(Boolean))), [resources]);
 
   useEffect(() => {
     setDraft(schedule);
@@ -8604,6 +8642,17 @@ function ScheduleEditorView({
       })),
     }));
     showToast(`${day} copied ${previous.day}.`);
+  }
+
+  function toggleRoom(roomName: string, checked: boolean) {
+    setDraft((current) => ({
+      ...current,
+      roomNames: checked
+        ? current.roomNames.includes(roomName)
+          ? current.roomNames
+          : [...current.roomNames, roomName]
+        : current.roomNames.filter((item) => item !== roomName),
+    }));
   }
 
   function addOverride() {
@@ -8719,6 +8768,40 @@ function ScheduleEditorView({
                       className="min-h-12 rounded-lg border border-black/10 px-4 text-[15px] outline-none focus:border-black/30"
                     />
                   </label>
+                </div>
+
+                <div className="grid gap-6 px-5 py-5 lg:grid-cols-[220px_minmax(0,1fr)]">
+                  <div>
+                    <div className="text-[18px] font-semibold">Rooms</div>
+                    <p className="mt-2 text-sm leading-relaxed text-black/65">
+                      Choose which rooms should use this schedule for their working hours.
+                    </p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    {roomOptions.length ? (
+                      roomOptions.map((roomName) => {
+                        const checked = draft.roomNames.includes(roomName);
+                        return (
+                          <label
+                            key={`${draft.id}-room-${roomName}`}
+                            className={`flex min-h-12 items-center gap-3 rounded-lg border px-4 py-3 text-[15px] transition ${
+                              checked ? "border-black/30 bg-black/[0.03]" : "border-black/10 bg-white"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(event) => toggleRoom(roomName, event.target.checked)}
+                              className="h-4 w-4 rounded border-black/20 text-black focus:ring-black/20"
+                            />
+                            <span className="font-medium text-black">{roomName}</span>
+                          </label>
+                        );
+                      })
+                    ) : (
+                      <div className="text-[15px] text-black/55">No rooms have been created yet.</div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="px-5 py-5">
@@ -9033,6 +9116,38 @@ function ScheduleEditorView({
                   className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
                 />
               </label>
+            </div>
+
+            <div className="px-6 py-6">
+              <div className="text-[16px] font-medium text-black">Rooms</div>
+              <p className="mt-1 text-[13px] leading-6 text-black/70">
+                Choose which rooms should use this schedule for their working hours.
+              </p>
+              <div className="mt-5 grid gap-3">
+                {roomOptions.length ? (
+                  roomOptions.map((roomName) => {
+                    const checked = draft.roomNames.includes(roomName);
+                    return (
+                      <label
+                        key={`${draft.id}-mobile-room-${roomName}`}
+                        className={`flex min-h-[48px] items-center gap-3 rounded-[10px] border px-4 py-3 text-[14px] transition ${
+                          checked ? "border-black/25 bg-black/[0.03]" : "border-black/12 bg-white"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(event) => toggleRoom(roomName, event.target.checked)}
+                          className="h-4 w-4 rounded border-black/20 text-black focus:ring-black/20"
+                        />
+                        <span className="font-medium text-black">{roomName}</span>
+                      </label>
+                    );
+                  })
+                ) : (
+                  <div className="text-[14px] text-black/55">No rooms have been created yet.</div>
+                )}
+              </div>
             </div>
 
             <div className="px-6 py-6">
