@@ -5157,6 +5157,10 @@ function CalendarView({
         : mobileDayResourceViews.filter((item) => item.resource === mobileResource),
     [mobileDayResourceViews, mobileResource]
   );
+  const dayResourceViewByName = useMemo(
+    () => new Map(mobileDayResourceViews.map((item) => [item.resource, item] as const)),
+    [mobileDayResourceViews]
+  );
   const scrollTargetTime = useMemo(
     () => {
       const targets = resources
@@ -5556,9 +5560,8 @@ function CalendarView({
                 </div>
 
                 {resources.map((resource) => {
-                  const resourceBookings = visibleDayBookings.filter((booking) => booking.resource === resource);
-                  const resourceSchedule = scheduleByResource.get(resource) ?? defaultSchedule;
-                  const resourceClosedBlocks = closedBlocksForSchedule(resourceSchedule, activeDate);
+                  const resourceDayView = dayResourceViewByName.get(resource);
+                  const resourceTimeline = resourceDayView?.timeline ?? [];
 
                   return (
                     <div key={resource} className="relative border-r border-black/10 last:border-r-0" style={{ height: columnHeight }}>
@@ -5566,32 +5569,50 @@ function CalendarView({
                         <div key={`${resource}-${slot}`} className="border-b border-black/10" style={{ height: slotHeight }} />
                       ))}
 
-                      {resourceClosedBlocks.map((block, index) => {
-                        const top = (block.start / 30) * slotHeight;
-                        const height = Math.max(slotHeight, ((block.end - block.start) / 30) * slotHeight);
-                        return (
-                          <div
-                            key={`${resource}-closed-${index}`}
-                            className="absolute left-[5px] right-[5px] rounded-md border border-[#6f86a0] bg-[#7f848d]/70 text-white"
-                            style={{ top, height }}
-                          >
-                            <div className="flex h-full items-center justify-center px-3 text-center text-[12px] font-medium">
-                              <span className="rounded-sm border border-black/45 bg-white px-3 py-1 text-black shadow-sm">
-                                {timeLabel(minutesToTime(block.start))} - {timeLabel(minutesToTime(block.end))}: Closed
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
+                      {resourceTimeline.map((segment, index) => {
+                        const top = (segment.start / 30) * slotHeight + 1;
+                        const height = Math.max(slotHeight - 2, ((segment.end - segment.start) / 30) * slotHeight - 2);
 
-                      {resourceBookings.map((booking) => {
+                        if (segment.type === "closed") {
+                          return (
+                            <div
+                              key={`${resource}-closed-${index}`}
+                              className="absolute left-[5px] right-[5px] overflow-hidden rounded-md border border-[#6f86a0] bg-[#8a8f98] text-white"
+                              style={{ top, height }}
+                            >
+                              <div className="px-3 py-2 text-left">
+                                <div className="text-[10px] font-semibold leading-none text-white/80">
+                                  {timeLabel(minutesToTime(segment.start))} - {timeLabel(minutesToTime(segment.end))}
+                                </div>
+                                <div className="mt-1 text-[16px] font-semibold leading-none">Closed</div>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        if (segment.type === "available") {
+                          return (
+                            <button
+                              key={`${resource}-available-${index}`}
+                              type="button"
+                              onClick={() => createBookingFromSlot(resource, segment.start, segment.end)}
+                              className="absolute left-[3px] right-[3px] overflow-hidden rounded-md border border-[#caefdd] bg-[#f3fcf7] px-3 py-2 text-left text-[#166443] shadow-sm transition hover:bg-[#e9faef]"
+                              style={{ top, height }}
+                            >
+                              <div className="text-[10px] font-semibold leading-none text-[#15835d]/75">
+                                {timeLabel(minutesToTime(segment.start))} - {timeLabel(minutesToTime(segment.end))}
+                              </div>
+                              <div className="mt-1 text-[15px] font-semibold leading-none">Available</div>
+                            </button>
+                          );
+                        }
+
+                        const booking = segment.booking;
                         const customer = customersById.get(booking.customerId);
                         const service = servicesById.get(booking.serviceId);
                         const statusBadge = bookingStatusBadge(booking);
                         const tone = bookingTonePresentation(booking, service);
-                        const top = (timeToMinutes(booking.start) / 30) * slotHeight + 1;
-                        const durationMinutes = Math.max(30, timeToMinutes(booking.end) - timeToMinutes(booking.start));
-                        const height = Math.max(slotHeight - 2, (durationMinutes / 30) * slotHeight - 2);
+                        const durationMinutes = Math.max(30, segment.end - segment.start);
                         const isCompactBooking = durationMinutes <= 30;
 
                         return (
@@ -5606,7 +5627,7 @@ function CalendarView({
                           >
                             <div className="flex items-start justify-between gap-2">
                               <div className={`${isCompactBooking ? "text-[9px]" : "text-[10px]"} ${tone.timeClass} font-semibold leading-none`}>
-                                {timeLabel(booking.start)} - {timeLabel(booking.end)}
+                                {timeLabel(minutesToTime(segment.start))} - {timeLabel(minutesToTime(segment.end))}
                               </div>
                               {statusBadge ? (
                                 <span
