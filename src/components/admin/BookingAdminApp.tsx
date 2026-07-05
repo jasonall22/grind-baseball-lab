@@ -1034,6 +1034,29 @@ function assignRoomToSchedule(schedules: ScheduleRecord[], roomName: string, sch
   });
 }
 
+function assignServiceToSchedule(
+  schedules: ScheduleRecord[],
+  serviceName: string,
+  scheduleId: string | null | undefined,
+  previousServiceName?: string
+) {
+  const namesToRemove = new Set([serviceName, previousServiceName].filter(Boolean));
+
+  return schedules.map((schedule) => {
+    const filteredServiceNames = schedule.serviceNames.filter((name) => !namesToRemove.has(name));
+
+    if (schedule.id === scheduleId && serviceName) {
+      return filteredServiceNames.includes(serviceName)
+        ? { ...schedule, serviceNames: filteredServiceNames }
+        : { ...schedule, serviceNames: [...filteredServiceNames, serviceName] };
+    }
+
+    return filteredServiceNames.length === schedule.serviceNames.length
+      ? schedule
+      : { ...schedule, serviceNames: filteredServiceNames };
+  });
+}
+
 function normalizeScheduleRecord(schedule: ScheduleRecord): ScheduleRecord {
   return {
     ...schedule,
@@ -1445,6 +1468,11 @@ function scheduleForRoom(schedules: ScheduleRecord[], roomName: string) {
   );
 }
 
+function scheduleForService(schedules: ScheduleRecord[], service: Service | null | undefined) {
+  if (!service?.scheduleId) return null;
+  return schedules.find((schedule) => schedule.id === service.scheduleId) ?? null;
+}
+
 function dayConfigForDate(schedule: ScheduleRecord | null | undefined, value: string) {
   const dayName = weekdayName(value);
   const fallback = scheduleWeekdays.find((item) => item.day === dayName) ?? { day: dayName, weekday: 0 };
@@ -1502,6 +1530,26 @@ function openBlocksForSchedule(schedule: ScheduleRecord | null | undefined, valu
   }
 
   return openBlocks.filter((block) => block.end > block.start);
+}
+
+function scheduleAllowsRange(
+  schedule: ScheduleRecord | null | undefined,
+  value: string,
+  start: string,
+  end: string
+) {
+  if (!schedule) return true;
+
+  const startMinutes = timeToMinutes(start);
+  const endMinutes = timeToMinutes(end);
+
+  if (endMinutes <= startMinutes) {
+    return false;
+  }
+
+  return openBlocksForSchedule(schedule, value).some(
+    (block) => startMinutes >= block.start && endMinutes <= block.end
+  );
 }
 
 function scheduleScrollTargetTime(schedule: ScheduleRecord | null | undefined, date: string) {
@@ -1603,6 +1651,60 @@ function hasRoomBookingConflict(bookings: Booking[], candidate: Booking) {
   });
 }
 
+function bookingScheduleConflictMessage(
+  candidate: Booking,
+  services: Service[],
+  schedules: ScheduleRecord[]
+) {
+  if (candidate.status === "Cancelled") return null;
+
+  const resourceSchedule = scheduleForRoom(schedules, candidate.resource);
+  if (
+    candidate.resource &&
+    resourceSchedule &&
+    !scheduleAllowsRange(resourceSchedule, candidate.date, candidate.start, candidate.end)
+  ) {
+    return `This room is unavailable from ${timeLabel(candidate.start)} to ${timeLabel(candidate.end)} on ${parseLocalDate(candidate.date).toLocaleDateString("en-US", {
+      weekday: "long",
+      month: "short",
+      day: "numeric",
+    })}.`;
+  }
+
+  const selectedService = services.find((service) => service.id === candidate.serviceId) ?? null;
+  const inferredService =
+    selectedService ??
+    findServiceForCalendarSlot(services, candidate.resource, bookingDurationMinutes(candidate), {
+      date: candidate.date,
+      start: candidate.start,
+      end: candidate.end,
+      schedules,
+    });
+  const serviceSchedule = scheduleForService(schedules, inferredService);
+
+  if (
+    inferredService?.scheduleId &&
+    !serviceSchedule
+  ) {
+    return `${inferredService.name} is assigned to a schedule that could not be found. Open the service and choose a valid schedule before booking it.`;
+  }
+
+  if (
+    inferredService &&
+    inferredService.scheduleId &&
+    serviceSchedule &&
+    !scheduleAllowsRange(serviceSchedule, candidate.date, candidate.start, candidate.end)
+  ) {
+    return `${inferredService.name} is not available from ${timeLabel(candidate.start)} to ${timeLabel(candidate.end)} on ${parseLocalDate(candidate.date).toLocaleDateString("en-US", {
+      weekday: "long",
+      month: "short",
+      day: "numeric",
+    })} because it follows the "${serviceSchedule.name}" schedule.`;
+  }
+
+  return null;
+}
+
 function isBookingConflictMessage(message: string) {
   return message.toLowerCase().includes("already booked");
 }
@@ -1658,15 +1760,42 @@ function bookingStatusBadge(booking: Booking) {
   return null;
 }
 
-function findServiceForCalendarSlot(services: Service[], resource: string, durationMinutes: number) {
+function findServiceForCalendarSlot(
+  services: Service[],
+  resource: string,
+  durationMinutes: number,
+  options?: {
+    date?: string;
+    start?: string;
+    end?: string;
+    schedules?: ScheduleRecord[];
+  }
+) {
   const normalizedResource = resource.trim().toLowerCase();
   const activeServices = services.filter((service) => service.status === "Active");
+  const matchesRequestedWindow = (service: Service) => {
+    if (!options?.date || !options?.start || !options?.end || !options?.schedules?.length) {
+      return true;
+    }
+
+    if (!service.scheduleId) {
+      return true;
+    }
+
+    return scheduleAllowsRange(
+      scheduleForService(options.schedules, service),
+      options.date,
+      options.start,
+      options.end
+    );
+  };
   const exactRentalMatch = activeServices.find((service) => {
     const rooms = service.rooms?.length ? service.rooms : service.resource ? [service.resource] : [];
     return (
       service.category === "rentals" &&
       service.duration === durationMinutes &&
-      rooms.some((room) => room.trim().toLowerCase() === normalizedResource)
+      rooms.some((room) => room.trim().toLowerCase() === normalizedResource) &&
+      matchesRequestedWindow(service)
     );
   });
 
@@ -1676,7 +1805,8 @@ function findServiceForCalendarSlot(services: Service[], resource: string, durat
     const rooms = service.rooms?.length ? service.rooms : service.resource ? [service.resource] : [];
     return (
       service.duration === durationMinutes &&
-      rooms.some((room) => room.trim().toLowerCase() === normalizedResource)
+      rooms.some((room) => room.trim().toLowerCase() === normalizedResource) &&
+      matchesRequestedWindow(service)
     );
   });
 
@@ -1684,7 +1814,7 @@ function findServiceForCalendarSlot(services: Service[], resource: string, durat
 
   return activeServices.find((service) => {
     const rooms = service.rooms?.length ? service.rooms : service.resource ? [service.resource] : [];
-    return rooms.some((room) => room.trim().toLowerCase() === normalizedResource);
+    return rooms.some((room) => room.trim().toLowerCase() === normalizedResource) && matchesRequestedWindow(service);
   });
 }
 
@@ -2933,7 +3063,11 @@ export default function BookingAdminApp({
       calendarColor: normalizeCalendarColor(rentalDraft.calendarColor),
       scheduleId,
     };
-    const next = { ...state, services: upsert(state.services, item) };
+    const next = {
+      ...state,
+      services: upsert(state.services, item),
+      schedules: assignServiceToSchedule(state.schedules, item.name, item.scheduleId, existingService?.name),
+    };
     const successMessage = existingService ? "Rental updated." : "Rental saved.";
 
     if (dataSource === "local") {
@@ -3641,7 +3775,7 @@ export default function BookingAdminApp({
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/45 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
             <div className="border-b border-black/10 px-6 py-5">
-              <h2 className="text-xl font-semibold text-black">Room already booked</h2>
+              <h2 className="text-xl font-semibold text-black">Booking conflict</h2>
             </div>
             <div className="px-6 py-5 text-[15px] leading-7 text-black/75">
               {bookingConflictDialog}
@@ -5094,7 +5228,13 @@ function CalendarView({
     const matchedService = findServiceForCalendarSlot(
       Array.from(servicesById.values()),
       resource,
-      durationMinutes
+      durationMinutes,
+      {
+        date: activeDate,
+        start: minutesToTime(startMinutes),
+        end: minutesToTime(endMinutes),
+        schedules: scheduleCollection,
+      }
     );
     onNew({
       date: activeDate,
@@ -10136,7 +10276,12 @@ function EditorModal({
   const bookingDraft = modal.type === "booking" ? (draft as Booking) : null;
   const matchedBookingService =
     bookingDraft
-      ? findServiceForCalendarSlot(state.services, bookingDraft.resource, bookingDurationMinutes(bookingDraft))
+      ? findServiceForCalendarSlot(state.services, bookingDraft.resource, bookingDurationMinutes(bookingDraft), {
+          date: bookingDraft.date,
+          start: bookingDraft.start,
+          end: bookingDraft.end,
+          schedules: state.schedules,
+        })
       : null;
   const selectedBookingService =
     bookingDraft ? state.services.find((item) => item.id === bookingDraft.serviceId) ?? null : null;
@@ -10158,6 +10303,12 @@ function EditorModal({
     }
     if (modal.type === "booking") {
       const item = { ...(draft as Booking), id: draft.id || makeId("bk") };
+      const scheduleConflictMessage = bookingScheduleConflictMessage(item, state.services, state.schedules);
+
+      if (scheduleConflictMessage) {
+        showBookingConflictDialog(scheduleConflictMessage);
+        return;
+      }
 
       if (hasRoomBookingConflict(state.bookings, item)) {
         showBookingConflictDialog("This room is already booked for that time. Please choose another time or another room.");
@@ -10229,7 +10380,13 @@ function EditorModal({
     const nextService = findServiceForCalendarSlot(
       state.services,
       normalizedBooking.resource,
-      bookingDurationMinutes(normalizedBooking)
+      bookingDurationMinutes(normalizedBooking),
+      {
+        date: normalizedBooking.date,
+        start: normalizedBooking.start,
+        end: normalizedBooking.end,
+        schedules: state.schedules,
+      }
     );
     const resolvedService =
       (didChangeService && next.serviceId
