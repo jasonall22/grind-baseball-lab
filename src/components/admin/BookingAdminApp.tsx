@@ -2297,6 +2297,22 @@ function getRoomDeleteGuard(roomName: string, state: AppState) {
   return null;
 }
 
+function getScheduleDeleteGuard(schedule: ScheduleRecord) {
+  if (schedule.isDefault || schedule.slug === "working-hours") {
+    return "This schedule can't be deleted because it's the facility working-hours schedule.";
+  }
+
+  if (schedule.roomNames.length) {
+    return "This schedule can't be deleted because it's assigned to one or more rooms.";
+  }
+
+  if (schedule.serviceNames.length) {
+    return "This schedule can't be deleted because it's assigned to one or more services.";
+  }
+
+  return null;
+}
+
 function inferServiceCategory(name: string): ServiceSection {
   const value = name.toLowerCase();
   if (value.includes("lesson")) return "lessons";
@@ -3015,6 +3031,51 @@ export default function BookingAdminApp({
     }
   }
 
+  async function deleteScheduleRecord(schedule: ScheduleRecord) {
+    const deleteGuardMessage = getScheduleDeleteGuard(schedule);
+    if (deleteGuardMessage) {
+      showToast(deleteGuardMessage);
+      return false;
+    }
+
+    const nextSchedules = state.schedules.filter((item) => item.id !== schedule.id);
+    const workingSchedule =
+      nextSchedules.find((item) => item.isDefault || item.slug === "working-hours") ?? nextSchedules[0] ?? null;
+    const next = {
+      ...state,
+      schedules: nextSchedules,
+      availability: workingSchedule ? availabilityFromSchedule(workingSchedule) : state.availability,
+    };
+
+    if (dataSource === "local") {
+      saveLocal(next, "Schedule deleted.");
+      return true;
+    }
+
+    const previousState = state;
+    setState(next);
+
+    try {
+      const deleteOverridesResult = await supabase.from("booking_schedule_overrides").delete().eq("schedule_id", schedule.id);
+      if (deleteOverridesResult.error) throw deleteOverridesResult.error;
+
+      const deleteSlotsResult = await supabase.from("booking_schedule_slots").delete().eq("schedule_id", schedule.id);
+      if (deleteSlotsResult.error) throw deleteSlotsResult.error;
+
+      const deleteScheduleResult = await supabase.from("booking_schedules").delete().eq("id", schedule.id);
+      if (deleteScheduleResult.error) throw deleteScheduleResult.error;
+
+      showToast("Schedule deleted.");
+      return true;
+    } catch (error) {
+      console.error(error);
+      setState(previousState);
+      stateToStorage(previousState);
+      showToast("Schedule could not be deleted.");
+      return false;
+    }
+  }
+
   async function saveRoomScheduleAssignment(roomName: string, scheduleId: string) {
     if (dataSource === "local") return;
     const resourceId = resourceIdsByName[roomName];
@@ -3631,6 +3692,13 @@ export default function BookingAdminApp({
                   schedule={selectedSchedule}
                   onBack={() => router.push(bookingAdminRouteByView["settings-schedules"])}
                   onSave={(schedule) => saveScheduleRecord(schedule, "edit")}
+                  onDelete={async () => {
+                    const deleted = await deleteScheduleRecord(selectedSchedule);
+                    if (deleted) {
+                      router.push(bookingAdminRouteByView["settings-schedules"]);
+                    }
+                    return deleted;
+                  }}
                   showToast={showToast}
                   mode="edit"
                 />
@@ -8438,12 +8506,14 @@ function ScheduleEditorView({
   schedule,
   onBack,
   onSave,
+  onDelete,
   showToast,
   mode = "add",
 }: {
   schedule: ScheduleRecord;
   onBack: () => void;
   onSave: (schedule: ScheduleRecord) => Promise<boolean> | boolean;
+  onDelete?: () => Promise<boolean> | boolean;
   showToast: (message: string) => void;
   mode?: "add" | "edit";
 }) {
@@ -8451,6 +8521,7 @@ function ScheduleEditorView({
   const isEditMode = mode === "edit";
   const pageTitle = isEditMode ? schedule.name || "Schedule" : "Add Schedule";
   const breadcrumbLabel = isEditMode ? pageTitle : "Add Schedule";
+  const deleteGuardMessage = isEditMode ? getScheduleDeleteGuard(schedule) : null;
 
   useEffect(() => {
     setDraft(schedule);
@@ -8891,7 +8962,34 @@ function ScheduleEditorView({
                 </div>
               </div>
 
-              <div className="flex items-center justify-end border-t border-black/10 bg-[#f7f8fb] px-5 py-4">
+              <div className="flex items-center justify-between border-t border-black/10 bg-[#f7f8fb] px-5 py-4">
+                {isEditMode ? (
+                  deleteGuardMessage ? (
+                    <div className="group relative inline-flex items-center gap-3">
+                      <button
+                        type="button"
+                        disabled
+                        className="rounded-lg border border-black/10 bg-white px-5 py-2.5 text-[14px] font-semibold text-black/25"
+                      >
+                        Delete
+                      </button>
+                      <div className="pointer-events-none absolute left-[calc(100%+16px)] top-1/2 z-20 w-max max-w-[340px] -translate-y-1/2 rounded-md bg-[#707070] px-3 py-2 text-[11px] font-medium text-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
+                        {deleteGuardMessage}
+                        <div className="absolute right-full top-1/2 h-0 w-0 -translate-y-1/2 border-b-[7px] border-r-[7px] border-t-[7px] border-b-transparent border-r-[#707070] border-t-transparent" />
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void onDelete?.()}
+                      className="rounded-lg border border-[#e7c3bf] bg-white px-5 py-2.5 text-[14px] font-semibold text-[#b33a30] transition hover:bg-[#fff3f1]"
+                    >
+                      Delete
+                    </button>
+                  )
+                ) : (
+                  <div />
+                )}
                 <button
                   type="button"
                   onClick={() => void handleSave()}
@@ -9161,17 +9259,34 @@ function ScheduleEditorView({
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-4 border-t border-black/10 bg-[#f7f8fb] px-6 py-5">
-            <button type="button" onClick={onBack} className="text-[15px] font-medium text-black/65">
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleSave()}
-              className="rounded-lg bg-[#1f1b1b] px-6 py-3 text-[15px] font-medium text-white shadow-[0_3px_8px_rgba(0,0,0,0.18)]"
-            >
-              Save
-            </button>
+          <div className="flex items-center justify-between gap-4 border-t border-black/10 bg-[#f7f8fb] px-6 py-5">
+            {isEditMode ? (
+              deleteGuardMessage ? (
+                <div className="max-w-[220px] text-[12px] leading-5 text-black/45">{deleteGuardMessage}</div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void onDelete?.()}
+                  className="rounded-lg border border-[#e7c3bf] bg-white px-5 py-2.5 text-[14px] font-semibold text-[#b33a30]"
+                >
+                  Delete
+                </button>
+              )
+            ) : (
+              <div />
+            )}
+            <div className="flex items-center gap-4">
+              <button type="button" onClick={onBack} className="text-[15px] font-medium text-black/65">
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSave()}
+                className="rounded-lg bg-[#1f1b1b] px-6 py-3 text-[15px] font-medium text-white shadow-[0_3px_8px_rgba(0,0,0,0.18)]"
+              >
+                Save
+              </button>
+            </div>
           </div>
         </div>
       </div>
