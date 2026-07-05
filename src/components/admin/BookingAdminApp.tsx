@@ -1034,6 +1034,17 @@ function assignRoomToSchedule(schedules: ScheduleRecord[], roomName: string, sch
   });
 }
 
+function removeRoomFromSchedules(schedules: ScheduleRecord[], roomName: string) {
+  return schedules.map((schedule) =>
+    schedule.roomNames.includes(roomName)
+      ? {
+          ...schedule,
+          roomNames: schedule.roomNames.filter((name) => name !== roomName),
+        }
+      : schedule
+  );
+}
+
 function assignServiceToSchedule(
   schedules: ScheduleRecord[],
   serviceName: string,
@@ -2263,6 +2274,24 @@ function getRentalDeleteGuard(service: Service, state: AppState) {
   );
   if (hasAvailableCredits) {
     return "This rental can't be deleted because it's tied to available credits.";
+  }
+
+  return null;
+}
+
+function getRoomDeleteGuard(roomName: string, state: AppState) {
+  const hasBookings = state.bookings.some(
+    (booking) => booking.resource === roomName && booking.status !== "Cancelled"
+  );
+  if (hasBookings) {
+    return "This room can't be deleted because it's tied to existing bookings.";
+  }
+
+  const assignedService = state.services.find((service) =>
+    [service.resource, ...(service.rooms ?? [])].includes(roomName)
+  );
+  if (assignedService) {
+    return "This room can't be deleted because it's assigned to one or more services.";
   }
 
   return null;
@@ -3652,16 +3681,13 @@ export default function BookingAdminApp({
                 state={state}
                 showToast={showToast}
                 roomName={selectedRoomName}
-                canDelete={
-                  !state.services.some((service) =>
-                    [service.resource, ...(service.rooms ?? [])].includes(selectedRoomName)
-                  ) && !state.bookings.some((booking) => booking.resource === selectedRoomName)
-                }
+                deleteGuardMessage={getRoomDeleteGuard(selectedRoomName, state)}
                 onCancel={() => router.push("/admin/settings/rooms")}
                 onDelete={async () => {
                   const next = {
                     ...state,
                     resources: state.resources.filter((resource) => resource !== selectedRoomName),
+                    schedules: removeRoomFromSchedules(state.schedules, selectedRoomName),
                   };
 
                   await saveSettings(next);
@@ -9158,7 +9184,7 @@ function RoomEditorView({
   state,
   showToast,
   roomName,
-  canDelete = false,
+  deleteGuardMessage = null,
   onCancel,
   onDelete,
   onSave,
@@ -9167,7 +9193,7 @@ function RoomEditorView({
   state: AppState;
   showToast: (message: string) => void;
   roomName?: string;
-  canDelete?: boolean;
+  deleteGuardMessage?: string | null;
   onCancel: () => void;
   onDelete?: () => Promise<void>;
   onSave: (draft: RoomEditorDraft) => Promise<void>;
@@ -9322,14 +9348,29 @@ function RoomEditorView({
 
               <div className="flex items-center justify-between border-t border-black/10 bg-[#f7f8fb] px-5 py-4">
                 {roomName ? (
-                  <button
-                    type="button"
-                    disabled={!canDelete}
-                    onClick={() => void onDelete?.()}
-                    className="rounded-lg border border-black/10 bg-white px-5 py-2.5 text-[15px] font-medium text-black/30 disabled:cursor-not-allowed"
-                  >
-                    Delete
-                  </button>
+                  deleteGuardMessage ? (
+                    <div className="group relative inline-flex items-center gap-3">
+                      <button
+                        type="button"
+                        disabled
+                        className="rounded-lg border border-black/10 bg-white px-5 py-2.5 text-[14px] font-semibold text-black/25"
+                      >
+                        Delete
+                      </button>
+                      <div className="pointer-events-none absolute left-[calc(100%+16px)] top-1/2 z-20 w-max max-w-[340px] -translate-y-1/2 rounded-md bg-[#707070] px-3 py-2 text-[11px] font-medium text-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
+                        {deleteGuardMessage}
+                        <div className="absolute right-full top-1/2 h-0 w-0 -translate-y-1/2 border-b-[7px] border-r-[7px] border-t-[7px] border-b-transparent border-r-[#707070] border-t-transparent" />
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void onDelete?.()}
+                      className="rounded-lg border border-[#e7c3bf] bg-white px-5 py-2.5 text-[14px] font-semibold text-[#b33a30] transition hover:bg-[#fff3f1]"
+                    >
+                      Delete
+                    </button>
+                  )
                 ) : (
                   <div />
                 )}
@@ -9422,7 +9463,23 @@ function RoomEditorView({
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-4 border-t border-black/10 bg-[#f7f8fb] px-6 py-5">
+          <div className="flex items-center justify-between gap-4 border-t border-black/10 bg-[#f7f8fb] px-6 py-5">
+            {roomName ? (
+              deleteGuardMessage ? (
+                <div className="max-w-[220px] text-[12px] leading-5 text-black/45">{deleteGuardMessage}</div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void onDelete?.()}
+                  className="rounded-lg border border-[#e7c3bf] bg-white px-5 py-2.5 text-[14px] font-semibold text-[#b33a30]"
+                >
+                  Delete
+                </button>
+              )
+            ) : (
+              <div />
+            )}
+            <div className="flex items-center gap-4">
             <button type="button" onClick={onCancel} className="text-[15px] font-medium text-black/65">
               Cancel
             </button>
@@ -9433,6 +9490,7 @@ function RoomEditorView({
             >
               Save
             </button>
+            </div>
           </div>
         </div>
       </div>
