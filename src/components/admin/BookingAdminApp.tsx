@@ -213,6 +213,9 @@ type BookingSettingsRow = {
   public_url: string;
   timezone: string;
   address: string | null;
+  profile_first_name: string | null;
+  profile_last_name: string | null;
+  profile_email: string | null;
   organization_name: string | null;
   country_region: string | null;
   address_line_1: string | null;
@@ -363,6 +366,11 @@ type AppState = {
     phone: string;
     publicFacingCalendar: boolean;
   };
+  profile: {
+    firstName: string;
+    lastName: string;
+    email: string;
+  };
   policies: {
     waiverEnabled: boolean;
     waiverDocumentUrl: string;
@@ -423,7 +431,15 @@ type ParsedCsvFile = {
 
 const storageKey = "grind_booking_admin_v1";
 const lastAppRouteKey = "grind_booking_admin_last_app_route";
-type SettingsSection = "basics" | "rooms" | "policies" | "schedules" | "staff" | "roles" | "taxes-fees";
+type SettingsSection =
+  | "profile"
+  | "basics"
+  | "rooms"
+  | "policies"
+  | "schedules"
+  | "staff"
+  | "roles"
+  | "taxes-fees";
 
 type RoomEditorDraft = {
   name: string;
@@ -980,7 +996,12 @@ const settingsNavGroups: {
   {
     title: "People",
     items: [
-      { label: "Profile", icon: "user" },
+      {
+        label: "Profile",
+        icon: "user",
+        href: bookingAdminRouteByView["settings-profile"],
+        section: "profile",
+      },
       {
         label: "Staff",
         icon: "user",
@@ -1022,6 +1043,11 @@ const defaultState: AppState = {
     postalCode: "34285",
     phone: "(941) 525-0880",
     publicFacingCalendar: false,
+  },
+  profile: {
+    firstName: "Jason",
+    lastName: "Allaire",
+    email: "info@grindbaseballlab.com",
   },
   policies: {
     waiverEnabled: false,
@@ -1753,6 +1779,7 @@ async function uploadWaiverPdf(file: File) {
 
 async function upsertFacilitySettings(
   facility: FacilitySettings,
+  profile: AppState["profile"],
   policies: BookingPolicies,
   taxesAndFees: AppState["taxesAndFees"]
 ) {
@@ -1762,6 +1789,9 @@ async function upsertFacilitySettings(
     public_url: facility.publicUrl,
     timezone: facility.timezone,
     address: composeFacilityAddress(facility),
+    profile_first_name: profile.firstName || null,
+    profile_last_name: profile.lastName || null,
+    profile_email: profile.email || null,
     organization_name: facility.organizationName,
     country_region: facility.country,
     address_line_1: facility.addressLine1,
@@ -3306,6 +3336,11 @@ export default function BookingAdminApp({
           phone: settings?.phone ? formatUsPhoneInput(settings.phone) : defaultState.facility.phone,
           publicFacingCalendar: settings?.public_calendar_enabled ?? defaultState.facility.publicFacingCalendar,
         },
+        profile: {
+          firstName: settings?.profile_first_name ?? defaultState.profile.firstName,
+          lastName: settings?.profile_last_name ?? defaultState.profile.lastName,
+          email: settings?.profile_email ?? defaultState.profile.email,
+        },
         policies: {
           waiverEnabled:
             settings?.waiver_enabled ?? defaultState.policies.waiverEnabled,
@@ -3469,6 +3504,7 @@ export default function BookingAdminApp({
     try {
       await upsertFacilitySettings(
         normalizedNext.facility,
+        normalizedNext.profile,
         normalizedNext.policies,
         normalizedNext.taxesAndFees
       );
@@ -4646,6 +4682,7 @@ export default function BookingAdminApp({
           {!isRoomEditPage &&
           (view === "more" ||
             view === "settings" ||
+            view === "settings-profile" ||
             view === "settings-basics" ||
             view === "settings-rooms" ||
             view === "settings-taxes-fees" ||
@@ -4653,7 +4690,9 @@ export default function BookingAdminApp({
             <SettingsView
               backHref={backToAppHref}
               section={
-                view === "settings-policies"
+                view === "settings-profile"
+                  ? "profile"
+                  : view === "settings-policies"
                   ? "policies"
                   : view === "settings-taxes-fees"
                     ? "taxes-fees"
@@ -9252,6 +9291,7 @@ function SettingsView({
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState(state);
+  const isProfile = section === "profile";
   const isBasics = section === "basics";
   const isRooms = section === "rooms";
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -9280,6 +9320,16 @@ function SettingsView({
         },
       };
     });
+  }
+
+  function updateProfile(next: Partial<AppState["profile"]>) {
+    setDraft((current) => ({
+      ...current,
+      profile: {
+        ...current.profile,
+        ...next,
+      },
+    }));
   }
 
   function updatePolicies(next: Partial<AppState["policies"]>) {
@@ -9345,7 +9395,15 @@ function SettingsView({
     }
   }
 
-  const sectionTitle = isBasics ? "Basics" : isRooms ? "Rooms" : isTaxesFees ? "Taxes & Fees" : "Policies";
+  const sectionTitle = isProfile
+    ? "Profile"
+    : isBasics
+      ? "Basics"
+      : isRooms
+        ? "Rooms"
+        : isTaxesFees
+          ? "Taxes & Fees"
+          : "Policies";
   const filteredRooms = draft.resources.filter((resource) =>
     resource.toLowerCase().includes(roomSearch.trim().toLowerCase())
   );
@@ -9431,9 +9489,13 @@ function SettingsView({
         <div className="px-7 py-8 lg:px-8">
           <div className="max-w-[1084px]">
             <PageHeader
-              title={isBasics ? "Basics" : isRooms ? "Rooms" : isTaxesFees ? "Taxes & Fees" : "Policies"}
+              title={
+                isProfile ? "Profile" : isBasics ? "Basics" : isRooms ? "Rooms" : isTaxesFees ? "Taxes & Fees" : "Policies"
+              }
               subtitle={
-                isBasics
+                isProfile
+                  ? "Manage your user profile"
+                  : isBasics
                   ? "Manage your facility settings."
                   : isRooms
                     ? "Rooms are bookable spaces within your facility."
@@ -9452,7 +9514,66 @@ function SettingsView({
             <div className="overflow-hidden rounded-[10px] border border-black/10 bg-white shadow-sm">
               <div className="border-t-4 border-t-[#4866b0]" />
 
-              {isBasics ? (
+              {isProfile ? (
+                <>
+                  <div className="border-b border-black/10 px-5 py-4 text-[18px] font-semibold">Your Details</div>
+                  <div className="grid gap-6 px-5 py-6 lg:grid-cols-[140px_minmax(0,1fr)]">
+                    <div className="flex items-start justify-center pt-3">
+                      <div className="flex h-[104px] w-[104px] items-center justify-center rounded-full bg-[#d3d3d3] text-white">
+                        <Icon name="user" className="h-12 w-12" />
+                      </div>
+                    </div>
+                    <div className="grid gap-7">
+                      <div className="grid gap-6 lg:grid-cols-2">
+                        <label className="grid gap-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[13px] font-semibold text-black/70">First Name</span>
+                            <span className="rounded-full bg-black/[0.06] px-2 py-0.5 text-[11px] font-medium text-black/55">
+                              Optional
+                            </span>
+                          </div>
+                          <input
+                            value={draft.profile.firstName}
+                            onChange={(event) => updateProfile({ firstName: event.target.value })}
+                            className="min-h-12 rounded-lg border border-black/10 px-4 text-[15px] outline-none focus:border-black/30"
+                          />
+                        </label>
+                        <label className="grid gap-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[13px] font-semibold text-black/70">Last Name</span>
+                            <span className="rounded-full bg-black/[0.06] px-2 py-0.5 text-[11px] font-medium text-black/55">
+                              Optional
+                            </span>
+                          </div>
+                          <input
+                            value={draft.profile.lastName}
+                            onChange={(event) => updateProfile({ lastName: event.target.value })}
+                            className="min-h-12 rounded-lg border border-black/10 px-4 text-[15px] outline-none focus:border-black/30"
+                          />
+                        </label>
+                      </div>
+
+                      <div className="grid gap-1.5">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-[13px] font-semibold text-black/70">Email</span>
+                          <button
+                            type="button"
+                            onClick={() => showToast("Email changes are coming next.")}
+                            className="text-[13px] font-medium text-[#6379a5]"
+                          >
+                            Change
+                          </button>
+                        </div>
+                        <input
+                          value={draft.profile.email}
+                          disabled
+                          className="min-h-12 w-full rounded-lg border border-black/10 bg-[#fafafa] px-4 text-[15px] text-black/55 outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : isBasics ? (
                 <>
                   <div className="border-b border-black/10 px-5 py-4 text-[18px] font-semibold">Facility Details</div>
                   <div className="divide-y divide-black/10">
@@ -9924,7 +10045,60 @@ function SettingsView({
         ) : (
         <div className="overflow-hidden rounded-[10px] border border-black/12 bg-white shadow-sm">
           <div className="border-t-4 border-t-[#4866b0]" />
-          {isBasics ? (
+          {isProfile ? (
+            <>
+              <div className="border-b border-black/10 px-6 py-5 text-[18px] font-medium">Your Details</div>
+              <div className="grid gap-6 px-6 py-6">
+                <div className="flex justify-center">
+                  <div className="flex h-[104px] w-[104px] items-center justify-center rounded-full bg-[#d3d3d3] text-white">
+                    <Icon name="user" className="h-12 w-12" />
+                  </div>
+                </div>
+
+                <label className="grid gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[14px] font-medium text-black/85">First Name</span>
+                    <span className="rounded-full bg-black/[0.06] px-2 py-0.5 text-[11px] font-medium text-black/55">Optional</span>
+                  </div>
+                  <input
+                    value={draft.profile.firstName}
+                    onChange={(event) => updateProfile({ firstName: event.target.value })}
+                    className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
+                  />
+                </label>
+
+                <label className="grid gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[14px] font-medium text-black/85">Last Name</span>
+                    <span className="rounded-full bg-black/[0.06] px-2 py-0.5 text-[11px] font-medium text-black/55">Optional</span>
+                  </div>
+                  <input
+                    value={draft.profile.lastName}
+                    onChange={(event) => updateProfile({ lastName: event.target.value })}
+                    className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
+                  />
+                </label>
+
+                <div className="grid gap-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[14px] font-medium text-black/85">Email</span>
+                    <button
+                      type="button"
+                      onClick={() => showToast("Email changes are coming next.")}
+                      className="text-[13px] font-medium text-[#6379a5]"
+                    >
+                      Change
+                    </button>
+                  </div>
+                  <input
+                    value={draft.profile.email}
+                    disabled
+                    className="min-h-[48px] rounded-[8px] border border-black/12 bg-[#fafafa] px-4 text-[14px] text-black/55 outline-none"
+                  />
+                </div>
+              </div>
+            </>
+          ) : isBasics ? (
             <>
               <div className="border-b border-black/10 px-6 py-5 text-[18px] font-medium">Facility Details</div>
               <div className="px-6 py-6">

@@ -9,6 +9,7 @@ export type BookingAdminView =
   | "retail"
   | "reports"
   | "settings"
+  | "settings-profile"
   | "settings-basics"
   | "settings-schedules"
   | "settings-schedules-add"
@@ -30,6 +31,7 @@ export const bookingAdminRouteByView: Record<BookingAdminView, string> = {
   retail: "/admin/retail",
   reports: "/admin/reports",
   settings: "/admin/settings",
+  "settings-profile": "/admin/settings/profile",
   "settings-basics": "/admin/settings/basics",
   "settings-schedules": "/admin/settings/schedules",
   "settings-schedules-add": "/admin/settings/schedules/add",
@@ -55,6 +57,7 @@ export function bookingAdminViewFromSection(
     case "retail":
     case "reports":
     case "settings":
+    case "settings-profile":
     case "settings-basics":
     case "settings-schedules":
     case "settings-schedules-add":
