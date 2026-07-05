@@ -26,6 +26,38 @@ type Service = {
   calendarColor: string;
 };
 
+type ScheduleSlot = {
+  id: string;
+  start: string;
+  end: string;
+  sortOrder: number;
+};
+
+type ScheduleDayConfig = {
+  day: string;
+  weekday: number;
+  enabled: boolean;
+  slots: ScheduleSlot[];
+};
+
+type ScheduleOverride = {
+  id: string;
+  date: string;
+  isClosed: boolean;
+  slots: ScheduleSlot[];
+};
+
+type ScheduleRecord = {
+  id: string;
+  name: string;
+  slug: string;
+  isDefault: boolean;
+  roomNames: string[];
+  serviceNames: string[];
+  dayConfigs: ScheduleDayConfig[];
+  overrides: ScheduleOverride[];
+};
+
 type FamilyMember = {
   id: string;
   firstName: string;
@@ -138,6 +170,7 @@ type BookingResourceRow = {
   name: string;
   sort_order: number;
   is_active: boolean;
+  schedule_id: string | null;
 };
 
 type BookingSettingsRow = {
@@ -172,6 +205,35 @@ type BookingServiceRow = {
   status: Service["status"];
   sort_order: number;
   calendar_color: string | null;
+  schedule_id: string | null;
+};
+
+type BookingScheduleRow = {
+  id: string;
+  name: string;
+  slug: string;
+  is_default: boolean;
+  is_active: boolean;
+};
+
+type BookingScheduleSlotRow = {
+  id: string;
+  schedule_id: string;
+  weekday: number;
+  day_name: string;
+  start_time: string;
+  end_time: string;
+  sort_order: number;
+};
+
+type BookingScheduleOverrideRow = {
+  id: string;
+  schedule_id: string;
+  override_date: string;
+  is_closed: boolean;
+  start_time: string | null;
+  end_time: string | null;
+  sort_order: number;
 };
 
 type BookingCustomerRow = {
@@ -261,6 +323,7 @@ type AppState = {
   customers: Customer[];
   bookings: Booking[];
   availability: [string, boolean, string, string][];
+  schedules: ScheduleRecord[];
   campaigns: Campaign[];
   products: Product[];
 };
@@ -306,7 +369,7 @@ type SettingsSection = "basics" | "rooms" | "policies" | "schedules";
 
 type RoomEditorDraft = {
   name: string;
-  schedule: string;
+  scheduleId: string;
   parentRoom: string;
 };
 
@@ -631,6 +694,26 @@ const defaultState: AppState = {
     ["Saturday", true, "09:00", "15:00"],
     ["Sunday", false, "10:00", "14:00"],
   ],
+  schedules: [
+    {
+      id: "schedule-working-hours",
+      name: "Working Hours",
+      slug: "working-hours",
+      isDefault: true,
+      roomNames: ["The Grind Baseball Lab", "Cage 1", "Cage 2", "Pitching Lane", "HitTrax"],
+      serviceNames: [],
+      dayConfigs: [
+        { day: "Monday", weekday: 1, enabled: true, slots: [{ id: "slot-mon-1", start: "09:00", end: "20:00", sortOrder: 1 }] },
+        { day: "Tuesday", weekday: 2, enabled: true, slots: [{ id: "slot-tue-1", start: "09:00", end: "20:00", sortOrder: 1 }] },
+        { day: "Wednesday", weekday: 3, enabled: true, slots: [{ id: "slot-wed-1", start: "09:00", end: "20:00", sortOrder: 1 }] },
+        { day: "Thursday", weekday: 4, enabled: true, slots: [{ id: "slot-thu-1", start: "09:00", end: "20:00", sortOrder: 1 }] },
+        { day: "Friday", weekday: 5, enabled: true, slots: [{ id: "slot-fri-1", start: "09:00", end: "18:00", sortOrder: 1 }] },
+        { day: "Saturday", weekday: 6, enabled: true, slots: [{ id: "slot-sat-1", start: "09:00", end: "15:00", sortOrder: 1 }] },
+        { day: "Sunday", weekday: 0, enabled: false, slots: [] },
+      ],
+      overrides: [],
+    },
+  ],
   campaigns: [
     {
       id: "cmp-1",
@@ -920,6 +1003,67 @@ function renameRoomReferences(state: AppState, currentName: string, nextName: st
       ...booking,
       resource: booking.resource === currentName ? nextName : booking.resource,
     })),
+    schedules: state.schedules.map((schedule) => ({
+      ...schedule,
+      roomNames: schedule.roomNames.map((roomName) => (roomName === currentName ? nextName : roomName)),
+    })),
+  };
+}
+
+function assignRoomToSchedule(schedules: ScheduleRecord[], roomName: string, scheduleId: string) {
+  return schedules.map((schedule) => {
+    const hasRoom = schedule.roomNames.includes(roomName);
+    if (schedule.id === scheduleId) {
+      return hasRoom
+        ? schedule
+        : {
+            ...schedule,
+            roomNames: [...schedule.roomNames, roomName],
+          };
+    }
+
+    return hasRoom
+      ? {
+          ...schedule,
+          roomNames: schedule.roomNames.filter((name) => name !== roomName),
+        }
+      : schedule;
+  });
+}
+
+function normalizeScheduleRecord(schedule: ScheduleRecord): ScheduleRecord {
+  return {
+    ...schedule,
+    name: schedule.name.trim(),
+    slug: slugifyScheduleName(schedule.name) || "schedule",
+    dayConfigs: emptyScheduleDayConfigs().map((base) => {
+      const config = schedule.dayConfigs.find((item) => item.day === base.day);
+      const orderedSlots = (config?.slots ?? [])
+        .filter((slot) => slot.start && slot.end && timeToMinutes(slot.end) > timeToMinutes(slot.start))
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((slot, index) => ({
+          ...slot,
+          sortOrder: index + 1,
+        }));
+
+      return {
+        ...base,
+        enabled: Boolean(config?.enabled && orderedSlots.length),
+        slots: config?.enabled ? orderedSlots : [],
+      };
+    }),
+    overrides: schedule.overrides
+      .map((override) => ({
+        ...override,
+        slots: [...override.slots]
+          .filter((slot) => slot.start && slot.end && timeToMinutes(slot.end) > timeToMinutes(slot.start))
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+          .map((slot, index) => ({
+            ...slot,
+            sortOrder: index + 1,
+          })),
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date)),
   };
 }
 
@@ -997,7 +1141,7 @@ async function upsertFacilitySettings(
 
 async function upsertResources(resourceNames: string[]) {
   const names = resourceNames.map((name) => name.trim()).filter(Boolean);
-  const current = await supabase.from("booking_resources").select("id,name,sort_order,is_active");
+  const current = await supabase.from("booking_resources").select("id,name,sort_order,is_active,schedule_id");
   if (current.error) throw current.error;
 
   const currentRows = (current.data ?? []) as BookingResourceRow[];
@@ -1016,7 +1160,7 @@ async function upsertResources(resourceNames: string[]) {
     const upserted = await supabase
       .from("booking_resources")
       .upsert(activeRows)
-      .select("id,name,sort_order,is_active")
+      .select("id,name,sort_order,is_active,schedule_id")
       .order("sort_order");
     if (upserted.error) throw upserted.error;
   }
@@ -1032,7 +1176,7 @@ async function upsertResources(resourceNames: string[]) {
 
   const refreshed = await supabase
     .from("booking_resources")
-    .select("id,name,sort_order,is_active")
+    .select("id,name,sort_order,is_active,schedule_id")
     .eq("is_active", true)
     .order("sort_order");
 
@@ -1225,6 +1369,136 @@ function weekDates(value: string) {
     next.setDate(start.getDate() + index);
     return isoDate(next);
   });
+}
+
+const scheduleWeekdays: Array<{ day: string; weekday: number }> = [
+  { day: "Sunday", weekday: 0 },
+  { day: "Monday", weekday: 1 },
+  { day: "Tuesday", weekday: 2 },
+  { day: "Wednesday", weekday: 3 },
+  { day: "Thursday", weekday: 4 },
+  { day: "Friday", weekday: 5 },
+  { day: "Saturday", weekday: 6 },
+];
+
+const scheduleWeekdayOrder = new Map(scheduleWeekdays.map((item) => [item.day, item.weekday]));
+
+function slugifyScheduleName(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function emptyScheduleDayConfigs() {
+  return scheduleWeekdays.map(({ day, weekday }) => ({
+    day,
+    weekday,
+    enabled: false,
+    slots: [] as ScheduleSlot[],
+  }));
+}
+
+function scheduleDayConfigsFromAvailability(availability: AppState["availability"]) {
+  return emptyScheduleDayConfigs().map((base) => {
+    const row = availability.find(([day]) => day === base.day);
+    if (!row) return base;
+    const [, enabled, start, end] = row;
+    return {
+      ...base,
+      enabled,
+      slots: enabled ? [{ id: `${base.day.toLowerCase()}-1`, start, end, sortOrder: 1 }] : [],
+    };
+  });
+}
+
+function availabilityFromSchedule(schedule: ScheduleRecord): AppState["availability"] {
+  return scheduleWeekdays
+    .map(({ day }) => {
+      const config = schedule.dayConfigs.find((item) => item.day === day);
+      if (!config || !config.enabled || !config.slots.length) {
+        return [day, false, "00:00", "23:59"] as [string, boolean, string, string];
+      }
+
+      const orderedSlots = [...config.slots].sort((a, b) => a.sortOrder - b.sortOrder);
+      return [day, true, orderedSlots[0].start, orderedSlots[orderedSlots.length - 1].end] as [
+        string,
+        boolean,
+        string,
+        string,
+      ];
+    })
+    .sort((a, b) => (scheduleWeekdayOrder.get(a[0]) ?? 99) - (scheduleWeekdayOrder.get(b[0]) ?? 99));
+}
+
+function scheduleForRoom(schedules: ScheduleRecord[], roomName: string) {
+  return (
+    schedules.find((schedule) => schedule.roomNames.includes(roomName)) ??
+    schedules.find((schedule) => schedule.isDefault) ??
+    schedules[0] ??
+    null
+  );
+}
+
+function dayConfigForDate(schedule: ScheduleRecord | null | undefined, value: string) {
+  const dayName = weekdayName(value);
+  const fallback = scheduleWeekdays.find((item) => item.day === dayName) ?? { day: dayName, weekday: 0 };
+  return (
+    schedule?.dayConfigs.find((config) => config.day === dayName) ?? {
+      day: fallback.day,
+      weekday: fallback.weekday,
+      enabled: false,
+      slots: [],
+    }
+  );
+}
+
+function closedBlocksForSchedule(schedule: ScheduleRecord | null | undefined, value: string) {
+  const config = dayConfigForDate(schedule, value);
+  const orderedSlots = [...config.slots].sort((a, b) => a.sortOrder - b.sortOrder);
+
+  if (!config.enabled || !orderedSlots.length) {
+    return [{ start: 0, end: 1439 }];
+  }
+
+  const blocks: Array<{ start: number; end: number }> = [];
+  let cursor = 0;
+
+  for (const slot of orderedSlots) {
+    const slotStart = Math.max(0, timeToMinutes(slot.start));
+    const slotEnd = Math.min(1439, timeToMinutes(slot.end));
+    if (slotStart > cursor) {
+      blocks.push({ start: cursor, end: slotStart });
+    }
+    cursor = Math.max(cursor, slotEnd);
+  }
+
+  if (cursor < 1439) {
+    blocks.push({ start: cursor, end: 1439 });
+  }
+
+  return blocks;
+}
+
+function scheduleScrollTargetTime(schedule: ScheduleRecord | null | undefined, date: string) {
+  const today = isoDate(new Date());
+
+  if (date === today) {
+    const config = dayConfigForDate(schedule, date);
+    const now = new Date();
+    const roundedMinutes = Math.floor((now.getHours() * 60 + now.getMinutes()) / 30) * 30;
+    if (config.enabled && config.slots.length) {
+      const firstSlot = [...config.slots].sort((a, b) => a.sortOrder - b.sortOrder)[0];
+      const firstStart = timeToMinutes(firstSlot.start);
+      return minutesToTime(Math.max(firstStart, roundedMinutes));
+    }
+    return minutesToTime(roundedMinutes);
+  }
+
+  const config = dayConfigForDate(schedule, date);
+  if (!config.enabled || !config.slots.length) return "00:00";
+  return [...config.slots].sort((a, b) => a.sortOrder - b.sortOrder)[0].start;
 }
 
 function availabilityForDate(availability: AppState["availability"], value: string) {
@@ -1918,6 +2192,17 @@ export default function BookingAdminApp({
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(" ");
   }, [selectedScheduleId]);
+  const selectedSchedule = useMemo(() => {
+    if (!selectedScheduleId) return null;
+
+    const decodedId = decodeURIComponent(selectedScheduleId);
+    return (
+      state.schedules.find((schedule) => schedule.id === selectedScheduleId) ??
+      state.schedules.find((schedule) => schedule.slug === decodedId) ??
+      state.schedules.find((schedule) => schedule.name === selectedScheduleName) ??
+      null
+    );
+  }, [selectedScheduleId, selectedScheduleName, state.schedules]);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -1952,6 +2237,9 @@ export default function BookingAdminApp({
         customersResult,
         bookingsResult,
         availabilityResult,
+        schedulesResult,
+        scheduleSlotsResult,
+        scheduleOverridesResult,
         campaignsResult,
         productsResult,
       ] = await Promise.all([
@@ -1961,6 +2249,9 @@ export default function BookingAdminApp({
         supabase.from("booking_customers").select("*").order("created_at"),
         supabase.from("booking_bookings").select("*").order("booking_date").order("start_time"),
         supabase.from("booking_availability").select("*").order("weekday"),
+        supabase.from("booking_schedules").select("*").eq("is_active", true).order("created_at"),
+        supabase.from("booking_schedule_slots").select("*").order("weekday").order("sort_order"),
+        supabase.from("booking_schedule_overrides").select("*").order("override_date").order("sort_order"),
         supabase.from("booking_campaigns").select("*").order("created_at"),
         supabase.from("booking_products").select("*").order("created_at"),
       ]);
@@ -1972,6 +2263,9 @@ export default function BookingAdminApp({
         customersResult.error,
         bookingsResult.error,
         availabilityResult.error,
+        schedulesResult.error,
+        scheduleSlotsResult.error,
+        scheduleOverridesResult.error,
         campaignsResult.error,
         productsResult.error,
       ].find(Boolean);
@@ -1984,6 +2278,9 @@ export default function BookingAdminApp({
       const customerRows = (customersResult.data ?? []) as BookingCustomerRow[];
       const bookingRows = (bookingsResult.data ?? []) as BookingBookingRow[];
       const availabilityRows = (availabilityResult.data ?? []) as BookingAvailabilityRow[];
+      const scheduleRows = (schedulesResult.data ?? []) as BookingScheduleRow[];
+      const scheduleSlotRows = (scheduleSlotsResult.data ?? []) as BookingScheduleSlotRow[];
+      const scheduleOverrideRows = (scheduleOverridesResult.data ?? []) as BookingScheduleOverrideRow[];
       const campaignRows = (campaignsResult.data ?? []) as BookingCampaignRow[];
       const productRows = (productsResult.data ?? []) as BookingProductRow[];
       const activeResourceRows = resourceRows.filter((resource) => resource.is_active);
@@ -1992,6 +2289,7 @@ export default function BookingAdminApp({
         name,
         sort_order: index + 1,
         is_active: true,
+        schedule_id: null,
       }));
       const { idsByName, namesById } = resourceLookup(resourceRows.length ? resourceRows : resources);
       const serviceMetaById = new Map(
@@ -2000,10 +2298,82 @@ export default function BookingAdminApp({
           {
             name: service.name,
             calendarColor: normalizeCalendarColor(service.calendar_color),
+            scheduleId: service.schedule_id,
           },
         ])
       );
       const availabilityOrder = new Map(defaultState.availability.map(([day], index) => [day, index]));
+      const roomNamesByScheduleId = new Map<string, string[]>();
+
+      for (const resource of resources) {
+        if (!resource.schedule_id) continue;
+        const roomNames = roomNamesByScheduleId.get(resource.schedule_id) ?? [];
+        roomNames.push(resource.name);
+        roomNamesByScheduleId.set(resource.schedule_id, roomNames);
+      }
+
+      const serviceNamesByScheduleId = new Map<string, string[]>();
+      for (const service of serviceRows) {
+        if (!service.schedule_id) continue;
+        const serviceNames = serviceNamesByScheduleId.get(service.schedule_id) ?? [];
+        serviceNames.push(service.name);
+        serviceNamesByScheduleId.set(service.schedule_id, serviceNames);
+      }
+
+      const schedules = scheduleRows.length
+        ? scheduleRows.map((schedule) => {
+            const dayConfigs = emptyScheduleDayConfigs().map((base) => {
+              const slots = scheduleSlotRows
+                .filter((slot) => slot.schedule_id === schedule.id && slot.weekday === base.weekday)
+                .sort((a, b) => a.sort_order - b.sort_order)
+                .map((slot) => ({
+                  id: slot.id,
+                  start: normalizeTime(slot.start_time),
+                  end: normalizeTime(slot.end_time),
+                  sortOrder: slot.sort_order,
+                }));
+
+              return {
+                ...base,
+                enabled: slots.length > 0,
+                slots,
+              };
+            });
+
+            const overrideMap = new Map<string, ScheduleOverride>();
+            for (const row of scheduleOverrideRows.filter((item) => item.schedule_id === schedule.id)) {
+              const existing = overrideMap.get(row.override_date) ?? {
+                id: row.id,
+                date: row.override_date,
+                isClosed: row.is_closed,
+                slots: [],
+              };
+
+              if (!row.is_closed && row.start_time && row.end_time) {
+                existing.slots.push({
+                  id: row.id,
+                  start: normalizeTime(row.start_time),
+                  end: normalizeTime(row.end_time),
+                  sortOrder: row.sort_order,
+                });
+              }
+
+              existing.isClosed = existing.isClosed || row.is_closed;
+              overrideMap.set(row.override_date, existing);
+            }
+
+            return {
+              id: schedule.id,
+              name: schedule.name,
+              slug: schedule.slug,
+              isDefault: schedule.is_default,
+              roomNames: roomNamesByScheduleId.get(schedule.id) ?? [],
+              serviceNames: serviceNamesByScheduleId.get(schedule.id) ?? [],
+              dayConfigs,
+              overrides: Array.from(overrideMap.values()).sort((a, b) => a.date.localeCompare(b.date)),
+            };
+          })
+        : defaultState.schedules;
 
       setResourceIdsByName(idsByName);
       const legacyAddress = parseLegacyFacilityAddress(settings?.address ?? defaultState.facility.address);
@@ -2117,6 +2487,7 @@ export default function BookingAdminApp({
               ])
               .sort((a, b) => (availabilityOrder.get(a[0]) ?? 99) - (availabilityOrder.get(b[0]) ?? 99))
           : defaultState.availability,
+        schedules,
         campaigns: campaignRows.map((campaign) => ({
           id: campaign.id,
           name: campaign.name,
@@ -2171,7 +2542,35 @@ export default function BookingAdminApp({
     try {
       await upsertFacilitySettings(normalizedNext.facility, normalizedNext.policies);
       const resources = await upsertResources(normalizedNext.resources);
-      setResourceIdsByName(resourceLookup(resources).idsByName);
+      const lookup = resourceLookup(resources);
+      setResourceIdsByName(lookup.idsByName);
+
+      const desiredScheduleIdsByRoom = new Map<string, string>();
+      normalizedNext.schedules.forEach((schedule) => {
+        schedule.roomNames.forEach((roomName) => {
+          desiredScheduleIdsByRoom.set(roomName, schedule.id);
+        });
+      });
+
+      const scheduleUpdates = resources
+        .map((resource) => ({
+          id: resource.id,
+          currentScheduleId: resource.schedule_id ?? null,
+          nextScheduleId: desiredScheduleIdsByRoom.get(resource.name) ?? null,
+        }))
+        .filter((resource) => resource.currentScheduleId !== resource.nextScheduleId);
+
+      if (scheduleUpdates.length) {
+        const updateResults = await Promise.all(
+          scheduleUpdates.map((resource) =>
+            supabase.from("booking_resources").update({ schedule_id: resource.nextScheduleId }).eq("id", resource.id)
+          )
+        );
+
+        const failedUpdate = updateResults.find((result) => result.error);
+        if (failedUpdate?.error) throw failedUpdate.error;
+      }
+
       showToast("Settings saved.");
     } catch (error) {
       console.error(error);
@@ -2251,6 +2650,160 @@ export default function BookingAdminApp({
       console.error(error);
       showToast("Availability could not be saved.");
     }
+  }
+
+  async function saveScheduleRecord(scheduleDraft: ScheduleRecord, mode: "add" | "edit") {
+    const normalizedSchedule = normalizeScheduleRecord(scheduleDraft);
+    if (!normalizedSchedule.name) {
+      showToast("Schedule name is required.");
+      return false;
+    }
+
+    const duplicateSchedule = state.schedules.find(
+      (schedule) =>
+        schedule.id !== normalizedSchedule.id &&
+        schedule.name.trim().toLowerCase() === normalizedSchedule.name.trim().toLowerCase()
+    );
+    if (duplicateSchedule) {
+      showToast("That schedule already exists.");
+      return false;
+    }
+
+    const persistedSchedule =
+      mode === "edit"
+        ? state.schedules.map((schedule) => (schedule.id === normalizedSchedule.id ? normalizedSchedule : schedule))
+        : [...state.schedules, normalizedSchedule];
+
+    const workingSchedule =
+      persistedSchedule.find((schedule) => schedule.isDefault || schedule.slug === "working-hours") ?? persistedSchedule[0];
+    const next = {
+      ...state,
+      schedules: persistedSchedule,
+      availability: workingSchedule ? availabilityFromSchedule(workingSchedule) : state.availability,
+    };
+
+    if (dataSource === "local") {
+      saveLocal(next, "Schedule saved.");
+      return true;
+    }
+
+    const previousState = state;
+    setState(next);
+
+    try {
+      const schedulePayload = {
+        ...(mode === "edit" && normalizedSchedule.id ? { id: normalizedSchedule.id } : {}),
+        name: normalizedSchedule.name,
+        slug: normalizedSchedule.slug,
+        is_default: normalizedSchedule.isDefault,
+        is_active: true,
+      };
+
+      const scheduleResult = await supabase
+        .from("booking_schedules")
+        .upsert(schedulePayload)
+        .select("id")
+        .single();
+
+      if (scheduleResult.error) throw scheduleResult.error;
+      const scheduleId = scheduleResult.data.id as string;
+
+      const deleteSlotsResult = await supabase.from("booking_schedule_slots").delete().eq("schedule_id", scheduleId);
+      if (deleteSlotsResult.error) throw deleteSlotsResult.error;
+
+      const slotRows = normalizedSchedule.dayConfigs.flatMap((config) =>
+        config.enabled
+          ? config.slots.map((slot, index) => ({
+              schedule_id: scheduleId,
+              weekday: config.weekday,
+              day_name: config.day,
+              start_time: slot.start,
+              end_time: slot.end,
+              sort_order: index + 1,
+            }))
+          : []
+      );
+
+      if (slotRows.length) {
+        const insertSlotsResult = await supabase.from("booking_schedule_slots").insert(slotRows);
+        if (insertSlotsResult.error) throw insertSlotsResult.error;
+      }
+
+      const deleteOverridesResult = await supabase.from("booking_schedule_overrides").delete().eq("schedule_id", scheduleId);
+      if (deleteOverridesResult.error) throw deleteOverridesResult.error;
+
+      const overrideRows: Array<{
+        schedule_id: string;
+        override_date: string;
+        is_closed: boolean;
+        start_time: string | null;
+        end_time: string | null;
+        sort_order: number;
+      }> = [];
+
+      for (const override of normalizedSchedule.overrides) {
+        if (override.isClosed) {
+          overrideRows.push({
+            schedule_id: scheduleId,
+            override_date: override.date,
+            is_closed: true,
+            start_time: null,
+            end_time: null,
+            sort_order: 1,
+          });
+          continue;
+        }
+
+        override.slots.forEach((slot, index) => {
+          overrideRows.push({
+            schedule_id: scheduleId,
+            override_date: override.date,
+            is_closed: false,
+            start_time: slot.start,
+            end_time: slot.end,
+            sort_order: index + 1,
+          });
+        });
+      }
+
+      if (overrideRows.length) {
+        const insertOverridesResult = await supabase.from("booking_schedule_overrides").insert(overrideRows);
+        if (insertOverridesResult.error) throw insertOverridesResult.error;
+      }
+
+      if (normalizedSchedule.isDefault) {
+        const workingAvailability = availabilityFromSchedule({ ...normalizedSchedule, id: scheduleId });
+        const availabilityResult = await supabase.from("booking_availability").upsert(
+          workingAvailability.map(([day, open, start, end], index) => ({
+            weekday: day === "Sunday" ? 0 : index + 1,
+            day_name: day,
+            is_open: open,
+            start_time: start,
+            end_time: end,
+          })),
+          { onConflict: "weekday" }
+        );
+        if (availabilityResult.error) throw availabilityResult.error;
+      }
+
+      showToast("Schedule saved.");
+      await loadFromSupabase();
+      return true;
+    } catch (error) {
+      console.error(error);
+      setState(previousState);
+      showToast("Schedule could not be saved.");
+      return false;
+    }
+  }
+
+  async function saveRoomScheduleAssignment(roomName: string, scheduleId: string) {
+    if (dataSource === "local") return;
+    const resourceId = resourceIdsByName[roomName];
+    if (!resourceId) return;
+
+    const updateResult = await supabase.from("booking_resources").update({ schedule_id: scheduleId }).eq("id", resourceId);
+    if (updateResult.error) throw updateResult.error;
   }
 
   async function saveModalChange(next: AppState, message: string, change: ModalSaveChange) {
@@ -2817,23 +3370,47 @@ export default function BookingAdminApp({
           ) : null}
           {view === "settings-schedules-add" ? (
             <ScheduleEditorView
-              rows={state.availability}
+              schedule={{
+                id: makeId("schedule"),
+                name: "",
+                slug: "",
+                isDefault: false,
+                roomNames: [],
+                serviceNames: [],
+                dayConfigs: (
+                  state.schedules.find((item) => item.isDefault || item.slug === "working-hours")?.dayConfigs ??
+                  defaultState.schedules[0].dayConfigs
+                ).map((config) => ({
+                  ...config,
+                  slots: config.slots.map((slot) => ({ ...slot, id: makeId("schedule-slot") })),
+                })),
+                overrides: [],
+              }}
               onBack={() => router.push(bookingAdminRouteByView["settings-schedules"])}
-              onSave={() => showToast("Creating additional schedules is next. Working Hours editing is ready now.")}
+              onSave={async (schedule) => {
+                const saved = await saveScheduleRecord(schedule, "add");
+                if (saved) {
+                  router.push(bookingAdminRouteByView["settings-schedules"]);
+                }
+                return saved;
+              }}
               showToast={showToast}
               mode="add"
             />
           ) : null}
           {view === "settings-schedules" ? (
             isScheduleEditPage ? (
-              <ScheduleEditorView
-                rows={state.availability}
-                onBack={() => router.push(bookingAdminRouteByView["settings-schedules"])}
-                onSave={(rows) => void saveAvailability(rows)}
-                showToast={showToast}
-                scheduleName={selectedScheduleName ?? "Working Hours"}
-                mode="edit"
-              />
+              selectedSchedule ? (
+                <ScheduleEditorView
+                  schedule={selectedSchedule}
+                  onBack={() => router.push(bookingAdminRouteByView["settings-schedules"])}
+                  onSave={(schedule) => saveScheduleRecord(schedule, "edit")}
+                  showToast={showToast}
+                  mode="edit"
+                />
+              ) : (
+                <section className="min-h-screen px-6 py-8 text-[16px] text-black/60">Loading schedule...</section>
+              )
             ) : (
               <SchedulesSettingsView
                 backHref={backToAppHref}
@@ -2863,6 +3440,7 @@ export default function BookingAdminApp({
                 const next = {
                   ...state,
                   resources: [...state.resources, name],
+                  schedules: assignRoomToSchedule(state.schedules, name, draft.scheduleId),
                 };
 
                 await saveSettings(next);
@@ -2909,22 +3487,28 @@ export default function BookingAdminApp({
                   }
 
                   const next = renameRoomReferences(state, selectedRoomName, name);
+                  const nextWithSchedule = {
+                    ...next,
+                    schedules: assignRoomToSchedule(next.schedules, name, draft.scheduleId),
+                  };
 
                   if (dataSource === "local") {
-                    setState(next);
-                    stateToStorage(next);
+                    setState(nextWithSchedule);
+                    stateToStorage(nextWithSchedule);
                     showToast("Settings saved.");
                     router.replace(getRoomEditorHref(name, resourceIdsByName));
                     return;
                   }
 
-                  setState(next);
-                  stateToStorage(next);
+                  setState(nextWithSchedule);
+                  stateToStorage(nextWithSchedule);
 
                   try {
                     if (name !== selectedRoomName) {
                       await renameRoomInSupabase(selectedRoomName, name);
                     }
+
+                    await saveRoomScheduleAssignment(selectedRoomName, draft.scheduleId);
 
                     showToast("Settings saved.");
                     router.replace(getRoomEditorHref(name, resourceIdsByName));
@@ -6385,6 +6969,13 @@ function SettingsView({
   const filteredRooms = draft.resources.filter((resource) =>
     resource.toLowerCase().includes(roomSearch.trim().toLowerCase())
   );
+  const scheduleCollection = draft.schedules.length ? draft.schedules : defaultState.schedules;
+  const defaultScheduleName =
+    scheduleCollection.find((schedule) => schedule.isDefault || schedule.slug === "working-hours")?.name ??
+    scheduleCollection[0]?.name ??
+    "Working Hours";
+  const scheduleNameForRoom = (roomName: string) =>
+    scheduleForRoom(scheduleCollection, roomName)?.name ?? defaultScheduleName;
   const mobileMoreItems: Array<{
     label: string;
     icon: IconName;
@@ -6670,7 +7261,7 @@ function SettingsView({
                           </td>
                           <td className="px-5 py-5 align-middle">
                             <span className="inline-flex rounded-full bg-black/[0.06] px-4 py-1.5 text-[14px] font-medium text-black/80">
-                              Working Hours
+                              {defaultScheduleName}
                             </span>
                           </td>
                           <td className="px-5 py-5 align-middle">
@@ -6705,7 +7296,7 @@ function SettingsView({
                                   </td>
                                   <td className="px-5 py-5 align-middle">
                                     <span className="inline-flex rounded-full bg-black/[0.06] px-4 py-1.5 text-[14px] font-medium text-black/80">
-                                      Working Hours
+                                      {scheduleNameForRoom(room)}
                                     </span>
                                   </td>
                                   <td className="px-5 py-5 align-middle">
@@ -7162,7 +7753,7 @@ function SettingsView({
                           <td className="px-4 py-4 align-middle text-[15px] font-medium text-black">{room}</td>
                           <td className="px-4 py-4 align-middle">
                             <span className="inline-flex rounded-full bg-black/[0.06] px-3 py-1 text-[12px] font-medium text-black/80">
-                              Working Hours
+                              {scheduleNameForRoom(room)}
                             </span>
                           </td>
                           <td className="px-4 py-4 align-middle">
@@ -7248,9 +7839,8 @@ function formatScheduleTimeLabel(value: string) {
   });
 }
 
-function scheduleHref(scheduleName: string) {
-  const slug = scheduleName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  return `/admin/settings/schedules/${slug || "working-hours"}`;
+function scheduleHref(scheduleKey: string) {
+  return `/admin/settings/schedules/${encodeURIComponent(scheduleKey)}`;
 }
 
 function SchedulesSettingsView({
@@ -7263,8 +7853,7 @@ function SchedulesSettingsView({
   showToast: (message: string) => void;
 }) {
   const router = useRouter();
-  const scheduleRooms = Array.from(new Set([state.facility.name, ...state.resources].filter(Boolean)));
-  const workingHoursHref = scheduleHref("Working Hours");
+  const schedules = state.schedules.length ? state.schedules : defaultState.schedules;
 
   return (
     <section className="min-h-screen bg-white">
@@ -7350,27 +7939,47 @@ function SchedulesSettingsView({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-black/10">
-                  <tr
-                    className="cursor-pointer bg-white transition hover:bg-black/[0.02]"
-                    onClick={() => router.push(workingHoursHref)}
-                  >
-                    <td className="px-5 py-6 align-middle text-[18px] font-medium text-black">Working Hours</td>
-                    <td className="px-5 py-6 align-middle text-[16px] text-black/75">
-                      This schedule has no services assigned.
-                    </td>
-                    <td className="px-5 py-6 align-middle">
-                      <div className="flex flex-wrap justify-end gap-3 xl:justify-start">
-                        {scheduleRooms.map((room) => (
-                          <span
-                            key={room}
-                            className="inline-flex rounded-full bg-black/[0.06] px-4 py-1.5 text-[14px] font-medium text-black/80"
-                          >
-                            {room}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                  </tr>
+                  {schedules.map((schedule) => (
+                    <tr
+                      key={schedule.id}
+                      className="cursor-pointer bg-white transition hover:bg-black/[0.02]"
+                      onClick={() => router.push(scheduleHref(schedule.id))}
+                    >
+                      <td className="px-5 py-6 align-middle text-[18px] font-medium text-black">{schedule.name}</td>
+                      <td className="px-5 py-6 align-middle text-[16px] text-black/75">
+                        {schedule.serviceNames.length ? (
+                          <div className="flex flex-wrap gap-3">
+                            {schedule.serviceNames.map((serviceName) => (
+                              <span
+                                key={`${schedule.id}-service-${serviceName}`}
+                                className="inline-flex rounded-full bg-black/[0.06] px-4 py-1.5 text-[14px] font-medium text-black/80"
+                              >
+                                {serviceName}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          "This schedule has no services assigned."
+                        )}
+                      </td>
+                      <td className="px-5 py-6 align-middle">
+                        {schedule.roomNames.length ? (
+                          <div className="flex flex-wrap justify-end gap-3 xl:justify-start">
+                            {schedule.roomNames.map((room) => (
+                              <span
+                                key={`${schedule.id}-room-${room}`}
+                                className="inline-flex rounded-full bg-black/[0.06] px-4 py-1.5 text-[14px] font-medium text-black/80"
+                              >
+                                {room}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-[16px] text-black/75">This schedule has no rooms assigned.</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -7394,81 +8003,165 @@ function SchedulesSettingsView({
           </PrimaryButton>
         </div>
 
-        <button
-          type="button"
-          onClick={() => router.push(workingHoursHref)}
-          className="w-full rounded-[16px] border border-black/12 bg-white p-5 text-left shadow-[0_1px_2px_rgba(0,0,0,0.03)]"
-        >
-          <div className="text-[20px] font-medium text-black">Working Hours</div>
-          <div className="mt-2 text-[14px] leading-6 text-black/70">This schedule has no services assigned.</div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {scheduleRooms.map((room) => (
-              <span
-                key={room}
-                className="inline-flex rounded-full bg-black/[0.06] px-3 py-1 text-[13px] font-medium text-black/80"
-              >
-                {room}
-              </span>
-            ))}
-          </div>
-        </button>
+        {schedules.map((schedule) => (
+          <button
+            key={schedule.id}
+            type="button"
+            onClick={() => router.push(scheduleHref(schedule.id))}
+            className="w-full rounded-[16px] border border-black/12 bg-white p-5 text-left shadow-[0_1px_2px_rgba(0,0,0,0.03)]"
+          >
+            <div className="text-[20px] font-medium text-black">{schedule.name}</div>
+            <div className="mt-2 text-[14px] leading-6 text-black/70">
+              {schedule.serviceNames.length
+                ? `${schedule.serviceNames.length} service${schedule.serviceNames.length === 1 ? "" : "s"} assigned`
+                : "This schedule has no services assigned."}
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {schedule.roomNames.length ? (
+                schedule.roomNames.map((room) => (
+                  <span
+                    key={`${schedule.id}-mobile-room-${room}`}
+                    className="inline-flex rounded-full bg-black/[0.06] px-3 py-1 text-[13px] font-medium text-black/80"
+                  >
+                    {room}
+                  </span>
+                ))
+              ) : (
+                <span className="text-[13px] text-black/55">No rooms assigned.</span>
+              )}
+            </div>
+          </button>
+        ))}
       </div>
     </section>
   );
 }
 
 function ScheduleEditorView({
-  rows,
+  schedule,
   onBack,
   onSave,
   showToast,
-  scheduleName: scheduleNameProp,
   mode = "add",
 }: {
-  rows: AppState["availability"];
+  schedule: ScheduleRecord;
   onBack: () => void;
-  onSave: (rows: AppState["availability"]) => void;
+  onSave: (schedule: ScheduleRecord) => Promise<boolean> | boolean;
   showToast: (message: string) => void;
-  scheduleName?: string;
   mode?: "add" | "edit";
 }) {
-  const [draftRows, setDraftRows] = useState(rows);
-  const [scheduleName, setScheduleName] = useState(scheduleNameProp ?? "");
+  const [draft, setDraft] = useState<ScheduleRecord>(schedule);
   const isEditMode = mode === "edit";
-  const pageTitle = isEditMode ? scheduleNameProp ?? "Working Hours" : "Add Schedule";
+  const pageTitle = isEditMode ? schedule.name || "Schedule" : "Add Schedule";
   const breadcrumbLabel = isEditMode ? pageTitle : "Add Schedule";
 
   useEffect(() => {
-    setDraftRows(rows);
-  }, [rows]);
+    setDraft(schedule);
+  }, [schedule]);
 
-  useEffect(() => {
-    setScheduleName(scheduleNameProp ?? "");
-  }, [scheduleNameProp]);
-
-  function updateRow(index: number, next: Partial<{ open: boolean; start: string; end: string }>) {
-    setDraftRows((current) =>
-      current.map(([day, open, start, end], rowIndex) =>
-        rowIndex === index
-          ? [day, next.open ?? open, next.start ?? start, next.end ?? end]
-          : [day, open, start, end]
-      )
-    );
+  function updateDayConfig(day: string, recipe: (current: ScheduleDayConfig) => ScheduleDayConfig) {
+    setDraft((current) => ({
+      ...current,
+      dayConfigs: current.dayConfigs.map((config) => (config.day === day ? recipe(config) : config)),
+    }));
   }
 
-  function copyPreviousRow(index: number) {
-    const previous = draftRows[index - 1];
+  function toggleDay(day: string, enabled: boolean) {
+    updateDayConfig(day, (current) => ({
+      ...current,
+      enabled,
+      slots: enabled
+        ? current.slots.length
+          ? current.slots
+          : [{ id: makeId("schedule-slot"), start: "09:00", end: "17:00", sortOrder: 1 }]
+        : [],
+    }));
+  }
+
+  function updateSlot(day: string, slotId: string, next: Partial<ScheduleSlot>) {
+    updateDayConfig(day, (current) => ({
+      ...current,
+      slots: current.slots.map((slot) => (slot.id === slotId ? { ...slot, ...next } : slot)),
+    }));
+  }
+
+  function addSlot(day: string) {
+    updateDayConfig(day, (current) => {
+      const lastSlot = [...current.slots].sort((a, b) => a.sortOrder - b.sortOrder).at(-1);
+      const nextStartMinutes = lastSlot ? Math.min(timeToMinutes(lastSlot.end), 23 * 60 + 30) : 9 * 60;
+      const nextEndMinutes = Math.min(nextStartMinutes + 60, 23 * 60 + 45);
+      return {
+        ...current,
+        enabled: true,
+        slots: [
+          ...current.slots,
+          {
+            id: makeId("schedule-slot"),
+            start: minutesToTime(nextStartMinutes),
+            end: minutesToTime(nextEndMinutes),
+            sortOrder: current.slots.length + 1,
+          },
+        ],
+      };
+    });
+  }
+
+  function removeSlot(day: string, slotId: string) {
+    updateDayConfig(day, (current) => {
+      const nextSlots = current.slots.filter((slot) => slot.id !== slotId);
+      return {
+        ...current,
+        enabled: nextSlots.length > 0,
+        slots: nextSlots.map((slot, index) => ({ ...slot, sortOrder: index + 1 })),
+      };
+    });
+  }
+
+  function copyPreviousRow(day: string) {
+    const currentIndex = draft.dayConfigs.findIndex((config) => config.day === day);
+    const previous = draft.dayConfigs[currentIndex - 1];
     if (!previous) {
       showToast("There is no previous day to copy yet.");
       return;
     }
 
-    updateRow(index, {
-      open: previous[1],
-      start: previous[2],
-      end: previous[3],
-    });
-    showToast(`${draftRows[index][0]} copied ${previous[0]}.`);
+    updateDayConfig(day, () => ({
+      day,
+      weekday: scheduleWeekdayOrder.get(day) ?? 0,
+      enabled: previous.enabled,
+      slots: previous.slots.map((slot, index) => ({
+        ...slot,
+        id: makeId("schedule-slot"),
+        sortOrder: index + 1,
+      })),
+    }));
+    showToast(`${day} copied ${previous.day}.`);
+  }
+
+  function addOverride() {
+    setDraft((current) => ({
+      ...current,
+      overrides: [
+        ...current.overrides,
+        {
+          id: makeId("override"),
+          date: isoDate(new Date()),
+          isClosed: true,
+          slots: [],
+        },
+      ],
+    }));
+  }
+
+  function updateOverride(overrideId: string, recipe: (current: ScheduleOverride) => ScheduleOverride) {
+    setDraft((current) => ({
+      ...current,
+      overrides: current.overrides.map((override) => (override.id === overrideId ? recipe(override) : override)),
+    }));
+  }
+
+  async function handleSave() {
+    await onSave(normalizeScheduleRecord(draft));
   }
 
   return (
@@ -7547,8 +8240,14 @@ function ScheduleEditorView({
                   <label className="grid max-w-[360px] gap-1.5">
                     <span className="text-sm font-semibold text-black/70">Name</span>
                     <input
-                      value={scheduleName}
-                      onChange={(event) => setScheduleName(event.target.value)}
+                      value={draft.name}
+                      onChange={(event) =>
+                        setDraft((current) => ({
+                          ...current,
+                          name: event.target.value,
+                          slug: slugifyScheduleName(event.target.value) || current.slug,
+                        }))
+                      }
                       className="min-h-12 rounded-lg border border-black/10 px-4 text-[15px] outline-none focus:border-black/30"
                     />
                   </label>
@@ -7557,58 +8256,75 @@ function ScheduleEditorView({
                 <div className="px-5 py-5">
                   <div className="mb-5 text-[18px] font-semibold text-black">Hours</div>
                   <div className="space-y-4">
-                    {draftRows.map(([day, open, start, end], index) => (
-                      <div key={day} className="grid grid-cols-[170px_minmax(0,1fr)] items-center gap-6">
+                    {draft.dayConfigs.map((config) => (
+                      <div key={config.day} className="grid grid-cols-[170px_minmax(0,1fr)] items-start gap-6">
                         <div className="flex items-center gap-3">
                           <ToggleSwitch
-                            checked={open}
-                            onChange={(checked) => updateRow(index, { open: checked })}
-                            label={`${day} open`}
+                            checked={config.enabled}
+                            onChange={(checked) => toggleDay(config.day, checked)}
+                            label={`${config.day} open`}
                           />
-                          <span className="text-[16px] font-medium text-black">{day}</span>
+                          <span className="text-[16px] font-medium text-black">{config.day}</span>
                         </div>
 
-                        {open ? (
-                          <div className="flex flex-wrap items-center gap-4">
-                            <select
-                              value={start}
-                              onChange={(event) => updateRow(index, { start: event.target.value })}
-                              className="min-h-12 min-w-[164px] rounded-lg border border-black/10 px-4 text-[15px] outline-none focus:border-black/30"
-                            >
-                              {scheduleTimeOptions.map((value) => (
-                                <option key={value} value={value}>
-                                  {formatScheduleTimeLabel(value)}
-                                </option>
-                              ))}
-                            </select>
-                            <span className="text-[18px] text-black/45">-</span>
-                            <select
-                              value={end}
-                              onChange={(event) => updateRow(index, { end: event.target.value })}
-                              className="min-h-12 min-w-[164px] rounded-lg border border-black/10 px-4 text-[15px] outline-none focus:border-black/30"
-                            >
-                              {scheduleTimeOptions.map((value) => (
-                                <option key={value} value={value}>
-                                  {formatScheduleTimeLabel(value)}
-                                </option>
-                              ))}
-                            </select>
-                            <button
-                              type="button"
-                              onClick={() => showToast("Multiple daily time slots are next in the schedule builder.")}
-                              className="text-black/55 transition hover:text-black"
-                              aria-label={`Add time slot for ${day}`}
-                            >
-                              <Icon name="plus" className="h-5 w-5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => copyPreviousRow(index)}
-                              className="text-black/55 transition hover:text-black"
-                              aria-label={`Copy hours to ${day}`}
-                            >
-                              <Icon name="copy" className="h-5 w-5" />
-                            </button>
+                        {config.enabled ? (
+                          <div className="space-y-3">
+                            {config.slots.map((slot, slotIndex) => (
+                              <div key={slot.id} className="flex flex-wrap items-center gap-4">
+                                <select
+                                  value={slot.start}
+                                  onChange={(event) => updateSlot(config.day, slot.id, { start: event.target.value })}
+                                  className="min-h-12 min-w-[164px] rounded-lg border border-black/10 px-4 text-[15px] outline-none focus:border-black/30"
+                                >
+                                  {scheduleTimeOptions.map((value) => (
+                                    <option key={value} value={value}>
+                                      {formatScheduleTimeLabel(value)}
+                                    </option>
+                                  ))}
+                                </select>
+                                <span className="text-[18px] text-black/45">-</span>
+                                <select
+                                  value={slot.end}
+                                  onChange={(event) => updateSlot(config.day, slot.id, { end: event.target.value })}
+                                  className="min-h-12 min-w-[164px] rounded-lg border border-black/10 px-4 text-[15px] outline-none focus:border-black/30"
+                                >
+                                  {scheduleTimeOptions.map((value) => (
+                                    <option key={value} value={value}>
+                                      {formatScheduleTimeLabel(value)}
+                                    </option>
+                                  ))}
+                                </select>
+                                {slotIndex === 0 ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => addSlot(config.day)}
+                                      className="text-black/55 transition hover:text-black"
+                                      aria-label={`Add time slot for ${config.day}`}
+                                    >
+                                      <Icon name="plus" className="h-5 w-5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => copyPreviousRow(config.day)}
+                                      className="text-black/55 transition hover:text-black"
+                                      aria-label={`Copy hours to ${config.day}`}
+                                    >
+                                      <Icon name="copy" className="h-5 w-5" />
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => removeSlot(config.day, slot.id)}
+                                    className="text-black/55 transition hover:text-black"
+                                    aria-label={`Remove time slot from ${config.day}`}
+                                  >
+                                    <Icon name="trash" className="h-5 w-5" />
+                                  </button>
+                                )}
+                              </div>
+                            ))}
                           </div>
                         ) : (
                           <div className="text-[16px] text-black/55">Closed</div>
@@ -7627,9 +8343,147 @@ function ScheduleEditorView({
                       <p className="text-[15px] leading-7 text-black/65">
                         Add specific dates when your schedule changes from your regular hours.
                       </p>
+                      {draft.overrides.length ? (
+                        <div className="grid w-full gap-4">
+                          {draft.overrides.map((override) => (
+                            <div key={override.id} className="rounded-lg border border-black/10 p-4">
+                              <div className="grid gap-4 lg:grid-cols-[180px_auto_1fr_auto] lg:items-center">
+                                <label className="grid gap-1.5">
+                                  <span className="text-[13px] font-semibold text-black/70">Date</span>
+                                  <input
+                                    type="date"
+                                    value={override.date}
+                                    onChange={(event) =>
+                                      updateOverride(override.id, (current) => ({ ...current, date: event.target.value }))
+                                    }
+                                    className="min-h-11 rounded-lg border border-black/10 px-3 text-[14px] outline-none"
+                                  />
+                                </label>
+                                <div className="flex items-center gap-3 pt-5 lg:pt-0">
+                                  <ToggleSwitch
+                                    checked={!override.isClosed}
+                                    onChange={(checked) =>
+                                      updateOverride(override.id, (current) => ({
+                                        ...current,
+                                        isClosed: !checked,
+                                        slots: checked
+                                          ? current.slots.length
+                                            ? current.slots
+                                            : [{ id: makeId("override-slot"), start: "09:00", end: "17:00", sortOrder: 1 }]
+                                          : [],
+                                      }))
+                                    }
+                                    label={`${override.date} custom hours`}
+                                  />
+                                  <span className="text-[14px] text-black/70">
+                                    {override.isClosed ? "Closed" : "Custom hours"}
+                                  </span>
+                                </div>
+                                {!override.isClosed ? (
+                                  <div className="space-y-3">
+                                    {override.slots.map((slot, slotIndex) => (
+                                      <div key={slot.id} className="flex flex-wrap items-center gap-3">
+                                        <select
+                                          value={slot.start}
+                                          onChange={(event) =>
+                                            updateOverride(override.id, (current) => ({
+                                              ...current,
+                                              slots: current.slots.map((item) =>
+                                                item.id === slot.id ? { ...item, start: event.target.value } : item
+                                              ),
+                                            }))
+                                          }
+                                          className="min-h-11 min-w-[148px] rounded-lg border border-black/10 px-3 text-[14px] outline-none"
+                                        >
+                                          {scheduleTimeOptions.map((value) => (
+                                            <option key={value} value={value}>
+                                              {formatScheduleTimeLabel(value)}
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <span className="text-black/45">-</span>
+                                        <select
+                                          value={slot.end}
+                                          onChange={(event) =>
+                                            updateOverride(override.id, (current) => ({
+                                              ...current,
+                                              slots: current.slots.map((item) =>
+                                                item.id === slot.id ? { ...item, end: event.target.value } : item
+                                              ),
+                                            }))
+                                          }
+                                          className="min-h-11 min-w-[148px] rounded-lg border border-black/10 px-3 text-[14px] outline-none"
+                                        >
+                                          {scheduleTimeOptions.map((value) => (
+                                            <option key={value} value={value}>
+                                              {formatScheduleTimeLabel(value)}
+                                            </option>
+                                          ))}
+                                        </select>
+                                        {slotIndex === 0 ? (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              updateOverride(override.id, (current) => ({
+                                                ...current,
+                                                slots: [
+                                                  ...current.slots,
+                                                  {
+                                                    id: makeId("override-slot"),
+                                                    start: slot.end,
+                                                    end: minutesToTime(Math.min(timeToMinutes(slot.end) + 60, 23 * 60 + 45)),
+                                                    sortOrder: current.slots.length + 1,
+                                                  },
+                                                ],
+                                              }))
+                                            }
+                                            className="text-black/55 transition hover:text-black"
+                                            aria-label={`Add override time slot for ${override.date}`}
+                                          >
+                                            <Icon name="plus" className="h-5 w-5" />
+                                          </button>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              updateOverride(override.id, (current) => ({
+                                                ...current,
+                                                slots: current.slots.filter((item) => item.id !== slot.id),
+                                              }))
+                                            }
+                                            className="text-black/55 transition hover:text-black"
+                                            aria-label={`Remove override time slot for ${override.date}`}
+                                          >
+                                            <Icon name="trash" className="h-5 w-5" />
+                                          </button>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div className="pt-5 text-[14px] text-black/55 lg:pt-0">Closed all day</div>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setDraft((current) => ({
+                                      ...current,
+                                      overrides: current.overrides.filter((item) => item.id !== override.id),
+                                    }))
+                                  }
+                                  className="pt-5 text-black/55 transition hover:text-black lg:pt-0"
+                                  aria-label={`Remove ${override.date} override`}
+                                >
+                                  <Icon name="trash" className="h-5 w-5" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
                       <button
                         type="button"
-                        onClick={() => showToast("Date overrides are next in the schedules build-out.")}
+                        onClick={addOverride}
                         className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-black/10 bg-white px-5 py-2.5 text-[15px] font-medium text-black"
                       >
                         <Icon name="plus" className="h-4 w-4" />
@@ -7643,7 +8497,7 @@ function ScheduleEditorView({
               <div className="flex items-center justify-end border-t border-black/10 bg-[#f7f8fb] px-5 py-4">
                 <button
                   type="button"
-                  onClick={() => onSave(draftRows)}
+                  onClick={() => void handleSave()}
                   className="rounded-lg bg-[#1f1b1b] px-6 py-3 text-[15px] font-medium text-white shadow-[0_3px_8px_rgba(0,0,0,0.18)]"
                 >
                   Save
@@ -7673,8 +8527,14 @@ function ScheduleEditorView({
               <label className="grid gap-2">
                 <span className="text-[14px] font-medium text-black/85">Name</span>
                 <input
-                  value={scheduleName}
-                  onChange={(event) => setScheduleName(event.target.value)}
+                  value={draft.name}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      name: event.target.value,
+                      slug: slugifyScheduleName(event.target.value) || current.slug,
+                    }))
+                  }
                   className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
                 />
               </label>
@@ -7683,57 +8543,74 @@ function ScheduleEditorView({
             <div className="px-6 py-6">
               <div className="mb-4 text-[16px] font-medium text-black">Hours</div>
               <div className="space-y-5">
-                {draftRows.map(([day, open, start, end], index) => (
-                  <div key={day} className="space-y-3">
+                {draft.dayConfigs.map((config) => (
+                  <div key={config.day} className="space-y-3">
                     <div className="flex items-center gap-3">
                       <ToggleSwitch
-                        checked={open}
-                        onChange={(checked) => updateRow(index, { open: checked })}
-                        label={`${day} open`}
+                        checked={config.enabled}
+                        onChange={(checked) => toggleDay(config.day, checked)}
+                        label={`${config.day} open`}
                       />
-                      <span className="text-[18px] font-medium text-black">{day}</span>
+                      <span className="text-[18px] font-medium text-black">{config.day}</span>
                     </div>
-                    {open ? (
-                      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)_28px_28px] sm:items-center">
-                        <select
-                          value={start}
-                          onChange={(event) => updateRow(index, { start: event.target.value })}
-                          className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
-                        >
-                          {scheduleTimeOptions.map((value) => (
-                            <option key={value} value={value}>
-                              {formatScheduleTimeLabel(value)}
-                            </option>
-                          ))}
-                        </select>
-                        <span className="hidden text-center text-[18px] text-black/45 sm:block">-</span>
-                        <select
-                          value={end}
-                          onChange={(event) => updateRow(index, { end: event.target.value })}
-                          className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
-                        >
-                          {scheduleTimeOptions.map((value) => (
-                            <option key={value} value={value}>
-                              {formatScheduleTimeLabel(value)}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => showToast("Multiple daily time slots are next in the schedule builder.")}
-                          className="grid h-7 w-7 place-items-center text-black/55"
-                          aria-label={`Add time slot for ${day}`}
-                        >
-                          <Icon name="plus" className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => copyPreviousRow(index)}
-                          className="grid h-7 w-7 place-items-center text-black/55"
-                          aria-label={`Copy hours to ${day}`}
-                        >
-                          <Icon name="copy" className="h-4 w-4" />
-                        </button>
+                    {config.enabled ? (
+                      <div className="space-y-3">
+                        {config.slots.map((slot, slotIndex) => (
+                          <div key={slot.id} className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)_28px_28px] sm:items-center">
+                            <select
+                              value={slot.start}
+                              onChange={(event) => updateSlot(config.day, slot.id, { start: event.target.value })}
+                              className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
+                            >
+                              {scheduleTimeOptions.map((value) => (
+                                <option key={value} value={value}>
+                                  {formatScheduleTimeLabel(value)}
+                                </option>
+                              ))}
+                            </select>
+                            <span className="hidden text-center text-[18px] text-black/45 sm:block">-</span>
+                            <select
+                              value={slot.end}
+                              onChange={(event) => updateSlot(config.day, slot.id, { end: event.target.value })}
+                              className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
+                            >
+                              {scheduleTimeOptions.map((value) => (
+                                <option key={value} value={value}>
+                                  {formatScheduleTimeLabel(value)}
+                                </option>
+                              ))}
+                            </select>
+                            {slotIndex === 0 ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => addSlot(config.day)}
+                                  className="grid h-7 w-7 place-items-center text-black/55"
+                                  aria-label={`Add time slot for ${config.day}`}
+                                >
+                                  <Icon name="plus" className="h-4 w-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => copyPreviousRow(config.day)}
+                                  className="grid h-7 w-7 place-items-center text-black/55"
+                                  aria-label={`Copy hours to ${config.day}`}
+                                >
+                                  <Icon name="copy" className="h-4 w-4" />
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => removeSlot(config.day, slot.id)}
+                                className="grid h-7 w-7 place-items-center text-black/55"
+                                aria-label={`Remove time slot from ${config.day}`}
+                              >
+                                <Icon name="trash" className="h-4 w-4" />
+                              </button>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     ) : (
                       <div className="text-[16px] text-black/55">Closed</div>
@@ -7750,9 +8627,133 @@ function ScheduleEditorView({
                   <p className="text-[14px] leading-6 text-black/70">
                     Add specific dates when your schedule changes from your regular hours.
                   </p>
+                  {draft.overrides.length ? (
+                    <div className="mt-4 grid gap-4">
+                      {draft.overrides.map((override) => (
+                        <div key={override.id} className="rounded-[10px] border border-black/12 p-4">
+                          <label className="grid gap-2">
+                            <span className="text-[14px] font-medium text-black/85">Date</span>
+                            <input
+                              type="date"
+                              value={override.date}
+                              onChange={(event) =>
+                                updateOverride(override.id, (current) => ({ ...current, date: event.target.value }))
+                              }
+                              className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
+                            />
+                          </label>
+
+                          <div className="mt-4 flex items-center gap-3">
+                            <ToggleSwitch
+                              checked={!override.isClosed}
+                              onChange={(checked) =>
+                                updateOverride(override.id, (current) => ({
+                                  ...current,
+                                  isClosed: !checked,
+                                  slots: checked
+                                    ? current.slots.length
+                                      ? current.slots
+                                      : [{ id: makeId("override-slot"), start: "09:00", end: "17:00", sortOrder: 1 }]
+                                    : [],
+                                }))
+                              }
+                              label={`${override.date} custom hours`}
+                            />
+                            <span className="text-[14px] text-black/70">{override.isClosed ? "Closed" : "Custom hours"}</span>
+                          </div>
+
+                          {!override.isClosed && override.slots.length ? (
+                            <div className="mt-4 space-y-3">
+                              {override.slots.map((slot, slotIndex) => (
+                                <div key={slot.id} className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)_28px] sm:items-center">
+                                  <select
+                                    value={slot.start}
+                                    onChange={(event) =>
+                                      updateOverride(override.id, (current) => ({
+                                        ...current,
+                                        slots: current.slots.map((item) =>
+                                          item.id === slot.id ? { ...item, start: event.target.value } : item
+                                        ),
+                                      }))
+                                    }
+                                    className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
+                                  >
+                                    {scheduleTimeOptions.map((value) => (
+                                      <option key={value} value={value}>
+                                        {formatScheduleTimeLabel(value)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <span className="hidden text-center text-[18px] text-black/45 sm:block">-</span>
+                                  <select
+                                    value={slot.end}
+                                    onChange={(event) =>
+                                      updateOverride(override.id, (current) => ({
+                                        ...current,
+                                        slots: current.slots.map((item) =>
+                                          item.id === slot.id ? { ...item, end: event.target.value } : item
+                                        ),
+                                      }))
+                                    }
+                                    className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
+                                  >
+                                    {scheduleTimeOptions.map((value) => (
+                                      <option key={value} value={value}>
+                                        {formatScheduleTimeLabel(value)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      slotIndex === 0
+                                        ? updateOverride(override.id, (current) => ({
+                                            ...current,
+                                            slots: [
+                                              ...current.slots,
+                                              {
+                                                id: makeId("override-slot"),
+                                                start: slot.end,
+                                                end: minutesToTime(Math.min(timeToMinutes(slot.end) + 60, 23 * 60 + 45)),
+                                                sortOrder: current.slots.length + 1,
+                                              },
+                                            ],
+                                          }))
+                                        : updateOverride(override.id, (current) => ({
+                                            ...current,
+                                            slots: current.slots.filter((item) => item.id !== slot.id),
+                                          }))
+                                    }
+                                    className="grid h-7 w-7 place-items-center text-black/55"
+                                    aria-label={slotIndex === 0 ? "Add override slot" : "Remove override slot"}
+                                  >
+                                    <Icon name={slotIndex === 0 ? "plus" : "trash"} className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDraft((current) => ({
+                                ...current,
+                                overrides: current.overrides.filter((item) => item.id !== override.id),
+                              }))
+                            }
+                            className="mt-4 inline-flex items-center gap-2 text-[14px] font-medium text-black/55"
+                          >
+                            <Icon name="trash" className="h-4 w-4" />
+                            Remove override
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                   <button
                     type="button"
-                    onClick={() => showToast("Date overrides are next in the schedules build-out.")}
+                    onClick={addOverride}
                     className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-[10px] border border-black/12 bg-white px-5 py-2.5 text-[15px] font-medium text-black"
                   >
                     <Icon name="plus" className="h-4 w-4" />
@@ -7769,7 +8770,7 @@ function ScheduleEditorView({
             </button>
             <button
               type="button"
-              onClick={() => onSave(draftRows)}
+              onClick={() => void handleSave()}
               className="rounded-lg bg-[#1f1b1b] px-6 py-3 text-[15px] font-medium text-white shadow-[0_3px_8px_rgba(0,0,0,0.18)]"
             >
               Save
@@ -7800,11 +8801,21 @@ function RoomEditorView({
   onDelete?: () => Promise<void>;
   onSave: (draft: RoomEditorDraft) => Promise<void>;
 }) {
+  const scheduleOptions = useMemo(
+    () => (state.schedules.length ? state.schedules : defaultState.schedules).map((schedule) => ({
+      label: schedule.name,
+      value: schedule.id,
+    })),
+    [state.schedules]
+  );
+  const fallbackScheduleId = scheduleOptions[0]?.value ?? "schedule-working-hours";
   const initialDraft = useMemo<RoomEditorDraft>(() => ({
     name: roomName ?? "",
-    schedule: "Working Hours",
+    scheduleId:
+      scheduleForRoom(state.schedules.length ? state.schedules : defaultState.schedules, roomName ?? "")?.id ??
+      fallbackScheduleId,
     parentRoom: state.facility.name,
-  }), [roomName, state.facility.name]);
+  }), [fallbackScheduleId, roomName, state.facility.name, state.schedules]);
   const [draft, setDraft] = useState<RoomEditorDraft>(initialDraft);
 
   useEffect(() => {
@@ -7912,9 +8923,9 @@ function RoomEditorView({
                   <div className="grid gap-4">
                     <SelectField
                       label="Schedule"
-                      value={draft.schedule}
-                      onChange={(value) => setDraft((current) => ({ ...current, schedule: value }))}
-                      options={["Working Hours"]}
+                      value={draft.scheduleId}
+                      onChange={(value) => setDraft((current) => ({ ...current, scheduleId: value }))}
+                      options={scheduleOptions.map((option) => [option.value, option.label] as [string, string])}
                     />
                   </div>
                 </div>
@@ -8001,11 +9012,15 @@ function RoomEditorView({
                 <label className="grid gap-2">
                   <span className="text-[14px] font-medium text-black/85">Schedule</span>
                   <select
-                    value={draft.schedule}
-                    onChange={(event) => setDraft((current) => ({ ...current, schedule: event.target.value }))}
+                    value={draft.scheduleId}
+                    onChange={(event) => setDraft((current) => ({ ...current, scheduleId: event.target.value }))}
                     className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
                   >
-                    <option value="Working Hours">Working Hours</option>
+                    {scheduleOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </label>
               </div>
