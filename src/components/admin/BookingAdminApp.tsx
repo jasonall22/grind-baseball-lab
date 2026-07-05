@@ -7893,6 +7893,7 @@ function CustomerDetailView({
   const age = calculateAge(customer.birthYear, customer.birthMonth, customer.birthDay);
   const familyMembers = customer.familyMembers;
   const memberships = customer.memberships.filter(Boolean);
+  const currentCustomer = customer;
   const hasEmergencyContact =
     !emergencyDeleted &&
     Boolean(
@@ -7924,11 +7925,31 @@ function CustomerDetailView({
     message: string,
     options?: { silent?: boolean }
   ) {
+    const nextCustomer: Customer = {
+      id: patch.id ?? currentCustomer.id,
+      name: patch.name ?? currentCustomer.name,
+      player: patch.player ?? currentCustomer.player,
+      email: patch.email ?? currentCustomer.email,
+      address: patch.address ?? currentCustomer.address,
+      phone: patch.phone ?? currentCustomer.phone,
+      phoneCountry: patch.phoneCountry ?? currentCustomer.phoneCountry,
+      birthYear: patch.birthYear ?? currentCustomer.birthYear,
+      birthMonth: patch.birthMonth ?? currentCustomer.birthMonth,
+      birthDay: patch.birthDay ?? currentCustomer.birthDay,
+      gender: patch.gender ?? currentCustomer.gender,
+      age: patch.age ?? currentCustomer.age,
+      memberships: patch.memberships ?? currentCustomer.memberships,
+      waiverAgreed: patch.waiverAgreed ?? currentCustomer.waiverAgreed,
+      emergencyContactName: patch.emergencyContactName ?? currentCustomer.emergencyContactName,
+      emergencyContactEmail: patch.emergencyContactEmail ?? currentCustomer.emergencyContactEmail,
+      emergencyContactPhone: patch.emergencyContactPhone ?? currentCustomer.emergencyContactPhone,
+      familyMembers: patch.familyMembers ?? currentCustomer.familyMembers,
+      notes: patch.notes ?? currentCustomer.notes,
+      createdAt: patch.createdAt ?? currentCustomer.createdAt,
+    };
+
     return onSaveCustomer(
-      {
-        ...customer,
-        ...patch,
-      },
+      nextCustomer,
       {
         message,
         silent: options?.silent,
@@ -7995,13 +8016,13 @@ function CustomerDetailView({
 
   async function saveName() {
     const nextName = joinName(firstNameDraft, lastNameDraft);
-    if (nextName === customer.name) return;
+    if (nextName === currentCustomer.name) return;
     await saveCustomerPatch({ name: nextName }, "Customer updated.", { silent: true });
   }
 
   async function saveEmail() {
     const nextEmail = emailDraft.trim();
-    if (nextEmail === customer.email) return;
+    if (nextEmail === currentCustomer.email) return;
     await saveCustomerPatch({ email: nextEmail }, "Customer updated.", { silent: true });
   }
 
@@ -8009,20 +8030,20 @@ function CustomerDetailView({
     const digits = profilePhone.replace(/\D/g, "").slice(0, 10);
     const nextDisplay = formatUsPhoneInput(digits);
     setProfilePhone(nextDisplay);
-    if (digits === customer.phone) return;
+    if (digits === currentCustomer.phone) return;
     await saveCustomerPatch({ phone: digits }, "Customer updated.", { silent: true });
   }
 
   async function saveAddress() {
     const nextAddress = addressDraft.trim();
-    if (nextAddress === customer.address) return;
+    if (nextAddress === currentCustomer.address) return;
     await saveCustomerPatch({ address: nextAddress }, "Customer updated.", { silent: true });
   }
 
   async function saveBirthDate() {
     const nextValue = birthDateDraft.trim();
     if (!nextValue) {
-      if (!customer.birthYear && !customer.birthMonth && !customer.birthDay) return;
+      if (!currentCustomer.birthYear && !currentCustomer.birthMonth && !currentCustomer.birthDay) return;
       const saved = await saveCustomerPatch(
         {
           birthYear: "",
@@ -8051,9 +8072,9 @@ function CustomerDetailView({
     const nextAge = calculateAge(birthYear, birthMonth, birthDay);
 
     if (
-      birthYear === customer.birthYear &&
-      birthMonth === customer.birthMonth &&
-      birthDay === customer.birthDay
+      birthYear === currentCustomer.birthYear &&
+      birthMonth === currentCustomer.birthMonth &&
+      birthDay === currentCustomer.birthDay
     ) {
       setBirthDateDraft(formatDateToUs(parsed));
       return;
@@ -8076,13 +8097,13 @@ function CustomerDetailView({
 
   async function saveGender(nextGender: string) {
     setGenderDraft(nextGender);
-    if (nextGender === customer.gender) return;
+    if (nextGender === currentCustomer.gender) return;
     await saveCustomerPatch({ gender: nextGender }, "Customer updated.", { silent: true });
   }
 
   async function saveNotes() {
     const nextNotes = noteDraft.trim();
-    if (nextNotes === customer.notes.trim()) {
+    if (nextNotes === currentCustomer.notes.trim()) {
       setIsEditingNote(false);
       return;
     }
@@ -8284,12 +8305,12 @@ function CustomerDetailView({
               <div className="flex items-center justify-between gap-4 p-4">
                 <div>
                   <div className="text-[14px] font-medium text-black">
-                    {customer.emergencyContactName || "Emergency Contact"}
+                    {currentCustomer.emergencyContactName || "Emergency Contact"}
                   </div>
                   <div className="mt-1 text-[13px] text-black/55">
                     {[
-                      customer.emergencyContactEmail,
-                      customer.emergencyContactPhone ? formatUsPhoneInput(customer.emergencyContactPhone) : "",
+                      currentCustomer.emergencyContactEmail,
+                      currentCustomer.emergencyContactPhone ? formatUsPhoneInput(currentCustomer.emergencyContactPhone) : "",
                     ]
                       .filter(Boolean)
                       .join(" \u00b7 ")}
@@ -8332,7 +8353,7 @@ function CustomerDetailView({
                 <Icon name="send" className="h-4 w-4" />
                 <span>Referral</span>
               </div>
-              <div className="ml-auto text-black/85">{customer.notes ? "From notes" : "-"}</div>
+              <div className="ml-auto text-black/85">{currentCustomer.notes ? "From notes" : "-"}</div>
               <div className="flex gap-3 text-black/45">
                 <button type="button">
                   <Icon name="edit" className="h-4 w-4" />
@@ -8411,15 +8432,15 @@ function CustomerDetailView({
                 <div>
                   <div className="text-[14px] font-medium text-black">Liability Waiver</div>
                   <div className="mt-1 text-[13px] text-black/55">
-                    {customer.waiverAgreed ? "Agreed" : "Not yet agreed"}
+                    {currentCustomer.waiverAgreed ? "Agreed" : "Not yet agreed"}
                   </div>
                 </div>
                 <span
                   className={`rounded-full px-3 py-1 text-[12px] font-semibold ${
-                    customer.waiverAgreed ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
+                    currentCustomer.waiverAgreed ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
                   }`}
                 >
-                  {customer.waiverAgreed ? "Agreed" : "Pending"}
+                  {currentCustomer.waiverAgreed ? "Agreed" : "Pending"}
                 </span>
               </div>
 
@@ -8470,7 +8491,7 @@ function CustomerDetailView({
                   <button
                     type="button"
                     onClick={() => {
-                      setNoteDraft(customer.notes ?? "");
+                      setNoteDraft(currentCustomer.notes ?? "");
                       setIsEditingNote(false);
                     }}
                     className="rounded-md border border-black/10 px-4 py-2 text-[14px] font-medium text-black/65"
@@ -8488,7 +8509,7 @@ function CustomerDetailView({
               </div>
             ) : (
               <div className="p-7 text-center text-[14px] text-black/45">
-                {customer.notes ? customer.notes : "No notes yet. Click + to add the first note."}
+                {currentCustomer.notes ? currentCustomer.notes : "No notes yet. Click + to add the first note."}
               </div>
             )}
           </DetailPanel>
@@ -9324,7 +9345,7 @@ function TaxesAndFeesSettingsEditor({
                         className="text-[20px] leading-none transition hover:text-black"
                         aria-label={`Delete ${item.name || "tax rate"}`}
                       >
-                        …
+                        â€¦
                       </button>
                       <button
                         type="button"
@@ -9433,7 +9454,7 @@ function TaxesAndFeesSettingsEditor({
                         className="text-[20px] leading-none transition hover:text-black"
                         aria-label={`Delete ${item.name || "custom fee"}`}
                       >
-                        …
+                        â€¦
                       </button>
                       <button
                         type="button"
@@ -13967,7 +13988,7 @@ function EditorModal({
   const bookingDraft = modal.type === "booking" ? (draft as Booking) : null;
   const matchedBookingService =
     bookingDraft
-                      {bookingDraft ? `${bookingDurationMinutes(bookingDraft)} minutes • ${bookingDraft.resource || "No room selected"}` : ""}
+      ? findServiceForCalendarSlot(state.services, bookingDraft.resource, bookingDurationMinutes(bookingDraft), {
           date: bookingDraft.date,
           start: bookingDraft.start,
           end: bookingDraft.end,
@@ -14161,7 +14182,7 @@ function EditorModal({
                       {effectiveBookingService?.name || "No matching service selected"}
                     </div>
                     <div className="mt-1 text-sm text-black/55">
-                      {bookingDraft ? `${bookingDurationMinutes(bookingDraft)} minutes • ${bookingDraft.resource || "No room selected"}` : ""}
+                      {bookingDraft ? `${bookingDurationMinutes(bookingDraft)} minutes â€¢ ${bookingDraft.resource || "No room selected"}` : ""}
                     </div>
                   </div>
                   <div className="text-right">
