@@ -91,6 +91,16 @@ type Customer = {
   createdAt: string;
 };
 
+type StaffRole = "Owner" | "Admin" | "Instructor" | "Staff";
+
+type StaffMember = {
+  id: string;
+  name: string;
+  email: string;
+  role: StaffRole;
+  active: boolean;
+};
+
 type Booking = {
   id: string;
   date: string;
@@ -312,6 +322,15 @@ type BookingProductRow = {
   stock: number;
 };
 
+type BookingStaffRow = {
+  id: string;
+  full_name: string;
+  email: string;
+  role: StaffRole;
+  is_active: boolean;
+  sort_order: number;
+};
+
 type AppState = {
   facility: {
     name: string;
@@ -339,6 +358,7 @@ type AppState = {
     taxRates: TaxRate[];
     customFees: CustomFee[];
   };
+  staff: StaffMember[];
   resources: string[];
   services: Service[];
   customers: Customer[];
@@ -386,7 +406,7 @@ type ParsedCsvFile = {
 
 const storageKey = "grind_booking_admin_v1";
 const lastAppRouteKey = "grind_booking_admin_last_app_route";
-type SettingsSection = "basics" | "rooms" | "policies" | "schedules" | "taxes-fees";
+type SettingsSection = "basics" | "rooms" | "policies" | "schedules" | "staff" | "taxes-fees";
 
 type RoomEditorDraft = {
   name: string;
@@ -565,7 +585,12 @@ const settingsNavGroups: {
     title: "People",
     items: [
       { label: "Profile", icon: "user" },
-      { label: "Staff", icon: "user" },
+      {
+        label: "Staff",
+        icon: "user",
+        href: bookingAdminRouteByView["settings-staff"],
+        section: "staff",
+      },
       { label: "Roles & Permissions", icon: "gear" },
     ],
   },
@@ -622,6 +647,57 @@ const defaultState: AppState = {
       },
     ],
   },
+  staff: [
+    {
+      id: "staff-august-backman",
+      name: "August Backman",
+      email: "august.baseball19@gmail.com",
+      role: "Instructor",
+      active: true,
+    },
+    {
+      id: "staff-carter-cox",
+      name: "Carter Cox",
+      email: "cartercox3308@gmail.com",
+      role: "Staff",
+      active: true,
+    },
+    {
+      id: "staff-zachary-allaire",
+      name: "Zachary Allaire",
+      email: "zacharyall22@icloud.com",
+      role: "Staff",
+      active: true,
+    },
+    {
+      id: "staff-jr-jason-allaire",
+      name: "Jr. Jason Allaire",
+      email: "jasonall22jr@icloud.com",
+      role: "Staff",
+      active: true,
+    },
+    {
+      id: "staff-brian-cox",
+      name: "Brian Cox",
+      email: "briancox4677@gmail.com",
+      role: "Staff",
+      active: true,
+    },
+    {
+      id: "staff-andrea-allaire",
+      name: "Andrea Allaire",
+      email: "andie0218@hotmail.com",
+      role: "Admin",
+      active: true,
+    },
+    {
+      id: "staff-jason-allaire",
+      name: "Jason Allaire",
+      email: "info@grindbaseballlab.com",
+      role: "Owner",
+      active: true,
+    },
+  ],
   resources: ["Cage 1", "Cage 2", "Pitching Lane", "HitTrax"],
   services: [
     {
@@ -1013,6 +1089,31 @@ function normalizeCustomFees(value: unknown): CustomFee[] {
   return items.length ? items : defaultState.taxesAndFees.customFees;
 }
 
+function normalizeStaffRole(value: unknown): StaffRole {
+  if (value === "Owner" || value === "Admin" || value === "Instructor" || value === "Staff") {
+    return value;
+  }
+  return "Staff";
+}
+
+function normalizeStaffMemberEntry(value: unknown): StaffMember | null {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Partial<StaffMember>;
+  return {
+    id: typeof item.id === "string" && item.id.trim() ? item.id : makeId("staff"),
+    name: typeof item.name === "string" ? item.name : "",
+    email: typeof item.email === "string" ? item.email : "",
+    role: normalizeStaffRole(item.role),
+    active: item.active ?? true,
+  };
+}
+
+function normalizeStaffMembers(value: unknown): StaffMember[] {
+  if (!Array.isArray(value)) return defaultState.staff;
+  const items = value.map(normalizeStaffMemberEntry).filter(Boolean) as StaffMember[];
+  return items.length ? items : defaultState.staff;
+}
+
 function normalizeBookings(bookings: Booking[], services: Service[]) {
   const servicesById = new Map(normalizeServices(services).map((service) => [service.id, service]));
   return bookings.map((booking) => {
@@ -1278,6 +1379,29 @@ async function upsertFacilitySettings(
   });
 
   if (error) throw error;
+}
+
+async function upsertStaffMembers(staff: StaffMember[]) {
+  const payload = staff.map((member, index) => ({
+    id: member.id,
+    full_name: member.name.trim(),
+    email: member.email.trim(),
+    role: member.role,
+    is_active: member.active,
+    sort_order: index + 1,
+  }));
+
+  const { error } = await supabase.from("booking_staff_members").upsert(payload);
+  if (error) throw error;
+
+  const refreshed = await supabase
+    .from("booking_staff_members")
+    .select("*")
+    .order("is_active", { ascending: false })
+    .order("sort_order");
+
+  if (refreshed.error) throw refreshed.error;
+  return (refreshed.data ?? []) as BookingStaffRow[];
 }
 
 async function upsertResources(resourceNames: string[]) {
@@ -2307,9 +2431,11 @@ function loadInitialState() {
     const raw = window.localStorage.getItem(storageKey);
     if (!raw) return defaultState;
     const parsed = { ...defaultState, ...JSON.parse(raw) } as AppState;
+    const staff = normalizeStaffMembers(parsed.staff ?? defaultState.staff);
     const services = normalizeServices(parsed.services ?? defaultState.services);
     return {
       ...parsed,
+      staff,
       services,
       bookings: normalizeBookings(parsed.bookings ?? defaultState.bookings, services),
     };
@@ -2577,6 +2703,7 @@ export default function BookingAdminApp({
         schedulesResult,
         scheduleSlotsResult,
         scheduleOverridesResult,
+        staffResult,
         campaignsResult,
         productsResult,
       ] = await Promise.all([
@@ -2589,6 +2716,7 @@ export default function BookingAdminApp({
         supabase.from("booking_schedules").select("*").eq("is_active", true).order("created_at"),
         supabase.from("booking_schedule_slots").select("*").order("weekday").order("sort_order"),
         supabase.from("booking_schedule_overrides").select("*").order("override_date").order("sort_order"),
+        supabase.from("booking_staff_members").select("*").order("is_active", { ascending: false }).order("sort_order"),
         supabase.from("booking_campaigns").select("*").order("created_at"),
         supabase.from("booking_products").select("*").order("created_at"),
       ]);
@@ -2603,6 +2731,7 @@ export default function BookingAdminApp({
         schedulesResult.error,
         scheduleSlotsResult.error,
         scheduleOverridesResult.error,
+        staffResult.error,
         campaignsResult.error,
         productsResult.error,
       ].find(Boolean);
@@ -2618,6 +2747,7 @@ export default function BookingAdminApp({
       const scheduleRows = (schedulesResult.data ?? []) as BookingScheduleRow[];
       const scheduleSlotRows = (scheduleSlotsResult.data ?? []) as BookingScheduleSlotRow[];
       const scheduleOverrideRows = (scheduleOverridesResult.data ?? []) as BookingScheduleOverrideRow[];
+      const staffRows = (staffResult.data ?? []) as BookingStaffRow[];
       const campaignRows = (campaignsResult.data ?? []) as BookingCampaignRow[];
       const productRows = (productsResult.data ?? []) as BookingProductRow[];
       const activeResourceRows = resourceRows.filter((resource) => resource.is_active);
@@ -2755,6 +2885,15 @@ export default function BookingAdminApp({
           taxRates: normalizeTaxRates(settings?.tax_rates),
           customFees: normalizeCustomFees(settings?.custom_fees),
         },
+        staff: staffRows.length
+          ? staffRows.map((member) => ({
+              id: member.id,
+              name: member.full_name,
+              email: member.email,
+              role: normalizeStaffRole(member.role),
+              active: member.is_active,
+            }))
+          : defaultState.staff,
         resources: resources.map((resource) => resource.name),
         services: serviceRows.map((service) => ({
           id: service.id,
@@ -2921,6 +3060,48 @@ export default function BookingAdminApp({
     } catch (error) {
       console.error(error);
       showToast("Settings could not be saved.");
+    }
+  }
+
+  async function saveStaffMembers(nextStaff: StaffMember[], successMessage = "Staff saved.") {
+    const normalizedStaff = nextStaff.map((member) => ({
+      ...member,
+      name: member.name.trim(),
+      email: member.email.trim(),
+      role: normalizeStaffRole(member.role),
+    }));
+    const nextState = {
+      ...state,
+      staff: normalizedStaff,
+    };
+
+    if (dataSource === "local") {
+      saveLocal(nextState, successMessage);
+      return true;
+    }
+
+    setState(nextState);
+    stateToStorage(nextState);
+
+    try {
+      const savedRows = await upsertStaffMembers(normalizedStaff);
+      setState((current) => ({
+        ...current,
+        staff: savedRows.map((member) => ({
+          id: member.id,
+          name: member.full_name,
+          email: member.email,
+          role: normalizeStaffRole(member.role),
+          active: member.is_active,
+        })),
+      }));
+      showToast(successMessage);
+      return true;
+    } catch (error) {
+      console.error(error);
+      showToast("Staff could not be saved.");
+      void loadFromSupabase();
+      return false;
     }
   }
 
@@ -3859,6 +4040,14 @@ export default function BookingAdminApp({
                 showToast={showToast}
               />
             )
+          ) : null}
+          {view === "settings-staff" ? (
+            <StaffSettingsView
+              backHref={backToAppHref}
+              staff={state.staff}
+              showToast={showToast}
+              onSave={saveStaffMembers}
+            />
           ) : null}
           {view === "settings-rooms-add" ? (
             <RoomEditorView
@@ -7710,6 +7899,426 @@ function TaxesAndFeesSettingsEditor({
         </div>
       </div>
     </div>
+  );
+}
+
+function staffInitials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "ST";
+  return parts
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+function StaffRoleBadge({ role }: { role: StaffRole }) {
+  return (
+    <span className="inline-flex rounded-full bg-black/[0.06] px-3 py-1 text-[14px] font-medium text-black/80">
+      {role}
+    </span>
+  );
+}
+
+function StaffSettingsView({
+  backHref,
+  staff,
+  showToast,
+  onSave,
+}: {
+  backHref: string;
+  staff: StaffMember[];
+  showToast: (message: string) => void;
+  onSave: (nextStaff: StaffMember[], successMessage?: string) => Promise<boolean | void>;
+}) {
+  const [draft, setDraft] = useState(staff);
+  const [activeTab, setActiveTab] = useState<"active" | "inactive">("active");
+  const [search, setSearch] = useState("");
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editingStaffId, setEditingStaffId] = useState<string | null>(null);
+  const [memberName, setMemberName] = useState("");
+  const [memberEmail, setMemberEmail] = useState("");
+  const [memberRole, setMemberRole] = useState<StaffRole>("Staff");
+  const [memberIsActive, setMemberIsActive] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setDraft(staff);
+  }, [staff]);
+
+  const activeCount = draft.filter((member) => member.active).length;
+  const inactiveCount = draft.length - activeCount;
+  const normalizedSearch = search.trim().toLowerCase();
+
+  const filteredStaff = useMemo(() => {
+    return draft.filter((member) => {
+      if (activeTab === "active" && !member.active) return false;
+      if (activeTab === "inactive" && member.active) return false;
+      if (!normalizedSearch) return true;
+      return [member.name, member.email, member.role].join(" ").toLowerCase().includes(normalizedSearch);
+    });
+  }, [activeTab, draft, normalizedSearch]);
+
+  function resetEditor() {
+    setEditingStaffId(null);
+    setMemberName("");
+    setMemberEmail("");
+    setMemberRole("Staff");
+    setMemberIsActive(true);
+  }
+
+  function openNewEditor() {
+    resetEditor();
+    setEditorOpen(true);
+  }
+
+  function openEditEditor(member: StaffMember) {
+    setEditingStaffId(member.id);
+    setMemberName(member.name);
+    setMemberEmail(member.email);
+    setMemberRole(member.role);
+    setMemberIsActive(member.active);
+    setEditorOpen(true);
+  }
+
+  async function saveMember() {
+    const trimmedName = memberName.trim();
+    const trimmedEmail = memberEmail.trim();
+
+    if (!trimmedName) {
+      showToast("Staff name is required.");
+      return;
+    }
+
+    if (!trimmedEmail) {
+      showToast("Staff email is required.");
+      return;
+    }
+
+    const nextMember: StaffMember = {
+      id: editingStaffId ?? makeId("staff"),
+      name: trimmedName,
+      email: trimmedEmail,
+      role: memberRole,
+      active: memberIsActive,
+    };
+
+    const nextStaff = editingStaffId
+      ? draft.map((member) => (member.id === editingStaffId ? nextMember : member))
+      : [...draft, nextMember];
+
+    setSaving(true);
+    try {
+      setDraft(nextStaff);
+      const result = await onSave(nextStaff, editingStaffId ? "Staff member updated." : "Staff member added.");
+      if (result !== false) {
+        setEditorOpen(false);
+        resetEditor();
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const summaryRange =
+    filteredStaff.length === 0 ? "0-0 of 0" : `1-${Math.min(filteredStaff.length, 25)} of ${filteredStaff.length}`;
+
+  return (
+    <section className="min-h-screen bg-white">
+      <div className="px-5 py-4 xl:hidden">
+        <Link href={backHref} className="inline-flex items-center gap-2 text-[15px] font-medium text-black">
+          <Icon name="arrow-left" className="h-4 w-4" />
+          Staff
+        </Link>
+      </div>
+
+      <div className="hidden min-h-screen xl:grid xl:grid-cols-[284px_minmax(0,1fr)]">
+        <aside className="border-b border-black/10 bg-[#f7f7f7] px-4 py-5 lg:border-b-0 lg:border-r">
+          <Link
+            href={backHref}
+            className="inline-flex items-center gap-2 text-sm font-semibold text-black/70 transition hover:text-black"
+          >
+            <Icon name="arrow-left" className="h-4 w-4" />
+            Back to app
+          </Link>
+
+          <div className="mt-6 space-y-6">
+            {settingsNavGroups.map((group) => (
+              <div key={group.title}>
+                <div className="mb-2 text-sm font-medium text-black/45">{group.title}</div>
+                <div className="space-y-1">
+                  {group.items.map((item) => {
+                    const isActive = item.section === "staff";
+                    const className = [
+                      "flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-[15px] transition",
+                      isActive && item.section === "staff"
+                        ? "bg-[#e9e9e9] font-semibold"
+                        : "text-black/75 hover:bg-black/5",
+                    ].join(" ");
+
+                    const content = (
+                      <>
+                        <Icon name={item.icon} className="h-[18px] w-[18px]" />
+                        <span>{item.label}</span>
+                      </>
+                    );
+
+                    return item.href ? (
+                      <Link key={item.label} href={item.href} className={className}>
+                        {content}
+                      </Link>
+                    ) : (
+                      <button key={item.label} type="button" className={className}>
+                        {content}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </aside>
+
+        <div className="px-8 py-9">
+          <PageHeader title="Staff" subtitle="Manage your staff members & permissions">
+            <PrimaryButton icon="plus" onClick={openNewEditor}>
+              New
+            </PrimaryButton>
+          </PageHeader>
+
+          <div className="mb-6 flex items-end gap-8 border-b border-black/10">
+            <button
+              type="button"
+              onClick={() => setActiveTab("active")}
+              className={[
+                "border-b-2 px-5 pb-4 text-[16px] transition",
+                activeTab === "active" ? "border-black font-medium text-black" : "border-transparent text-black/55",
+              ].join(" ")}
+            >
+              Active ({activeCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("inactive")}
+              className={[
+                "border-b-2 px-1 pb-4 text-[16px] transition",
+                activeTab === "inactive"
+                  ? "border-black font-medium text-black"
+                  : "border-transparent text-black/55",
+              ].join(" ")}
+            >
+              Inactive ({inactiveCount})
+            </button>
+          </div>
+
+          <div className="mb-5 max-w-[920px]">
+            <div className="relative">
+              <Icon name="search" className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-black/35" />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search staff..."
+                className="min-h-12 w-full rounded-lg border border-black/10 bg-white pl-14 pr-4 text-[15px] outline-none focus:border-black/30"
+              />
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-black/10 bg-white">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="bg-[#f3f6fa]">
+                  <th className="px-5 py-5 text-left text-[15px] font-semibold text-black">Name</th>
+                  <th className="px-5 py-5 text-left text-[15px] font-semibold text-black">Email</th>
+                  <th className="px-5 py-5 text-left text-[15px] font-semibold text-black">Role</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-black/10">
+                {filteredStaff.length ? (
+                  filteredStaff.map((member) => (
+                    <tr
+                      key={member.id}
+                      className="cursor-pointer bg-white transition hover:bg-black/[0.02]"
+                      onClick={() => openEditEditor(member)}
+                    >
+                      <td className="px-5 py-5 align-middle">
+                        <div className="flex items-center gap-4">
+                          <div className="grid h-[34px] w-[34px] place-items-center rounded-full bg-black/[0.12] text-[14px] font-medium text-white">
+                            {staffInitials(member.name)}
+                          </div>
+                          <span className="text-[17px] text-black">{member.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-5 align-middle text-[17px] text-black/80">{member.email}</td>
+                      <td className="px-5 py-5 align-middle">
+                        <StaffRoleBadge role={member.role} />
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={3} className="px-5 py-12 text-center text-[15px] text-black/45">
+                      No staff members found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+
+            <div className="flex items-center justify-end gap-8 border-t border-black/10 px-5 py-4 text-[15px] text-black/70">
+              <div className="flex items-center gap-2">
+                <span>Rows per page:</span>
+                <div className="inline-flex items-center gap-2">
+                  <span>25</span>
+                  <Icon name="chevron" className="h-4 w-4 -rotate-90 text-black/45" />
+                </div>
+              </div>
+              <div>{summaryRange}</div>
+              <div className="flex items-center gap-2 text-black/25">
+                <Icon name="chevron" className="h-4 w-4 rotate-180" />
+                <Icon name="chevron" className="h-4 w-4" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-5 px-5 pb-8 xl:hidden">
+        <PageHeader title="Staff" subtitle="Manage your staff members & permissions">
+          <PrimaryButton icon="plus" onClick={openNewEditor}>
+            New
+          </PrimaryButton>
+        </PageHeader>
+
+        <div className="flex items-end gap-6 border-b border-black/10">
+          <button
+            type="button"
+            onClick={() => setActiveTab("active")}
+            className={[
+              "border-b-2 pb-3 text-[16px] transition",
+              activeTab === "active" ? "border-black font-medium text-black" : "border-transparent text-black/55",
+            ].join(" ")}
+          >
+            Active ({activeCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("inactive")}
+            className={[
+              "border-b-2 pb-3 text-[16px] transition",
+              activeTab === "inactive" ? "border-black font-medium text-black" : "border-transparent text-black/55",
+            ].join(" ")}
+          >
+            Inactive ({inactiveCount})
+          </button>
+        </div>
+
+        <div className="relative">
+          <Icon name="search" className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-black/35" />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search staff..."
+            className="min-h-12 w-full rounded-lg border border-black/10 bg-white pl-14 pr-4 text-[15px] outline-none focus:border-black/30"
+          />
+        </div>
+
+        <div className="overflow-hidden rounded-xl border border-black/10 bg-white">
+          <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto] gap-3 bg-[#f3f6fa] px-4 py-4 text-[14px] font-semibold text-black">
+            <span>Name</span>
+            <span>Email</span>
+            <span>Role</span>
+          </div>
+          {filteredStaff.length ? (
+            filteredStaff.map((member) => (
+              <button
+                key={member.id}
+                type="button"
+                onClick={() => openEditEditor(member)}
+                className="grid w-full grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto] gap-3 border-t border-black/10 px-4 py-4 text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-black/[0.12] text-[13px] font-medium text-white">
+                    {staffInitials(member.name)}
+                  </div>
+                  <span className="text-[15px] font-medium text-black">{member.name}</span>
+                </div>
+                <span className="truncate text-[14px] text-black/70">{member.email}</span>
+                <StaffRoleBadge role={member.role} />
+              </button>
+            ))
+          ) : (
+            <div className="px-4 py-10 text-center text-[15px] text-black/45">No staff members found.</div>
+          )}
+        </div>
+      </div>
+
+      {editorOpen ? (
+        <div className="fixed inset-0 z-50 bg-black/45 px-4 py-10">
+          <div className="mx-auto w-full max-w-[560px] overflow-hidden rounded-[18px] bg-white shadow-[0_16px_48px_rgba(0,0,0,0.22)]">
+            <div className="flex items-center justify-between border-b border-black/10 px-6 py-5">
+              <h2 className="text-[28px] font-medium text-black">
+                {editingStaffId ? "Edit Staff Member" : "New Staff Member"}
+              </h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditorOpen(false);
+                  resetEditor();
+                }}
+                className="text-black/45 transition hover:text-black"
+                aria-label="Close"
+              >
+                <Icon name="x" className="h-7 w-7" />
+              </button>
+            </div>
+
+            <div className="grid gap-4 px-6 py-6">
+              <TextField label="Name" value={memberName} onChange={setMemberName} placeholder="Full name" />
+              <TextField
+                label="Email"
+                value={memberEmail}
+                onChange={setMemberEmail}
+                type="email"
+                placeholder="staff@example.com"
+              />
+              <SelectField
+                label="Role"
+                value={memberRole}
+                onChange={(value) => setMemberRole(normalizeStaffRole(value))}
+                options={["Owner", "Admin", "Instructor", "Staff"]}
+              />
+              <div className="flex items-center justify-between rounded-xl border border-black/10 px-4 py-3">
+                <div>
+                  <div className="text-[15px] font-semibold text-black">Active</div>
+                  <div className="text-sm text-black/55">Inactive staff members stay available in the inactive tab.</div>
+                </div>
+                <ToggleSwitch checked={memberIsActive} onChange={setMemberIsActive} label="Toggle active staff member" />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-black/10 px-6 py-5">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditorOpen(false);
+                  resetEditor();
+                }}
+                className="rounded-lg px-4 py-3 text-[16px] text-black/70 transition hover:bg-black/[0.03]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void saveMember()}
+                disabled={saving}
+                className="rounded-lg bg-[#1f1b1b] px-6 py-3 text-[16px] font-medium text-white shadow-[0_3px_8px_rgba(0,0,0,0.18)] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {saving ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
