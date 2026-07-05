@@ -1362,6 +1362,7 @@ type IconName =
   | "camera"
   | "search"
   | "chevron"
+  | "eye"
   | "x"
   | "arrow-left";
 
@@ -1396,6 +1397,7 @@ const iconPaths: Record<IconName, string[]> = {
   camera: ["M4 7h3l1.4-2h7.2L17 7h3v12H4Z", "M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"],
   search: ["M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z", "m21 21-4.3-4.3"],
   chevron: ["m9 18 6-6-6-6"],
+  eye: ["M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z", "M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"],
   x: ["M18 6 6 18", "M6 6l12 12"],
   "arrow-left": ["m12 19-7-7 7-7", "M19 12H5"],
 };
@@ -4076,26 +4078,35 @@ export default function BookingAdminApp({
     }
   }
 
-  async function saveCustomerDetail(item: Customer, message: string) {
+  async function saveCustomerDetail(item: Customer, message: string, options?: { silent?: boolean }) {
     const previousState = state;
     const next = { ...state, customers: upsert(state.customers, item) };
 
     if (dataSource === "local") {
-      saveLocal(next, message);
-      return;
+      if (options?.silent) {
+        setState(next);
+        stateToStorage(next);
+      } else {
+        saveLocal(next, message);
+      }
+      return true;
     }
 
     setState(next);
 
     try {
       await upsertModalChange({ type: "customer", item }, resourceIdsByName);
-      showToast(message);
+      if (!options?.silent) {
+        showToast(message);
+      }
+      return true;
     } catch (error) {
       console.error(error);
       setState(previousState);
       const fallbackMessage = "That change could not be saved.";
       const errorMessage = getErrorMessage(error, fallbackMessage);
       showToast(errorMessage === fallbackMessage ? fallbackMessage : `${fallbackMessage} ${errorMessage}`);
+      return false;
     }
   }
 
@@ -4567,7 +4578,13 @@ export default function BookingAdminApp({
                   JSON.stringify(selectedCustomer?.familyMembers ?? []),
                 ].join(":")}
                 customer={selectedCustomer}
-                onSaveCustomer={(item) => void saveCustomerDetail(item, "Customer updated.")}
+                bookings={state.bookings}
+                servicesById={servicesById}
+                onSaveCustomer={(item, options) =>
+                  void saveCustomerDetail(item, options?.message ?? "Customer updated.", {
+                    silent: options?.silent,
+                  })
+                }
               />
             ) : (
               <CustomersView
@@ -8332,18 +8349,23 @@ function RegistrationRequiredToggle({
       onClick={() => !disabled && onChange(!checked)}
       aria-checked={checked}
       aria-label={label}
-      role="checkbox"
+      role="switch"
       disabled={disabled}
       className={[
-        "grid h-8 w-8 place-items-center rounded-[6px] border transition",
+        "relative inline-flex h-7 w-12 items-center rounded-full border px-[2px] transition",
         disabled
-          ? "cursor-not-allowed border-black/10 bg-[#f4f4f4] text-transparent"
+          ? "cursor-not-allowed border-black/10 bg-[#eceff4]"
           : checked
-            ? "border-black bg-black text-white"
-            : "border-black/25 bg-white text-transparent hover:border-black/45",
+            ? "border-black bg-[#1f1b1b]"
+            : "border-black/10 bg-[#d8dde6]",
       ].join(" ")}
     >
-      <Icon name="check" className="h-4 w-4" />
+      <span
+        className={[
+          "h-6 w-6 rounded-full bg-white shadow-sm transition-transform",
+          checked ? "translate-x-5" : "translate-x-0",
+        ].join(" ")}
+      />
     </button>
   );
 }
@@ -8429,41 +8451,40 @@ function RegistrationSettingsEditor({
     setIsAddFieldOpen(false);
   }
 
-  function renderStandardFieldRow(
+  function renderStandardFieldCard(
     label: string,
-    description: string,
     config: RegistrationFieldConfig,
     onRequiredChange: (checked: boolean) => void,
     onHiddenChange: (hidden: boolean) => void
   ) {
-    const status = config.hidden ? "Hidden" : config.required ? "Required" : "Optional";
-
     return (
       <div
         className={[
-          "grid gap-4 border-b border-black/10 last:border-b-0",
-          mobile ? "px-0 py-5" : "grid-cols-[minmax(0,1fr)_auto] px-0 py-5",
+          "rounded-[12px] border border-black/10 bg-white",
+          config.hidden ? "opacity-60" : "",
+          mobile ? "px-4 py-3.5" : "px-5 py-4",
         ].join(" ")}
       >
-        <div>
-          <div className="text-[16px] font-semibold text-black">{label}</div>
-          <p className="mt-1 max-w-[520px] text-sm leading-relaxed text-black/65">{description}</p>
-        </div>
-        <div className={`flex ${mobile ? "justify-between" : "justify-end"} flex-wrap items-center gap-4`}>
-          <span className="min-w-[64px] text-sm font-medium text-black/65">{status}</span>
-          <RegistrationRequiredToggle
-            checked={config.required}
-            disabled={config.hidden}
-            onChange={onRequiredChange}
-            label={`${label} required`}
-          />
-          <button
-            type="button"
-            onClick={() => onHiddenChange(!config.hidden)}
-            className="text-sm font-medium text-black underline underline-offset-2"
-          >
-            {config.hidden ? `Show ${label}` : `Hide ${label}`}
-          </button>
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0 text-[15px] font-medium text-black">{label}</div>
+          <div className="flex items-center gap-3">
+            <span className="text-[13px] text-black/45">{config.required ? "Required" : "Optional"}</span>
+            <RegistrationRequiredToggle
+              checked={config.required}
+              disabled={config.hidden}
+              onChange={onRequiredChange}
+              label={`${label} required`}
+            />
+            <button
+              type="button"
+              onClick={() => onHiddenChange(!config.hidden)}
+              className={config.hidden ? "text-black/30" : "text-black/45"}
+              aria-label={`${config.hidden ? "Show" : "Hide"} ${label}`}
+              title={`${config.hidden ? "Show" : "Hide"} ${label}`}
+            >
+              <Icon name="eye" className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -8471,10 +8492,9 @@ function RegistrationSettingsEditor({
 
   const sectionClass = mobile
     ? "px-6 py-6"
-    : "grid gap-6 px-5 py-5 lg:grid-cols-[240px_minmax(0,1fr)]";
-  const addButtonClass = mobile
-    ? "inline-flex min-h-[44px] items-center rounded-[8px] bg-[#6282b2] px-5 text-[15px] font-medium text-white shadow-[0_2px_6px_rgba(72,102,176,0.25)]"
-    : "inline-flex min-h-11 items-center rounded-[8px] bg-[#6282b2] px-5 text-[15px] font-medium text-white shadow-[0_2px_6px_rgba(72,102,176,0.25)]";
+    : "grid gap-6 px-5 py-5 lg:grid-cols-[220px_minmax(0,1fr)]";
+  const addButtonClass =
+    "inline-flex min-h-11 items-center rounded-[8px] bg-[#6282b2] px-5 text-[15px] font-medium text-white shadow-[0_2px_6px_rgba(72,102,176,0.25)]";
 
   return (
     <>
@@ -8486,11 +8506,10 @@ function RegistrationSettingsEditor({
               Choose which personal details users will be required to enter when creating an account at your facility.
             </p>
           </div>
-          <div className="divide-y divide-black/10">
+          <div className="grid gap-3">
             {registrationPersonalFieldMeta.map((field) =>
-              renderStandardFieldRow(
+              renderStandardFieldCard(
                 field.label,
-                field.description,
                 value.personalFields[field.key],
                 (checked) => updatePersonalField(field.key, { required: checked }),
                 (hidden) => updatePersonalField(field.key, { hidden })
@@ -8503,14 +8522,13 @@ function RegistrationSettingsEditor({
           <div>
             <div className="text-[18px] font-semibold">Contact Information</div>
             <p className="mt-2 text-sm leading-relaxed text-black/65">
-              Choose which pieces of contact info. users will be required to enter when creating an account at your facility.
+              Choose which pieces of contact information users will be required to enter when creating an account at your facility.
             </p>
           </div>
-          <div className="divide-y divide-black/10">
+          <div className="grid gap-3">
             {registrationContactFieldMeta.map((field) =>
-              renderStandardFieldRow(
+              renderStandardFieldCard(
                 field.label,
-                field.description,
                 value.contactFields[field.key],
                 (checked) => updateContactField(field.key, { required: checked }),
                 (hidden) => updateContactField(field.key, { hidden })
@@ -8527,53 +8545,59 @@ function RegistrationSettingsEditor({
             </p>
           </div>
           <div>
-            <div className="divide-y divide-black/10 border-t border-black/10">
+            <div className="grid gap-3">
               {value.additionalFields.map((field, index) => (
                 <div
                   key={field.id}
-                  className={`flex ${mobile ? "flex-col items-start" : "items-center"} justify-between gap-4 px-0 py-5`}
+                  className={[
+                    "rounded-[12px] border border-black/10 bg-white",
+                    mobile ? "px-4 py-3.5" : "px-5 py-4",
+                  ].join(" ")}
                 >
-                  <div className="min-w-0">
-                    <div className="text-[16px] font-semibold text-black">{field.label || "Untitled field"}</div>
-                    <div className="mt-1 inline-flex rounded-full bg-black/[0.06] px-3 py-1 text-[13px] font-medium text-black/65">
-                      {field.type}
+                  <div className={`flex ${mobile ? "flex-col gap-4" : "items-center justify-between gap-4"}`}>
+                    <div className="flex min-w-0 items-center gap-4">
+                      <div className="flex flex-col text-black/35">
+                        <button
+                          type="button"
+                          onClick={() => moveAdditionalField(index, "up")}
+                          disabled={index === 0}
+                          className="disabled:cursor-not-allowed disabled:opacity-30"
+                          aria-label={`Move ${field.label} up`}
+                        >
+                          <Icon name="chevron" className="h-4 w-4 rotate-90" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveAdditionalField(index, "down")}
+                          disabled={index === value.additionalFields.length - 1}
+                          className="disabled:cursor-not-allowed disabled:opacity-30"
+                          aria-label={`Move ${field.label} down`}
+                        >
+                          <Icon name="chevron" className="h-4 w-4 -rotate-90" />
+                        </button>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[15px] font-medium text-black">{field.label || "Untitled field"}</div>
+                        <div className="mt-1 text-[13px] text-black/45">{field.type}</div>
+                      </div>
                     </div>
-                  </div>
-                  <div className={`flex ${mobile ? "w-full justify-between" : "justify-end"} flex-wrap items-center gap-3`}>
-                    <span className="min-w-[64px] text-sm font-medium text-black/65">
-                      {field.required ? "Required" : "Optional"}
-                    </span>
-                    <RegistrationRequiredToggle
-                      checked={field.required}
-                      onChange={(checked) => updateAdditionalField(field.id, { required: checked })}
-                      label={`${field.label} required`}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => moveAdditionalField(index, "up")}
-                      disabled={index === 0}
-                      className="rounded-[8px] border border-black/10 p-2 text-black/55 transition hover:border-black/25 hover:text-black disabled:cursor-not-allowed disabled:opacity-30"
-                      aria-label={`Move ${field.label} up`}
-                    >
-                      <Icon name="chevron" className="h-4 w-4 rotate-90" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => moveAdditionalField(index, "down")}
-                      disabled={index === value.additionalFields.length - 1}
-                      className="rounded-[8px] border border-black/10 p-2 text-black/55 transition hover:border-black/25 hover:text-black disabled:cursor-not-allowed disabled:opacity-30"
-                      aria-label={`Move ${field.label} down`}
-                    >
-                      <Icon name="chevron" className="h-4 w-4 -rotate-90" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeAdditionalField(field.id)}
-                      className="rounded-[8px] border border-black/10 p-2 text-black/55 transition hover:border-[#ef4444]/30 hover:bg-[#fef2f2] hover:text-[#ef4444]"
-                      aria-label={`Remove ${field.label}`}
-                    >
-                      <Icon name="trash" className="h-4 w-4" />
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[13px] text-black/45">{field.required ? "Required" : "Optional"}</span>
+                      <RegistrationRequiredToggle
+                        checked={field.required}
+                        onChange={(checked) => updateAdditionalField(field.id, { required: checked })}
+                        label={`${field.label} required`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeAdditionalField(field.id)}
+                        className="text-[20px] leading-none text-black/35 transition hover:text-black/60"
+                        aria-label={`Remove ${field.label}`}
+                        title={`Remove ${field.label}`}
+                      >
+                        x
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
