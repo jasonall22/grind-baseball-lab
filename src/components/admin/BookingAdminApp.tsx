@@ -8565,6 +8565,23 @@ function ScheduleEditorView({
     setDraft(schedule);
   }, [schedule]);
 
+  function cloneScheduleSlots(slots: ScheduleSlot[]) {
+    return slots.map((slot, index) => ({
+      ...slot,
+      id: makeId("schedule-slot"),
+      sortOrder: index + 1,
+    }));
+  }
+
+  function replaceDayConfig(day: string, source: ScheduleDayConfig) {
+    updateDayConfig(day, () => ({
+      day,
+      weekday: scheduleWeekdayOrder.get(day) ?? 0,
+      enabled: source.enabled,
+      slots: cloneScheduleSlots(source.slots),
+    }));
+  }
+
   function updateDayConfig(day: string, recipe: (current: ScheduleDayConfig) => ScheduleDayConfig) {
     setDraft((current) => ({
       ...current,
@@ -8631,17 +8648,57 @@ function ScheduleEditorView({
       return;
     }
 
-    updateDayConfig(day, () => ({
-      day,
-      weekday: scheduleWeekdayOrder.get(day) ?? 0,
-      enabled: previous.enabled,
-      slots: previous.slots.map((slot, index) => ({
-        ...slot,
-        id: makeId("schedule-slot"),
-        sortOrder: index + 1,
-      })),
-    }));
+    replaceDayConfig(day, previous);
     showToast(`${day} copied ${previous.day}.`);
+  }
+
+  function copyDayToTargets(sourceDay: string, targetDays: string[], label: string) {
+    const source = draft.dayConfigs.find((config) => config.day === sourceDay);
+    if (!source) {
+      showToast(`Could not find ${sourceDay}.`);
+      return;
+    }
+
+    const filteredTargets = targetDays.filter((day) => day !== sourceDay);
+    if (!filteredTargets.length) {
+      showToast(`There are no ${label.toLowerCase()} left to copy to.`);
+      return;
+    }
+
+    setDraft((current) => ({
+      ...current,
+      dayConfigs: current.dayConfigs.map((config) =>
+        filteredTargets.includes(config.day)
+          ? {
+              day: config.day,
+              weekday: scheduleWeekdayOrder.get(config.day) ?? config.weekday,
+              enabled: source.enabled,
+              slots: cloneScheduleSlots(source.slots),
+            }
+          : config
+      ),
+    }));
+    showToast(`${sourceDay} copied to ${label.toLowerCase()}.`);
+  }
+
+  function copyToWeekdays(day: string) {
+    copyDayToTargets(
+      day,
+      scheduleWeekdays.filter((item) => item.weekday >= 1 && item.weekday <= 5).map((item) => item.day),
+      "Weekdays"
+    );
+  }
+
+  function copyToWeekend(day: string) {
+    copyDayToTargets(day, ["Saturday", "Sunday"], "Weekend");
+  }
+
+  function copyToAllDays(day: string) {
+    copyDayToTargets(
+      day,
+      draft.dayConfigs.map((config) => config.day),
+      "All days"
+    );
   }
 
   function toggleRoom(roomName: string, checked: boolean) {
@@ -8772,7 +8829,7 @@ function ScheduleEditorView({
 
                 <div className="grid gap-6 px-5 py-5 lg:grid-cols-[220px_minmax(0,1fr)]">
                   <div>
-                    <div className="text-[18px] font-semibold">Rooms</div>
+                    <div className="text-[18px] font-semibold">Rooms ({draft.roomNames.length})</div>
                     <p className="mt-2 text-sm leading-relaxed text-black/65">
                       Choose which rooms should use this schedule for their working hours.
                     </p>
@@ -8800,6 +8857,29 @@ function ScheduleEditorView({
                       })
                     ) : (
                       <div className="text-[15px] text-black/55">No rooms have been created yet.</div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid gap-6 px-5 py-5 lg:grid-cols-[220px_minmax(0,1fr)]">
+                  <div>
+                    <div className="text-[18px] font-semibold">Services ({draft.serviceNames.length})</div>
+                    <p className="mt-2 text-sm leading-relaxed text-black/65">
+                      Services using this schedule will follow these working hours.
+                    </p>
+                  </div>
+                  <div className="flex min-h-12 flex-wrap items-center gap-3">
+                    {draft.serviceNames.length ? (
+                      draft.serviceNames.map((serviceName) => (
+                        <span
+                          key={`${draft.id}-assigned-service-${serviceName}`}
+                          className="inline-flex min-h-10 items-center rounded-full bg-black/[0.06] px-4 py-2 text-[14px] font-medium text-black/80"
+                        >
+                          {serviceName}
+                        </span>
+                      ))
+                    ) : (
+                      <div className="text-[15px] text-black/55">No services are using this schedule yet.</div>
                     )}
                   </div>
                 </div>
@@ -8860,6 +8940,7 @@ function ScheduleEditorView({
                                       onClick={() => copyPreviousRow(config.day)}
                                       className="text-black/55 transition hover:text-black"
                                       aria-label={`Copy hours to ${config.day}`}
+                                      title="Copy previous day"
                                     >
                                       <Icon name="copy" className="h-5 w-5" />
                                     </button>
@@ -8876,6 +8957,29 @@ function ScheduleEditorView({
                                 )}
                               </div>
                             ))}
+                            <div className="flex flex-wrap gap-2 pt-1">
+                              <button
+                                type="button"
+                                onClick={() => copyToWeekdays(config.day)}
+                                className="rounded-full border border-black/10 px-3 py-1.5 text-[13px] font-medium text-black/70 transition hover:border-black/20 hover:bg-black/[0.03] hover:text-black"
+                              >
+                                Copy to weekdays
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => copyToWeekend(config.day)}
+                                className="rounded-full border border-black/10 px-3 py-1.5 text-[13px] font-medium text-black/70 transition hover:border-black/20 hover:bg-black/[0.03] hover:text-black"
+                              >
+                                Copy to weekend
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => copyToAllDays(config.day)}
+                                className="rounded-full border border-black/10 px-3 py-1.5 text-[13px] font-medium text-black/70 transition hover:border-black/20 hover:bg-black/[0.03] hover:text-black"
+                              >
+                                Copy to all days
+                              </button>
+                            </div>
                           </div>
                         ) : (
                           <div className="text-[16px] text-black/55">Closed</div>
@@ -9119,7 +9223,7 @@ function ScheduleEditorView({
             </div>
 
             <div className="px-6 py-6">
-              <div className="text-[16px] font-medium text-black">Rooms</div>
+              <div className="text-[16px] font-medium text-black">Rooms ({draft.roomNames.length})</div>
               <p className="mt-1 text-[13px] leading-6 text-black/70">
                 Choose which rooms should use this schedule for their working hours.
               </p>
@@ -9146,6 +9250,27 @@ function ScheduleEditorView({
                   })
                 ) : (
                   <div className="text-[14px] text-black/55">No rooms have been created yet.</div>
+                )}
+              </div>
+            </div>
+
+            <div className="px-6 py-6">
+              <div className="text-[16px] font-medium text-black">Services ({draft.serviceNames.length})</div>
+              <p className="mt-1 text-[13px] leading-6 text-black/70">
+                Services using this schedule will follow these working hours.
+              </p>
+              <div className="mt-5 flex flex-wrap gap-2">
+                {draft.serviceNames.length ? (
+                  draft.serviceNames.map((serviceName) => (
+                    <span
+                      key={`${draft.id}-mobile-assigned-service-${serviceName}`}
+                      className="inline-flex min-h-[36px] items-center rounded-full bg-black/[0.06] px-3 py-1 text-[13px] font-medium text-black/80"
+                    >
+                      {serviceName}
+                    </span>
+                  ))
+                ) : (
+                  <div className="text-[14px] text-black/55">No services are using this schedule yet.</div>
                 )}
               </div>
             </div>
@@ -9205,6 +9330,7 @@ function ScheduleEditorView({
                                   onClick={() => copyPreviousRow(config.day)}
                                   className="grid h-7 w-7 place-items-center text-black/55"
                                   aria-label={`Copy hours to ${config.day}`}
+                                  title="Copy previous day"
                                 >
                                   <Icon name="copy" className="h-4 w-4" />
                                 </button>
@@ -9221,6 +9347,29 @@ function ScheduleEditorView({
                             )}
                           </div>
                         ))}
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => copyToWeekdays(config.day)}
+                            className="rounded-full border border-black/12 px-3 py-1.5 text-[12px] font-medium text-black/70"
+                          >
+                            Weekdays
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => copyToWeekend(config.day)}
+                            className="rounded-full border border-black/12 px-3 py-1.5 text-[12px] font-medium text-black/70"
+                          >
+                            Weekend
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => copyToAllDays(config.day)}
+                            className="rounded-full border border-black/12 px-3 py-1.5 text-[12px] font-medium text-black/70"
+                          >
+                            All days
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <div className="text-[16px] text-black/55">Closed</div>
