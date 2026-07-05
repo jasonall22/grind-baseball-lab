@@ -5052,7 +5052,7 @@ function AdminViewportPreview({
           <div className="flex h-full flex-col">
             <div className="flex items-center justify-between gap-3 px-4 py-3 md:px-6">
               <div className="rounded-full border border-white/20 bg-black/55 px-4 py-2 text-sm font-medium text-white">
-                {previewDevicePresets[previewDevice].label} preview · {previewDevicePresets[previewDevice].width} x{" "}
+                {previewDevicePresets[previewDevice].label} preview \u00b7 {previewDevicePresets[previewDevice].width} x{" "}
                 {previewDevicePresets[previewDevice].height}
               </div>
 
@@ -6095,7 +6095,7 @@ function ServiceDescriptionEditor({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const toolbar = ["â†º", "â†»", "Normal", "B", "I", "U", "S", "<>", "â†—", "â‰¡", "â˜°", "â˜·"];
+  const toolbar = ["\u21b6", "\u21b7", "Normal", "B", "I", "U", "S", "<>", "\u21d7", "\u2261", "\u2630", "\u2637"];
 
   return (
     <div className="overflow-hidden rounded-[4px] border border-black/15">
@@ -6893,7 +6893,7 @@ function CalendarView({
                               {customer?.player || customer?.name || "Customer"}
                             </div>
                             <div className={`mt-1 text-[12px] ${tone.subClass}`}>
-                              {(service?.name || booking.serviceName || "Service")} · {booking.resource}
+                              {(service?.name || booking.serviceName || "Service")} \u00b7 {booking.resource}
                             </div>
                           </button>
                         );
@@ -8117,7 +8117,7 @@ function CustomerDetailView({
                   {booking.serviceName || service?.name || "Service"}
                 </div>
                 <div className="mt-1 text-[13px] text-black/55">
-                  {bookingDateLabel(booking.date)} · {booking.start} - {booking.end} · {booking.resource}
+                  {bookingDateLabel(booking.date)} \u00b7 {booking.start} - {booking.end} \u00b7 {booking.resource}
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -8292,7 +8292,7 @@ function CustomerDetailView({
                       customer.emergencyContactPhone ? formatUsPhoneInput(customer.emergencyContactPhone) : "",
                     ]
                       .filter(Boolean)
-                      .join(" · ")}
+                      .join(" \u00b7 ")}
                   </div>
                 </div>
                 <div className="flex gap-3 text-black/45">
@@ -8365,7 +8365,7 @@ function CustomerDetailView({
                     familyMemberAgeLabel(member),
                   ]
                     .filter(Boolean)
-                    .join(" · ");
+                    .join(" \u00b7 ");
 
                   return (
                     <div key={member.id} className="flex items-center justify-between gap-4 p-4">
@@ -9324,7 +9324,7 @@ function TaxesAndFeesSettingsEditor({
                         className="text-[20px] leading-none transition hover:text-black"
                         aria-label={`Delete ${item.name || "tax rate"}`}
                       >
-                        â€¦
+                        …
                       </button>
                       <button
                         type="button"
@@ -9433,7 +9433,7 @@ function TaxesAndFeesSettingsEditor({
                         className="text-[20px] leading-none transition hover:text-black"
                         aria-label={`Delete ${item.name || "custom fee"}`}
                       >
-                        â€¦
+                        …
                       </button>
                       <button
                         type="button"
@@ -11669,7 +11669,7 @@ function SchedulesSettingsView({
                             {schedule.name}
                           </div>
                           <div className="mt-2 text-[13px] leading-5 text-black/55">
-                            {schedule.serviceNames.length} service{schedule.serviceNames.length === 1 ? "" : "s"} ·{" "}
+                            {schedule.serviceNames.length} service{schedule.serviceNames.length === 1 ? "" : "s"} \u00b7{" "}
                             {schedule.roomNames.length} room{schedule.roomNames.length === 1 ? "" : "s"}
                           </div>
                         </div>
@@ -11761,7 +11761,7 @@ function SchedulesSettingsView({
           >
             <div className="text-[20px] font-medium text-black">{schedule.name}</div>
             <div className="mt-2 text-[13px] leading-5 text-black/55">
-              {schedule.serviceNames.length} service{schedule.serviceNames.length === 1 ? "" : "s"} ·{" "}
+              {schedule.serviceNames.length} service{schedule.serviceNames.length === 1 ? "" : "s"} \u00b7{" "}
               {schedule.roomNames.length} room{schedule.roomNames.length === 1 ? "" : "s"}
             </div>
             <div className="mt-4">
@@ -13210,7 +13210,7 @@ function NotesEditor({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const toolbarButtons = ["ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Ãƒâ€šÃ‚Â¶", "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Ãƒâ€šÃ‚·", "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â°Ãƒâ€šÃ‚Â¡", "B", "I", "U", "S", "<>", "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â", "ÃƒÆ’Ã‚Â¢Ãƒâ€¹Ã…â€œÃƒâ€šÃ‚Â°", "ÃƒÆ’Ã‚Â¢Ãƒâ€¹Ã…â€œÃƒâ€šÃ‚·"];
+  const toolbarButtons = ["\u21b6", "\u21b7", "\u00b6", "B", "I", "U", "S", "<>", "\u21d7", "\u2261", "\u2630"];
 
   return (
     <div className="mt-2 overflow-hidden rounded-lg border border-black/10">
@@ -13734,7 +13734,7 @@ function CustomerImportModal({
                           {header}
                         </div>
                         <div className="flex justify-center text-[30px] leading-none text-black/55">
-                          <span aria-hidden="true">ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢</span>
+                          <span aria-hidden="true">{"\u2192"}</span>
                         </div>
                         <div className="pr-4">
                           <select
@@ -13967,7 +13967,7 @@ function EditorModal({
   const bookingDraft = modal.type === "booking" ? (draft as Booking) : null;
   const matchedBookingService =
     bookingDraft
-      ? findServiceForCalendarSlot(state.services, bookingDraft.resource, bookingDurationMinutes(bookingDraft), {
+                      {bookingDraft ? `${bookingDurationMinutes(bookingDraft)} minutes • ${bookingDraft.resource || "No room selected"}` : ""}
           date: bookingDraft.date,
           start: bookingDraft.start,
           end: bookingDraft.end,
@@ -14161,7 +14161,7 @@ function EditorModal({
                       {effectiveBookingService?.name || "No matching service selected"}
                     </div>
                     <div className="mt-1 text-sm text-black/55">
-                      {bookingDraft ? `${bookingDurationMinutes(bookingDraft)} minutes â€¢ ${bookingDraft.resource || "No room selected"}` : ""}
+                      {bookingDraft ? `${bookingDurationMinutes(bookingDraft)} minutes • ${bookingDraft.resource || "No room selected"}` : ""}
                     </div>
                   </div>
                   <div className="text-right">
