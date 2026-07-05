@@ -8403,15 +8403,15 @@ function SchedulesSettingsView({
             <div className="overflow-hidden rounded-[10px] border border-black/10 bg-white shadow-sm">
               <table className="w-full border-collapse">
                 <colgroup>
-                  <col className="w-[28%]" />
-                  <col className="w-[40%]" />
-                  <col className="w-[32%]" />
+                  <col className="w-[24%]" />
+                  <col className="w-[38%]" />
+                  <col className="w-[38%]" />
                 </colgroup>
                 <thead>
                   <tr className="bg-[#f3f6fa]">
                     <th className="px-5 py-5 text-left text-[15px] font-semibold text-black">Name</th>
                     <th className="px-5 py-5 text-left text-[15px] font-semibold text-black">Services</th>
-                    <th className="px-5 py-5 text-right text-[15px] font-semibold text-black">Rooms</th>
+                    <th className="px-5 py-5 text-left text-[15px] font-semibold text-black">Rooms</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-black/10">
@@ -8421,39 +8421,51 @@ function SchedulesSettingsView({
                       className="cursor-pointer bg-white transition hover:bg-black/[0.02]"
                       onClick={() => router.push(scheduleHref(schedule.id))}
                     >
-                      <td className="px-5 py-6 align-middle text-[18px] font-medium leading-[1.35] text-black">
-                        <div className="max-w-[140px] break-words">{schedule.name}</div>
+                      <td className="px-5 py-6 align-middle">
+                        <div className="max-w-[170px]">
+                          <div className="text-[18px] font-medium leading-[1.35] text-black break-words">
+                            {schedule.name}
+                          </div>
+                          <div className="mt-2 text-[13px] leading-5 text-black/55">
+                            {schedule.serviceNames.length} service{schedule.serviceNames.length === 1 ? "" : "s"} ·{" "}
+                            {schedule.roomNames.length} room{schedule.roomNames.length === 1 ? "" : "s"}
+                          </div>
+                        </div>
                       </td>
                       <td className="px-5 py-6 align-middle text-[16px] text-black/75">
                         {schedule.serviceNames.length ? (
-                          <div className="flex flex-wrap gap-3">
+                          <div className="flex flex-wrap gap-2.5">
                             {schedule.serviceNames.map((serviceName) => (
                               <span
                                 key={`${schedule.id}-service-${serviceName}`}
-                                className="inline-flex rounded-full bg-black/[0.06] px-4 py-1.5 text-[14px] font-medium text-black/80"
+                                className="inline-flex min-h-9 items-center rounded-full bg-black/[0.06] px-3.5 py-1 text-[13px] font-medium text-black/80"
                               >
                                 {serviceName}
                               </span>
                             ))}
                           </div>
                         ) : (
-                          "This schedule has no services assigned."
+                          <span className="inline-flex min-h-9 items-center rounded-full bg-black/[0.04] px-3.5 py-1 text-[13px] font-medium text-black/50">
+                            No services assigned
+                          </span>
                         )}
                       </td>
                       <td className="px-5 py-6 align-middle">
                         {schedule.roomNames.length ? (
-                          <div className="flex flex-wrap justify-end gap-3">
+                          <div className="flex flex-wrap gap-2.5">
                             {schedule.roomNames.map((room) => (
                               <span
                                 key={`${schedule.id}-room-${room}`}
-                                className="inline-flex rounded-full bg-black/[0.06] px-4 py-1.5 text-[14px] font-medium text-black/80"
+                                className="inline-flex min-h-9 items-center rounded-full bg-black/[0.06] px-3.5 py-1 text-[13px] font-medium text-black/80"
                               >
                                 {room}
                               </span>
                             ))}
                           </div>
                         ) : (
-                          <span className="text-[16px] text-black/75">This schedule has no rooms assigned.</span>
+                          <span className="inline-flex min-h-9 items-center rounded-full bg-black/[0.04] px-3.5 py-1 text-[13px] font-medium text-black/50">
+                            No rooms assigned
+                          </span>
                         )}
                       </td>
                     </tr>
@@ -8506,24 +8518,47 @@ function SchedulesSettingsView({
             className="w-full rounded-[16px] border border-black/12 bg-white p-5 text-left shadow-[0_1px_2px_rgba(0,0,0,0.03)]"
           >
             <div className="text-[20px] font-medium text-black">{schedule.name}</div>
-            <div className="mt-2 text-[14px] leading-6 text-black/70">
-              {schedule.serviceNames.length
-                ? `${schedule.serviceNames.length} service${schedule.serviceNames.length === 1 ? "" : "s"} assigned`
-                : "This schedule has no services assigned."}
+            <div className="mt-2 text-[13px] leading-5 text-black/55">
+              {schedule.serviceNames.length} service{schedule.serviceNames.length === 1 ? "" : "s"} ·{" "}
+              {schedule.roomNames.length} room{schedule.roomNames.length === 1 ? "" : "s"}
             </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {schedule.roomNames.length ? (
-                schedule.roomNames.map((room) => (
-                  <span
-                    key={`${schedule.id}-mobile-room-${room}`}
-                    className="inline-flex rounded-full bg-black/[0.06] px-3 py-1 text-[13px] font-medium text-black/80"
-                  >
-                    {room}
+            <div className="mt-4">
+              <div className="mb-2 text-[12px] font-semibold uppercase tracking-[0.08em] text-black/45">Services</div>
+              <div className="flex flex-wrap gap-2">
+                {schedule.serviceNames.length ? (
+                  schedule.serviceNames.map((serviceName) => (
+                    <span
+                      key={`${schedule.id}-mobile-service-${serviceName}`}
+                      className="inline-flex min-h-[34px] items-center rounded-full bg-black/[0.06] px-3 py-1 text-[12px] font-medium text-black/80"
+                    >
+                      {serviceName}
+                    </span>
+                  ))
+                ) : (
+                  <span className="inline-flex min-h-[34px] items-center rounded-full bg-black/[0.04] px-3 py-1 text-[12px] font-medium text-black/50">
+                    No services assigned
                   </span>
-                ))
-              ) : (
-                <span className="text-[13px] text-black/55">No rooms assigned.</span>
-              )}
+                )}
+              </div>
+            </div>
+            <div className="mt-4">
+              <div className="mb-2 text-[12px] font-semibold uppercase tracking-[0.08em] text-black/45">Rooms</div>
+              <div className="flex flex-wrap gap-2">
+                {schedule.roomNames.length ? (
+                  schedule.roomNames.map((room) => (
+                    <span
+                      key={`${schedule.id}-mobile-room-${room}`}
+                      className="inline-flex min-h-[34px] items-center rounded-full bg-black/[0.06] px-3 py-1 text-[12px] font-medium text-black/80"
+                    >
+                      {room}
+                    </span>
+                  ))
+                ) : (
+                  <span className="inline-flex min-h-[34px] items-center rounded-full bg-black/[0.04] px-3 py-1 text-[12px] font-medium text-black/50">
+                    No rooms assigned
+                  </span>
+                )}
+              </div>
             </div>
           </button>
         ))}
