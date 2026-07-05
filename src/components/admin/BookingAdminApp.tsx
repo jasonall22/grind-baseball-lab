@@ -7849,8 +7849,34 @@ function CustomerDetailView({
 }) {
   const tabLabels = ["Profile", "Billing", "Memberships", "Packages", "Activity", "Invoices", "Credits"] as const;
   type CustomerDetailTab = (typeof tabLabels)[number];
+  type CustomerBillingSubtab = "Payments" | "Wallet" | "Saved Cards";
+  const detailRouter = useRouter();
+  const detailPathname = usePathname();
+  const detailSearchParams = useSearchParams();
+  const activeCustomerTabParam = detailSearchParams.get("tab");
+  const normalizedInitialTab = useMemo<CustomerDetailTab>(() => {
+    const normalized = (activeCustomerTabParam ?? "").trim().toLowerCase();
+    switch (normalized) {
+      case "billing":
+        return "Billing";
+      case "memberships":
+        return "Memberships";
+      case "packages":
+        return "Packages";
+      case "activity":
+        return "Activity";
+      case "invoices":
+        return "Invoices";
+      case "credits":
+        return "Credits";
+      case "profile":
+      default:
+        return "Profile";
+    }
+  }, [activeCustomerTabParam]);
 
-  const [activeTab, setActiveTab] = useState<CustomerDetailTab>("Profile");
+  const [activeTab, setActiveTab] = useState<CustomerDetailTab>(normalizedInitialTab);
+  const [activeBillingTab, setActiveBillingTab] = useState<CustomerBillingSubtab>("Payments");
   const [contactOpen, setContactOpen] = useState(true);
   const [showFamilyModal, setShowFamilyModal] = useState(false);
   const [showEmergencyContactModal, setShowEmergencyContactModal] = useState(false);
@@ -7876,6 +7902,10 @@ function CustomerDetailView({
         : [],
     [bookings, customer]
   );
+
+  useEffect(() => {
+    setActiveTab(normalizedInitialTab);
+  }, [normalizedInitialTab]);
 
   if (!customer) {
     return (
@@ -8519,27 +8549,147 @@ function CustomerDetailView({
   }
 
   function renderBillingTab() {
+    const billingTabs: CustomerBillingSubtab[] = ["Payments", "Wallet", "Saved Cards"];
+
     return (
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-        <DetailPanel title="Billing Summary">
-          <div className="grid gap-3 p-5 sm:grid-cols-3">
-            <div className="rounded-xl border border-black/10 bg-black/[0.02] p-4">
-              <div className="text-[12px] uppercase tracking-[0.12em] text-black/45">Billed</div>
-              <div className="mt-2 text-[22px] font-medium text-black">{money(billedTotal)}</div>
-            </div>
-            <div className="rounded-xl border border-black/10 bg-black/[0.02] p-4">
-              <div className="text-[12px] uppercase tracking-[0.12em] text-black/45">Paid</div>
-              <div className="mt-2 text-[22px] font-medium text-black">{money(paidTotal)}</div>
-            </div>
-            <div className="rounded-xl border border-black/10 bg-black/[0.02] p-4">
-              <div className="text-[12px] uppercase tracking-[0.12em] text-black/45">Pending</div>
-              <div className="mt-2 text-[22px] font-medium text-black">{pendingCount}</div>
+      <div className="grid gap-4">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+          <div className="rounded-2xl border border-black/10 bg-white p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="inline-flex items-center gap-2 text-[13px] text-black/45">
+                  <Icon name="file" className="h-4 w-4" />
+                  Wallet Balance
+                </div>
+                <div className="mt-3 text-[24px] font-medium text-black">$0.00</div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-black px-4 text-[14px] font-medium text-white shadow-sm"
+                >
+                  <Icon name="plus" className="h-4 w-4" />
+                  Add
+                </button>
+                <button
+                  type="button"
+                  disabled
+                  className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-black/10 bg-white px-4 text-[14px] font-medium text-black/30"
+                >
+                  <Icon name="plus" className="h-4 w-4" />
+                  Redeem
+                </button>
+              </div>
             </div>
           </div>
-        </DetailPanel>
-        <DetailPanel title="Recent Charges">
-          <BookingRows />
-        </DetailPanel>
+
+          <div className="rounded-2xl border border-black/10 bg-white p-5">
+            <div className="inline-flex items-center gap-2 text-[13px] text-black/45">
+              <Icon name="file" className="h-4 w-4" />
+              Default Card
+            </div>
+            <div className="mt-3 text-[16px] text-black/55">No card on file</div>
+            <button
+              type="button"
+              className="mt-4 inline-flex min-h-10 items-center rounded-lg border border-black/12 bg-white px-4 text-[14px] font-medium text-black"
+            >
+              Add Card
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-6 border-b border-black/10 px-1">
+          {billingTabs.map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveBillingTab(tab)}
+              className={[
+                "border-b-2 px-2 pb-3 text-[14px] font-medium transition-colors",
+                activeBillingTab === tab ? "border-black text-black" : "border-transparent text-black/50 hover:text-black",
+              ].join(" ")}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+
+        {activeBillingTab === "Payments" ? (
+          <DetailPanel title="Payment History">
+            <div className="border-b border-black/10 px-5 py-4 lg:flex lg:items-start lg:justify-between lg:gap-4">
+              <div>
+                <div className="text-[14px] text-black/55">
+                  For more details, visit the{" "}
+                  <Link href="/admin/reports" className="text-[#5b83b8] underline underline-offset-2">
+                    Sales and Revenue reports
+                  </Link>
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-3 lg:mt-0 lg:justify-end">
+                <label className="relative min-w-[226px]">
+                  <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-black/35">
+                    <Icon name="search" className="h-4 w-4" />
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="Search"
+                    className="min-h-10 w-full rounded-lg border border-black/12 bg-white pl-11 pr-4 text-[14px] outline-none"
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-black/12 bg-white px-4 text-[14px] font-medium text-black"
+                >
+                  <Icon name="table" className="h-4 w-4" />
+                  Filters
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-black/12 bg-white px-4 text-[14px] font-medium text-black"
+                >
+                  <Icon name="download" className="h-4 w-4" />
+                  Export
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-black px-4 text-[14px] font-medium text-white shadow-sm"
+                >
+                  <Icon name="plus" className="h-4 w-4" />
+                  New Charge
+                </button>
+              </div>
+            </div>
+
+            <div className="grid min-h-[240px] place-items-center px-6 py-12 text-center">
+              <div>
+                <div className="text-[15px] font-medium text-black">No payments</div>
+                <div className="mt-2 text-[14px] text-black/45">This customer has no payments.</div>
+              </div>
+            </div>
+          </DetailPanel>
+        ) : null}
+
+        {activeBillingTab === "Wallet" ? (
+          <DetailPanel title="Wallet Activity">
+            <div className="grid min-h-[220px] place-items-center px-6 py-12 text-center">
+              <div>
+                <div className="text-[15px] font-medium text-black">No wallet activity</div>
+                <div className="mt-2 text-[14px] text-black/45">Wallet transactions will appear here.</div>
+              </div>
+            </div>
+          </DetailPanel>
+        ) : null}
+
+        {activeBillingTab === "Saved Cards" ? (
+          <DetailPanel title="Saved Cards">
+            <div className="grid min-h-[220px] place-items-center px-6 py-12 text-center">
+              <div>
+                <div className="text-[15px] font-medium text-black">No saved cards</div>
+                <div className="mt-2 text-[14px] text-black/45">Cards saved for this customer will appear here.</div>
+              </div>
+            </div>
+          </DetailPanel>
+        ) : null}
       </div>
     );
   }
@@ -8704,7 +8854,12 @@ function CustomerDetailView({
           <button
             key={tab}
             type="button"
-            onClick={() => setActiveTab(tab)}
+            onClick={() => {
+              setActiveTab(tab);
+              const nextParams = new URLSearchParams(detailSearchParams.toString());
+              nextParams.set("tab", tab.toLowerCase());
+              detailRouter.replace(`${detailPathname}?${nextParams.toString()}`, { scroll: false });
+            }}
             className={[
               "rounded-lg px-3.5 py-1.5 font-medium transition-colors",
               activeTab === tab ? "bg-white text-black shadow-sm" : "text-black/55 hover:text-black",
