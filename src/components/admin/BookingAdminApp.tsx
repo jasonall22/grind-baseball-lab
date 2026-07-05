@@ -8594,7 +8594,6 @@ function ScheduleEditorView({
   const pageTitle = isEditMode ? schedule.name || "Schedule" : "Add Schedule";
   const breadcrumbLabel = isEditMode ? pageTitle : "Add Schedule";
   const deleteGuardMessage = isEditMode ? getScheduleDeleteGuard(schedule) : null;
-  const roomOptions = useMemo(() => Array.from(new Set(resources.filter(Boolean))), [resources]);
 
   useEffect(() => {
     setDraft(schedule);
@@ -8736,17 +8735,6 @@ function ScheduleEditorView({
     );
   }
 
-  function toggleRoom(roomName: string, checked: boolean) {
-    setDraft((current) => ({
-      ...current,
-      roomNames: checked
-        ? current.roomNames.includes(roomName)
-          ? current.roomNames
-          : [...current.roomNames, roomName]
-        : current.roomNames.filter((item) => item !== roomName),
-    }));
-  }
-
   function makeDefaultScheduleSlot() {
     return { id: makeId("override-slot"), start: "09:00", end: "17:00", sortOrder: 1 };
   }
@@ -8883,7 +8871,7 @@ function ScheduleEditorView({
 
               <div className="divide-y divide-black/10">
                 <div className="px-5 py-5">
-                  <label className="grid max-w-[360px] gap-1.5">
+                  <label className="grid max-w-[240px] gap-1.5">
                     <span className="text-sm font-semibold text-black/70">Name</span>
                     <input
                       value={draft.name}
@@ -8897,63 +8885,6 @@ function ScheduleEditorView({
                       className="min-h-12 rounded-lg border border-black/10 px-4 text-[15px] outline-none focus:border-black/30"
                     />
                   </label>
-                </div>
-
-                <div className="grid gap-6 px-5 py-5 lg:grid-cols-[220px_minmax(0,1fr)]">
-                  <div>
-                    <div className="text-[18px] font-semibold">Rooms ({draft.roomNames.length})</div>
-                    <p className="mt-2 text-sm leading-relaxed text-black/65">
-                      Choose which rooms should use this schedule for their working hours.
-                    </p>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                    {roomOptions.length ? (
-                      roomOptions.map((roomName) => {
-                        const checked = draft.roomNames.includes(roomName);
-                        return (
-                          <label
-                            key={`${draft.id}-room-${roomName}`}
-                            className={`flex min-h-12 items-center gap-3 rounded-lg border px-4 py-3 text-[15px] transition ${
-                              checked ? "border-black/30 bg-black/[0.03]" : "border-black/10 bg-white"
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={(event) => toggleRoom(roomName, event.target.checked)}
-                              className="h-4 w-4 rounded border-black/20 text-black focus:ring-black/20"
-                            />
-                            <span className="font-medium text-black">{roomName}</span>
-                          </label>
-                        );
-                      })
-                    ) : (
-                      <div className="text-[15px] text-black/55">No rooms have been created yet.</div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="grid gap-6 px-5 py-5 lg:grid-cols-[220px_minmax(0,1fr)]">
-                  <div>
-                    <div className="text-[18px] font-semibold">Services ({draft.serviceNames.length})</div>
-                    <p className="mt-2 text-sm leading-relaxed text-black/65">
-                      Services using this schedule will follow these working hours.
-                    </p>
-                  </div>
-                  <div className="flex min-h-12 flex-wrap items-center gap-3">
-                    {draft.serviceNames.length ? (
-                      draft.serviceNames.map((serviceName) => (
-                        <span
-                          key={`${draft.id}-assigned-service-${serviceName}`}
-                          className="inline-flex min-h-10 items-center rounded-full bg-black/[0.06] px-4 py-2 text-[14px] font-medium text-black/80"
-                        >
-                          {serviceName}
-                        </span>
-                      ))
-                    ) : (
-                      <div className="text-[15px] text-black/55">No services are using this schedule yet.</div>
-                    )}
-                  </div>
                 </div>
 
                 <div className="px-5 py-5">
@@ -9297,7 +9228,7 @@ function ScheduleEditorView({
 
           <div className="divide-y divide-black/10">
             <div className="px-6 py-6">
-              <label className="grid gap-2">
+              <label className="grid max-w-[240px] gap-2">
                 <span className="text-[14px] font-medium text-black/85">Name</span>
                 <input
                   value={draft.name}
@@ -9311,59 +9242,6 @@ function ScheduleEditorView({
                   className="min-h-[48px] rounded-[8px] border border-black/12 px-4 text-[14px] outline-none"
                 />
               </label>
-            </div>
-
-            <div className="px-6 py-6">
-              <div className="text-[16px] font-medium text-black">Rooms ({draft.roomNames.length})</div>
-              <p className="mt-1 text-[13px] leading-6 text-black/70">
-                Choose which rooms should use this schedule for their working hours.
-              </p>
-              <div className="mt-5 grid gap-3">
-                {roomOptions.length ? (
-                  roomOptions.map((roomName) => {
-                    const checked = draft.roomNames.includes(roomName);
-                    return (
-                      <label
-                        key={`${draft.id}-mobile-room-${roomName}`}
-                        className={`flex min-h-[48px] items-center gap-3 rounded-[10px] border px-4 py-3 text-[14px] transition ${
-                          checked ? "border-black/25 bg-black/[0.03]" : "border-black/12 bg-white"
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(event) => toggleRoom(roomName, event.target.checked)}
-                          className="h-4 w-4 rounded border-black/20 text-black focus:ring-black/20"
-                        />
-                        <span className="font-medium text-black">{roomName}</span>
-                      </label>
-                    );
-                  })
-                ) : (
-                  <div className="text-[14px] text-black/55">No rooms have been created yet.</div>
-                )}
-              </div>
-            </div>
-
-            <div className="px-6 py-6">
-              <div className="text-[16px] font-medium text-black">Services ({draft.serviceNames.length})</div>
-              <p className="mt-1 text-[13px] leading-6 text-black/70">
-                Services using this schedule will follow these working hours.
-              </p>
-              <div className="mt-5 flex flex-wrap gap-2">
-                {draft.serviceNames.length ? (
-                  draft.serviceNames.map((serviceName) => (
-                    <span
-                      key={`${draft.id}-mobile-assigned-service-${serviceName}`}
-                      className="inline-flex min-h-[36px] items-center rounded-full bg-black/[0.06] px-3 py-1 text-[13px] font-medium text-black/80"
-                    >
-                      {serviceName}
-                    </span>
-                  ))
-                ) : (
-                  <div className="text-[14px] text-black/55">No services are using this schedule yet.</div>
-                )}
-              </div>
             </div>
 
             <div className="px-6 py-6">
