@@ -7053,12 +7053,26 @@ function CustomersView({
   onDelete: (id: string) => void;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
-  const filtered = customers.filter((customer) =>
-    [customer.name, customer.player, customer.email, customer.phone]
-      .join(" ")
-      .toLowerCase()
-      .includes(search.toLowerCase())
-  );
+  const [sortDirection, setSortDirection] = useState<"desc" | "asc">("desc");
+  const filtered = useMemo(() => {
+    const loweredSearch = search.toLowerCase();
+    return customers.filter((customer) =>
+      [customer.name, customer.player, customer.email, customer.phone]
+        .join(" ")
+        .toLowerCase()
+        .includes(loweredSearch)
+    );
+  }, [customers, search]);
+  const visibleCustomers = useMemo(() => {
+    return [...filtered].sort((left, right) => {
+      const leftTime = new Date(left.createdAt).getTime();
+      const rightTime = new Date(right.createdAt).getTime();
+      const safeLeft = Number.isNaN(leftTime) ? 0 : leftTime;
+      const safeRight = Number.isNaN(rightTime) ? 0 : rightTime;
+
+      return sortDirection === "desc" ? safeRight - safeLeft : safeLeft - safeRight;
+    });
+  }, [filtered, sortDirection]);
   const bookingCounts = useMemo(() => {
     const counts = new Map<string, number>();
     bookings.forEach((booking) => {
@@ -7066,15 +7080,20 @@ function CustomersView({
     });
     return counts;
   }, [bookings]);
-  const allVisibleSelected = filtered.length > 0 && filtered.every((customer) => selected.includes(customer.id));
+  const allVisibleSelected =
+    visibleCustomers.length > 0 && visibleCustomers.every((customer) => selected.includes(customer.id));
+
+  function toggleCreatedAtSort() {
+    setSortDirection((current) => (current === "desc" ? "asc" : "desc"));
+  }
 
   function toggleAll() {
     if (allVisibleSelected) {
-      setSelected((current) => current.filter((id) => !filtered.some((customer) => customer.id === id)));
+      setSelected((current) => current.filter((id) => !visibleCustomers.some((customer) => customer.id === id)));
       return;
     }
 
-    setSelected((current) => Array.from(new Set([...current, ...filtered.map((customer) => customer.id)])));
+    setSelected((current) => Array.from(new Set([...current, ...visibleCustomers.map((customer) => customer.id)])));
   }
 
   function toggleCustomer(id: string) {
@@ -7138,7 +7157,22 @@ function CustomersView({
                   />
                 </th>
                 <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Name</th>
-                <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Created At ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ</th>
+                <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">
+                  <button
+                    type="button"
+                    onClick={toggleCreatedAtSort}
+                    className="inline-flex items-center gap-1.5 text-left hover:text-black/75"
+                  >
+                    <span>Created At</span>
+                    <Icon
+                      name="chevron"
+                      className={[
+                        "h-3.5 w-3.5 text-black/55 transition-transform",
+                        sortDirection === "desc" ? "rotate-90" : "-rotate-90",
+                      ].join(" ")}
+                    />
+                  </button>
+                </th>
                 <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Email</th>
                 <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Phone Number</th>
                 <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Age</th>
@@ -7154,7 +7188,7 @@ function CustomersView({
                   </td>
                 </tr>
               ) : null}
-              {!loading ? filtered.map((customer) => {
+              {!loading ? visibleCustomers.map((customer) => {
                 const isSelected = selected.includes(customer.id);
                 const bookingCount = bookingCounts.get(customer.id) ?? 0;
 
@@ -7203,7 +7237,7 @@ function CustomersView({
                   </tr>
                 );
               }) : null}
-              {!loading && !filtered.length ? (
+              {!loading && !visibleCustomers.length ? (
                 <tr>
                   <td colSpan={8} className="px-4 py-10 text-center text-sm text-black/55">
                     No customers yet.
