@@ -106,6 +106,11 @@ type StaffRoleSummary = {
   permissions: "All" | "Limited";
 };
 
+type RolePermissionRecord = {
+  role: StaffRole;
+  enabledKeys: string[];
+};
+
 type Booking = {
   id: string;
   date: string;
@@ -336,6 +341,12 @@ type BookingStaffRow = {
   sort_order: number;
 };
 
+type BookingRolePermissionRow = {
+  role: StaffRole;
+  enabled_permissions: string[] | null;
+  sort_order: number;
+};
+
 type AppState = {
   facility: {
     name: string;
@@ -364,6 +375,7 @@ type AppState = {
     customFees: CustomFee[];
   };
   staff: StaffMember[];
+  rolePermissions: RolePermissionRecord[];
   resources: string[];
   services: Service[];
   customers: Customer[];
@@ -443,6 +455,385 @@ const serviceCalendarColorOptions = [
   "#eab308",
   "#ec4899",
 ];
+
+type RolePermissionDefinition = {
+  key: string;
+  label: string;
+  disabled?: boolean;
+};
+
+type RolePermissionGroup = {
+  title: string;
+  column: "left" | "right";
+  permissions: RolePermissionDefinition[];
+};
+
+const rolePermissionGroups: RolePermissionGroup[] = [
+  {
+    title: "Rentals",
+    column: "left",
+    permissions: [
+      { key: "rentals.view", label: "View rentals" },
+      { key: "rentals.add", label: "Add rentals" },
+      { key: "rentals.edit", label: "Edit rentals" },
+      { key: "rentals.delete", label: "Delete rentals" },
+    ],
+  },
+  {
+    title: "Lessons",
+    column: "left",
+    permissions: [
+      { key: "lessons.view", label: "View lessons" },
+      { key: "lessons.add", label: "Add lessons" },
+      { key: "lessons.edit", label: "Edit lessons" },
+      { key: "lessons.delete", label: "Delete lessons" },
+    ],
+  },
+  {
+    title: "Camps",
+    column: "left",
+    permissions: [
+      { key: "camps.view", label: "View camps" },
+      { key: "camps.add", label: "Add camps" },
+      { key: "camps.edit", label: "Edit camps" },
+      { key: "camps.delete", label: "Delete camps" },
+    ],
+  },
+  {
+    title: "Classes",
+    column: "left",
+    permissions: [
+      { key: "classes.view", label: "View classes" },
+      { key: "classes.add", label: "Add classes" },
+      { key: "classes.edit", label: "Edit classes" },
+      { key: "classes.delete", label: "Delete classes" },
+    ],
+  },
+  {
+    title: "Memberships",
+    column: "left",
+    permissions: [
+      { key: "memberships.view", label: "View memberships" },
+      { key: "memberships.add", label: "Add memberships" },
+      { key: "memberships.edit", label: "Edit memberships" },
+      { key: "memberships.delete", label: "Delete memberships" },
+    ],
+  },
+  {
+    title: "Packages",
+    column: "left",
+    permissions: [
+      { key: "packages.view", label: "View packages" },
+      { key: "packages.add", label: "Add packages" },
+      { key: "packages.edit", label: "Edit packages" },
+      { key: "packages.delete", label: "Delete packages" },
+    ],
+  },
+  {
+    title: "Add Ons",
+    column: "left",
+    permissions: [
+      { key: "addons.view", label: "View add ons" },
+      { key: "addons.add", label: "Add add ons", disabled: true },
+      { key: "addons.edit", label: "Edit add ons", disabled: true },
+      { key: "addons.delete", label: "Delete add ons", disabled: true },
+    ],
+  },
+  {
+    title: "Calendar",
+    column: "left",
+    permissions: [
+      { key: "calendar.view", label: "View calendar" },
+      { key: "calendar.addBookings", label: "Add bookings" },
+      { key: "calendar.editBookings", label: "Edit bookings" },
+      { key: "calendar.deleteBookings", label: "Delete bookings" },
+      {
+        key: "calendar.viewOwnStaffCalendar",
+        label: "View staff-based calendar (default to only their own)",
+      },
+      {
+        key: "calendar.viewAllStaffCalendar",
+        label: "View staff-based calendar for all staff members",
+      },
+      { key: "calendar.viewEquipmentCalendar", label: "View equipment calendar" },
+    ],
+  },
+  {
+    title: "Availability",
+    column: "left",
+    permissions: [
+      { key: "availability.view", label: "View availability calendar" },
+      { key: "availability.viewAny", label: "View availability for any staff member" },
+      {
+        key: "availability.viewOwn",
+        label: "View availability for their own account",
+        disabled: true,
+      },
+      { key: "availability.addAny", label: "Add availability for any staff member" },
+      {
+        key: "availability.addOwn",
+        label: "Add availability for their own account",
+        disabled: true,
+      },
+      { key: "availability.editAny", label: "Edit availability for any staff member" },
+      {
+        key: "availability.editOwn",
+        label: "Edit availability for their own account",
+        disabled: true,
+      },
+      { key: "availability.deleteAny", label: "Delete availability for any staff member" },
+      {
+        key: "availability.deleteOwn",
+        label: "Delete availability for their own account",
+        disabled: true,
+      },
+    ],
+  },
+  {
+    title: "Customers",
+    column: "left",
+    permissions: [
+      { key: "customers.view", label: "View customers" },
+      { key: "customers.add", label: "Add customers" },
+      { key: "customers.edit", label: "Edit customers" },
+      { key: "customers.chargeRefund", label: "Charge and refund customers" },
+      { key: "customers.addBilling", label: "Add custom billing options" },
+      { key: "customers.editBilling", label: "Edit custom billing options" },
+      { key: "customers.deleteBilling", label: "Delete custom billing options" },
+      { key: "customers.createInvoices", label: "Create invoices" },
+      { key: "customers.manageWallet", label: "Manage wallet balance" },
+      { key: "customers.assignPackages", label: "Assign packages to customers" },
+      { key: "customers.assignMemberships", label: "Assign memberships to customers" },
+      { key: "customers.delete", label: "Delete customers" },
+    ],
+  },
+  {
+    title: "Equipment",
+    column: "left",
+    permissions: [
+      { key: "equipment.view", label: "View equipment" },
+      { key: "equipment.add", label: "Add equipment", disabled: true },
+      { key: "equipment.edit", label: "Edit equipment", disabled: true },
+      { key: "equipment.delete", label: "Delete equipment", disabled: true },
+    ],
+  },
+  {
+    title: "Marketing",
+    column: "right",
+    permissions: [
+      { key: "marketing.view", label: "View marketing" },
+      { key: "marketing.viewCoupons", label: "View coupons" },
+      { key: "marketing.addCoupons", label: "Add coupons" },
+      { key: "marketing.editCoupons", label: "Edit coupons" },
+      { key: "marketing.deleteCoupons", label: "Delete coupons" },
+      { key: "marketing.viewGiftCards", label: "View gift cards" },
+      { key: "marketing.viewEmailBlasts", label: "View email blasts" },
+      { key: "marketing.manageEmailBlasts", label: "Manage email blasts" },
+    ],
+  },
+  {
+    title: "Retail",
+    column: "right",
+    permissions: [
+      { key: "retail.sellProducts", label: "Sell products" },
+      { key: "retail.manageProducts", label: "Manage products" },
+      { key: "retail.manageCategories", label: "Manage categories" },
+    ],
+  },
+  {
+    title: "Reports",
+    column: "right",
+    permissions: [
+      { key: "reports.view", label: "View reports" },
+      { key: "reports.bookings", label: "View bookings report" },
+      { key: "reports.occupancy", label: "View occupancy report" },
+      { key: "reports.customers", label: "View customer report" },
+      { key: "reports.payroll", label: "View payroll report" },
+      { key: "reports.revenue", label: "View revenue report" },
+      { key: "reports.unpaid", label: "View unpaid registrations report" },
+      { key: "reports.invoices", label: "View invoices report" },
+      { key: "reports.retailSales", label: "View retail sales report" },
+      { key: "reports.retailItems", label: "View retail items report" },
+      { key: "reports.wallet", label: "View wallet report" },
+      { key: "reports.customerCredits", label: "View customer credits report" },
+    ],
+  },
+  {
+    title: "Facility Settings",
+    column: "right",
+    permissions: [
+      { key: "facility.view", label: "View facility settings" },
+      { key: "facility.editDetails", label: "Edit facility details" },
+      { key: "facility.viewRooms", label: "View rooms" },
+      { key: "facility.addRooms", label: "Add rooms" },
+      { key: "facility.editRooms", label: "Edit rooms" },
+      { key: "facility.deleteRooms", label: "Delete rooms" },
+      { key: "facility.viewSchedules", label: "View schedules" },
+      { key: "facility.addSchedules", label: "Add schedules" },
+      { key: "facility.editSchedules", label: "Edit schedules" },
+      { key: "facility.deleteSchedules", label: "Delete schedules" },
+    ],
+  },
+  {
+    title: "Booking Settings",
+    column: "right",
+    permissions: [
+      { key: "booking.viewPage", label: "View booking page settings" },
+      { key: "booking.editPage", label: "Edit booking page settings" },
+      { key: "booking.viewPolicies", label: "View policies" },
+      { key: "booking.editPolicies", label: "Edit policies" },
+      { key: "booking.viewRegistration", label: "View registration settings" },
+      { key: "booking.editRegistration", label: "Edit registration settings" },
+    ],
+  },
+  {
+    title: "Payment Settings",
+    column: "right",
+    permissions: [
+      { key: "payments.view", label: "View payment settings" },
+      { key: "payments.edit", label: "Edit payment settings" },
+      { key: "payments.viewTaxesFees", label: "View taxes & fees" },
+      { key: "payments.manageTaxRates", label: "Manage tax rates" },
+      { key: "payments.manageCustomFees", label: "Manage custom fees" },
+    ],
+  },
+  {
+    title: "People Settings",
+    column: "right",
+    permissions: [
+      { key: "people.viewStaff", label: "View staff" },
+      { key: "people.addStaff", label: "Add staff" },
+      { key: "people.editStaff", label: "Edit staff" },
+      { key: "people.deleteStaff", label: "Delete staff" },
+      { key: "people.viewRoles", label: "View roles & permissions" },
+      { key: "people.editRoles", label: "Edit roles & permissions", disabled: true },
+    ],
+  },
+  {
+    title: "Platform Settings",
+    column: "right",
+    permissions: [
+      { key: "platform.viewPlan", label: "View plan & billing page" },
+      { key: "platform.changePlan", label: "Change plan", disabled: true },
+      { key: "platform.viewPayouts", label: "View payouts page" },
+      { key: "platform.viewIntegrations", label: "View integrations page" },
+      { key: "platform.editAutomations", label: "Edit automations" },
+      { key: "platform.viewSenders", label: "View senders" },
+      { key: "platform.addSenders", label: "Add senders" },
+      { key: "platform.editSenders", label: "Edit senders" },
+      { key: "platform.deleteSenders", label: "Delete senders" },
+    ],
+  },
+];
+
+const allEditableRolePermissionKeys = rolePermissionGroups.flatMap((group) =>
+  group.permissions.filter((permission) => !permission.disabled).map((permission) => permission.key)
+);
+
+const ownerDefaultPermissionKeys = [...allEditableRolePermissionKeys];
+const adminDefaultPermissionKeys = [...allEditableRolePermissionKeys];
+const staffDefaultPermissionKeys = [
+  "rentals.view",
+  "lessons.view",
+  "camps.view",
+  "classes.view",
+  "memberships.view",
+  "packages.view",
+  "calendar.view",
+  "calendar.addBookings",
+  "calendar.editBookings",
+  "availability.view",
+  "availability.viewAny",
+  "customers.view",
+  "customers.add",
+  "customers.edit",
+  "marketing.view",
+  "retail.sellProducts",
+  "reports.view",
+];
+const instructorDefaultPermissionKeys = [
+  "lessons.view",
+  "lessons.edit",
+  "calendar.view",
+  "calendar.addBookings",
+  "calendar.editBookings",
+  "availability.view",
+  "availability.viewAny",
+  "customers.view",
+  "customers.edit",
+];
+
+const defaultRolePermissions: RolePermissionRecord[] = [
+  { role: "Owner", enabledKeys: ownerDefaultPermissionKeys },
+  { role: "Admin", enabledKeys: adminDefaultPermissionKeys },
+  { role: "Staff", enabledKeys: staffDefaultPermissionKeys },
+  { role: "Instructor", enabledKeys: instructorDefaultPermissionKeys },
+];
+
+function roleSlug(role: StaffRole) {
+  return role.toLowerCase();
+}
+
+function roleFromSlug(value: string | null | undefined): StaffRole | null {
+  if (!value) return null;
+  const normalized = decodeURIComponent(value).trim().toLowerCase();
+  switch (normalized) {
+    case "owner":
+      return "Owner";
+    case "admin":
+      return "Admin";
+    case "staff":
+      return "Staff";
+    case "instructor":
+      return "Instructor";
+    default:
+      return null;
+  }
+}
+
+function normalizeRolePermissionKeys(value: unknown) {
+  if (!Array.isArray(value)) return [];
+
+  const validKeys = new Set(allEditableRolePermissionKeys);
+  return Array.from(
+    new Set(
+      value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter((item) => validKeys.has(item))
+    )
+  );
+}
+
+function normalizeRolePermissionEntry(value: unknown): RolePermissionRecord | null {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Partial<RolePermissionRecord>;
+  const role = normalizeStaffRole(item.role);
+  return {
+    role,
+    enabledKeys: normalizeRolePermissionKeys(item.enabledKeys),
+  };
+}
+
+function normalizeRolePermissions(value: unknown): RolePermissionRecord[] {
+  const rows = Array.isArray(value)
+    ? value.map(normalizeRolePermissionEntry).filter(Boolean) as RolePermissionRecord[]
+    : [];
+
+  const byRole = new Map(rows.map((row) => [row.role, row.enabledKeys]));
+
+  return defaultRolePermissions.map((row) => ({
+    role: row.role,
+    enabledKeys: byRole.get(row.role) ?? row.enabledKeys,
+  }));
+}
+
+function rolePermissionSummary(role: StaffRole, records: RolePermissionRecord[]) {
+  const enabledKeys =
+    records.find((record) => record.role === role)?.enabledKeys ?? [];
+
+  return enabledKeys.length >= allEditableRolePermissionKeys.length ? "All" : "Limited";
+}
 
 const navItems: { key: BookingAdminView; label: string; icon: IconName }[] = [
   { key: "home", label: "Home", icon: "home" },
@@ -708,6 +1099,7 @@ const defaultState: AppState = {
       active: true,
     },
   ],
+  rolePermissions: defaultRolePermissions,
   resources: ["Cage 1", "Cage 2", "Pitching Lane", "HitTrax"],
   services: [
     {
@@ -1412,6 +1804,30 @@ async function upsertStaffMembers(staff: StaffMember[]) {
 
   if (refreshed.error) throw refreshed.error;
   return (refreshed.data ?? []) as BookingStaffRow[];
+}
+
+async function upsertRolePermissions(rolePermissions: RolePermissionRecord[]) {
+  const payload = defaultRolePermissions.map((row, index) => {
+    const enabledKeys =
+      rolePermissions.find((item) => item.role === row.role)?.enabledKeys ?? row.enabledKeys;
+
+    return {
+      role: row.role,
+      enabled_permissions: normalizeRolePermissionKeys(enabledKeys),
+      sort_order: index + 1,
+    };
+  });
+
+  const { error } = await supabase.from("booking_role_permissions").upsert(payload);
+  if (error) throw error;
+
+  const refreshed = await supabase
+    .from("booking_role_permissions")
+    .select("*")
+    .order("sort_order");
+
+  if (refreshed.error) throw refreshed.error;
+  return (refreshed.data ?? []) as BookingRolePermissionRow[];
 }
 
 async function upsertResources(resourceNames: string[]) {
@@ -2442,10 +2858,14 @@ function loadInitialState() {
     if (!raw) return defaultState;
     const parsed = { ...defaultState, ...JSON.parse(raw) } as AppState;
     const staff = normalizeStaffMembers(parsed.staff ?? defaultState.staff);
+    const rolePermissions = normalizeRolePermissions(
+      parsed.rolePermissions ?? defaultState.rolePermissions
+    );
     const services = normalizeServices(parsed.services ?? defaultState.services);
     return {
       ...parsed,
       staff,
+      rolePermissions,
       services,
       bookings: normalizeBookings(parsed.bookings ?? defaultState.bookings, services),
     };
@@ -2611,12 +3031,14 @@ export default function BookingAdminApp({
   selectedServiceId,
   selectedRoomId,
   selectedScheduleId,
+  selectedRoleId,
 }: {
   view?: BookingAdminView;
   selectedCustomerId?: string;
   selectedServiceId?: string;
   selectedRoomId?: string;
   selectedScheduleId?: string;
+  selectedRoleId?: string;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -2639,6 +3061,9 @@ export default function BookingAdminApp({
   const isRoomEditPage = Boolean(selectedRoomId && /^\/admin\/settings\/rooms\/[^/]+$/.test(pathname) && !pathname.endsWith("/add"));
   const isScheduleEditPage = Boolean(
     selectedScheduleId && /^\/admin\/settings\/schedules\/[^/]+$/.test(pathname) && !pathname.endsWith("/add")
+  );
+  const isRoleEditPage = Boolean(
+    selectedRoleId && /^\/admin\/settings\/roles\/[^/]+$/.test(pathname)
   );
 
   const roomNamesById = useMemo(
@@ -2676,6 +3101,7 @@ export default function BookingAdminApp({
       null
     );
   }, [selectedScheduleId, selectedScheduleName, state.schedules]);
+  const selectedRole = useMemo(() => roleFromSlug(selectedRoleId), [selectedRoleId]);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -2714,6 +3140,7 @@ export default function BookingAdminApp({
         scheduleSlotsResult,
         scheduleOverridesResult,
         staffResult,
+        rolePermissionsResult,
         campaignsResult,
         productsResult,
       ] = await Promise.all([
@@ -2727,6 +3154,7 @@ export default function BookingAdminApp({
         supabase.from("booking_schedule_slots").select("*").order("weekday").order("sort_order"),
         supabase.from("booking_schedule_overrides").select("*").order("override_date").order("sort_order"),
         supabase.from("booking_staff_members").select("*").order("is_active", { ascending: false }).order("sort_order"),
+        supabase.from("booking_role_permissions").select("*").order("sort_order"),
         supabase.from("booking_campaigns").select("*").order("created_at"),
         supabase.from("booking_products").select("*").order("created_at"),
       ]);
@@ -2742,6 +3170,7 @@ export default function BookingAdminApp({
         scheduleSlotsResult.error,
         scheduleOverridesResult.error,
         staffResult.error,
+        rolePermissionsResult.error,
         campaignsResult.error,
         productsResult.error,
       ].find(Boolean);
@@ -2758,6 +3187,7 @@ export default function BookingAdminApp({
       const scheduleSlotRows = (scheduleSlotsResult.data ?? []) as BookingScheduleSlotRow[];
       const scheduleOverrideRows = (scheduleOverridesResult.data ?? []) as BookingScheduleOverrideRow[];
       const staffRows = (staffResult.data ?? []) as BookingStaffRow[];
+      const rolePermissionRows = (rolePermissionsResult.data ?? []) as BookingRolePermissionRow[];
       const campaignRows = (campaignsResult.data ?? []) as BookingCampaignRow[];
       const productRows = (productsResult.data ?? []) as BookingProductRow[];
       const activeResourceRows = resourceRows.filter((resource) => resource.is_active);
@@ -2904,6 +3334,12 @@ export default function BookingAdminApp({
               active: member.is_active,
             }))
           : defaultState.staff,
+        rolePermissions: normalizeRolePermissions(
+          rolePermissionRows.map((row) => ({
+            role: normalizeStaffRole(row.role),
+            enabledKeys: row.enabled_permissions ?? [],
+          }))
+        ),
         resources: resources.map((resource) => resource.name),
         services: serviceRows.map((service) => ({
           id: service.id,
@@ -3110,6 +3546,33 @@ export default function BookingAdminApp({
     } catch (error) {
       console.error(error);
       showToast("Staff could not be saved.");
+      void loadFromSupabase();
+      return false;
+    }
+  }
+
+  async function saveRolePermissions(nextRolePermissions: RolePermissionRecord[]) {
+    const normalizedRolePermissions = normalizeRolePermissions(nextRolePermissions);
+    const nextState = {
+      ...state,
+      rolePermissions: normalizedRolePermissions,
+    };
+
+    if (dataSource === "local") {
+      saveLocal(nextState, "Role permissions saved.");
+      return true;
+    }
+
+    setState(nextState);
+    stateToStorage(nextState);
+
+    try {
+      await upsertRolePermissions(normalizedRolePermissions);
+      showToast("Role permissions saved.");
+      return true;
+    } catch (error) {
+      console.error(error);
+      showToast("Role permissions could not be saved.");
       void loadFromSupabase();
       return false;
     }
@@ -4060,7 +4523,24 @@ export default function BookingAdminApp({
             />
           ) : null}
           {view === "settings-roles" ? (
-            <StaffRolesSettingsView backHref={backToAppHref} staff={state.staff} />
+            isRoleEditPage ? (
+              selectedRole ? (
+                <StaffRoleEditorView
+                  backHref={bookingAdminRouteByView["settings-roles"]}
+                  role={selectedRole}
+                  rolePermissions={state.rolePermissions}
+                  onSave={saveRolePermissions}
+                />
+              ) : (
+                <section className="min-h-screen px-6 py-8 text-[16px] text-black/60">Loading role...</section>
+              )
+            ) : (
+              <StaffRolesSettingsView
+                backHref={backToAppHref}
+                staff={state.staff}
+                rolePermissions={state.rolePermissions}
+              />
+            )
           ) : null}
           {view === "settings-rooms-add" ? (
             <RoomEditorView
@@ -8342,17 +8822,28 @@ const staffRoleDisplayOrder: StaffRoleSummary[] = [
   { role: "Instructor", permissions: "Limited" },
 ];
 
+function roleEditorHref(role: StaffRole) {
+  return `/admin/settings/roles/${roleSlug(role)}`;
+}
+
 function StaffRolesSettingsView({
   backHref,
   staff,
+  rolePermissions,
 }: {
   backHref: string;
   staff: StaffMember[];
+  rolePermissions: RolePermissionRecord[];
 }) {
   const roleRows = useMemo(() => {
     const presentRoles = new Set(staff.map((member) => member.role));
-    return staffRoleDisplayOrder.filter((item) => presentRoles.has(item.role));
-  }, [staff]);
+    return staffRoleDisplayOrder
+      .filter((item) => presentRoles.has(item.role))
+      .map((item) => ({
+        ...item,
+        permissions: rolePermissionSummary(item.role, rolePermissions),
+      }));
+  }, [rolePermissions, staff]);
 
   return (
     <section className="min-h-screen bg-white">
@@ -8427,9 +8918,17 @@ function StaffRolesSettingsView({
                 </thead>
                 <tbody className="divide-y divide-black/10">
                   {roleRows.map((item) => (
-                    <tr key={item.role} className="bg-white">
-                      <td className="px-5 py-5 text-[18px] text-black">{item.role}</td>
-                      <td className="px-5 py-5 text-[18px] text-black/80">{item.permissions}</td>
+                    <tr key={item.role} className="bg-white transition hover:bg-black/[0.015]">
+                      <td className="px-5 py-5 text-[18px] text-black">
+                        <Link href={roleEditorHref(item.role)} className="block">
+                          {item.role}
+                        </Link>
+                      </td>
+                      <td className="px-5 py-5 text-[18px] text-black/80">
+                        <Link href={roleEditorHref(item.role)} className="block">
+                          {item.permissions}
+                        </Link>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -8451,17 +8950,284 @@ function StaffRolesSettingsView({
             <span>Permissions</span>
           </div>
           {roleRows.map((item) => (
-            <div
+            <Link
               key={item.role}
-              className="grid grid-cols-[1.1fr_.9fr] gap-3 border-t border-black/10 px-4 py-4"
+              href={roleEditorHref(item.role)}
+              className="grid grid-cols-[1.1fr_.9fr] gap-3 border-t border-black/10 px-4 py-4 transition hover:bg-black/[0.015]"
             >
               <div className="text-[17px] text-black">{item.role}</div>
               <div className="text-[17px] text-black/75">{item.permissions}</div>
-            </div>
+            </Link>
           ))}
         </div>
       </div>
     </section>
+  );
+}
+
+function StaffRoleEditorView({
+  backHref,
+  role,
+  rolePermissions,
+  onSave,
+}: {
+  backHref: string;
+  role: StaffRole;
+  rolePermissions: RolePermissionRecord[];
+  onSave: (nextRolePermissions: RolePermissionRecord[]) => Promise<boolean>;
+}) {
+  const [enabledKeys, setEnabledKeys] = useState<string[]>(
+    () => rolePermissions.find((item) => item.role === role)?.enabledKeys ?? []
+  );
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setEnabledKeys(rolePermissions.find((item) => item.role === role)?.enabledKeys ?? []);
+  }, [role, rolePermissions]);
+
+  const leftGroups = useMemo(
+    () => rolePermissionGroups.filter((group) => group.column === "left"),
+    []
+  );
+  const rightGroups = useMemo(
+    () => rolePermissionGroups.filter((group) => group.column === "right"),
+    []
+  );
+
+  function togglePermission(key: string, checked: boolean) {
+    setEnabledKeys((current) => {
+      const next = new Set(current);
+      if (checked) {
+        next.add(key);
+      } else {
+        next.delete(key);
+      }
+      return Array.from(next);
+    });
+  }
+
+  function selectAll() {
+    setEnabledKeys([...allEditableRolePermissionKeys]);
+  }
+
+  async function save() {
+    setSaving(true);
+    try {
+      await onSave(
+        rolePermissions.map((item) =>
+          item.role === role
+            ? {
+                ...item,
+                enabledKeys: normalizeRolePermissionKeys(enabledKeys),
+              }
+            : item
+        )
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const renderPermissionGroup = (group: RolePermissionGroup) => (
+    <div key={group.title} className="border-b border-black/10 pb-5 last:border-b-0 last:pb-0">
+      <div className="mb-4 text-[24px] font-semibold text-black">{group.title}</div>
+      <div className="grid gap-3">
+        {group.permissions.map((permission) => {
+          const checked = enabledKeys.includes(permission.key);
+          return (
+            <label
+              key={permission.key}
+              className={[
+                "flex items-center gap-3 text-[16px] leading-snug text-black",
+                permission.disabled ? "cursor-not-allowed opacity-45" : "cursor-pointer",
+              ].join(" ")}
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={permission.disabled}
+                onChange={(event) => togglePermission(permission.key, event.target.checked)}
+                className="h-[18px] w-[18px] rounded border border-black/20 accent-black"
+              />
+              <span>{permission.label}</span>
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  return (
+    <section className="min-h-screen bg-white">
+      <div className="px-5 py-4 xl:hidden">
+        <Link href={backHref} className="inline-flex items-center gap-2 text-[15px] font-medium text-black">
+          <Icon name="arrow-left" className="h-4 w-4" />
+          Roles
+        </Link>
+      </div>
+
+      <div className="hidden min-h-screen xl:grid xl:grid-cols-[284px_minmax(0,1fr)]">
+        <aside className="border-b border-black/10 bg-[#f7f7f7] px-4 py-5 lg:border-b-0 lg:border-r">
+          <Link
+            href={backHref}
+            className="inline-flex items-center gap-2 text-sm font-semibold text-black/70 transition hover:text-black"
+          >
+            <Icon name="arrow-left" className="h-4 w-4" />
+            Back to app
+          </Link>
+
+          <div className="mt-6 space-y-6">
+            {settingsNavGroups.map((group) => (
+              <div key={group.title}>
+                <div className="mb-2 text-sm font-medium text-black/45">{group.title}</div>
+                <div className="space-y-1">
+                  {group.items.map((item) => {
+                    const isActive = item.section === "roles";
+                    const className = [
+                      "flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-[15px] transition",
+                      isActive ? "bg-[#e9e9e9] font-semibold" : "text-black/75 hover:bg-black/5",
+                    ].join(" ");
+
+                    const content = (
+                      <>
+                        <Icon name={item.icon} className="h-[18px] w-[18px]" />
+                        <span>{item.label}</span>
+                      </>
+                    );
+
+                    return item.href ? (
+                      <Link key={item.label} href={item.href} className={className}>
+                        {content}
+                      </Link>
+                    ) : (
+                      <button key={item.label} type="button" className={className}>
+                        {content}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </aside>
+
+        <div className="px-8 py-9">
+          <StaffRoleEditorCard
+            backHref={backHref}
+            role={role}
+            saving={saving}
+            onSave={save}
+            onSelectAll={selectAll}
+            leftGroups={leftGroups}
+            rightGroups={rightGroups}
+            renderPermissionGroup={renderPermissionGroup}
+          />
+        </div>
+      </div>
+
+      <div className="px-5 pb-8 xl:hidden">
+        <StaffRoleEditorCard
+          backHref={backHref}
+          role={role}
+          saving={saving}
+          onSave={save}
+          onSelectAll={selectAll}
+          leftGroups={leftGroups}
+          rightGroups={rightGroups}
+          renderPermissionGroup={renderPermissionGroup}
+          mobile
+        />
+      </div>
+    </section>
+  );
+}
+
+function StaffRoleEditorCard({
+  backHref,
+  role,
+  saving,
+  onSave,
+  onSelectAll,
+  leftGroups,
+  rightGroups,
+  renderPermissionGroup,
+  mobile = false,
+}: {
+  backHref: string;
+  role: StaffRole;
+  saving: boolean;
+  onSave: () => Promise<void>;
+  onSelectAll: () => void;
+  leftGroups: RolePermissionGroup[];
+  rightGroups: RolePermissionGroup[];
+  renderPermissionGroup: (group: RolePermissionGroup) => React.ReactNode;
+  mobile?: boolean;
+}) {
+  return (
+    <div className={mobile ? "space-y-4" : "max-w-[1240px]"}>
+      <div className={mobile ? "mb-5" : "mb-8"}>
+        <div className="text-[14px] font-medium text-black/55">
+          <Link href={backHref} className="transition hover:text-black">
+            Roles
+          </Link>{" "}
+          / <span className="text-black">{role}</span>
+        </div>
+        <h1 className="mt-2 text-[42px] font-medium leading-none text-black">{role}</h1>
+      </div>
+
+      <div className="overflow-hidden rounded-[10px] border border-black/10 bg-white shadow-sm">
+        <div className="border-t-[4px] border-[#4f76b8] px-5 py-5 text-[24px] font-medium text-black">
+          Role Details
+        </div>
+
+        <div className={mobile ? "px-5 py-5" : "px-6 py-6"}>
+          <div className={mobile ? "grid gap-6" : "grid gap-6 xl:grid-cols-[220px_minmax(0,1fr)]"}>
+            <div className="text-[18px] font-semibold text-black">
+              Name
+            </div>
+            <div className="grid gap-4">
+              <label className="grid gap-2">
+                <span className="text-[15px] font-semibold text-black/75">Name</span>
+                <input
+                  value={role}
+                  disabled
+                  className="min-h-12 rounded-lg border border-black/10 bg-[#f8f8f8] px-4 text-[16px] text-black/75"
+                  readOnly
+                />
+              </label>
+
+              <div className="flex justify-start">
+                <button
+                  type="button"
+                  onClick={onSelectAll}
+                  className="rounded-lg border border-black/10 bg-white px-4 py-2 text-[15px] font-medium text-black transition hover:bg-black/[0.03]"
+                >
+                  Select all
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-8 border-t border-black/10 pt-8">
+            <div className={mobile ? "grid gap-8" : "grid gap-10 xl:grid-cols-2"}>
+              <div className="space-y-8">{leftGroups.map(renderPermissionGroup)}</div>
+              <div className="space-y-8">{rightGroups.map(renderPermissionGroup)}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end border-t border-black/10 bg-[#fafafa] px-5 py-5">
+          <button
+            type="button"
+            onClick={() => void onSave()}
+            disabled={saving}
+            className="rounded-lg bg-[#1f1b1b] px-6 py-3 text-[16px] font-medium text-white shadow-[0_3px_8px_rgba(0,0,0,0.18)] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {saving ? "Saving..." : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
