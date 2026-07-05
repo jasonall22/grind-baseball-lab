@@ -1481,6 +1481,25 @@ function closedBlocksForSchedule(schedule: ScheduleRecord | null | undefined, va
   return blocks;
 }
 
+function openBlocksForSchedule(schedule: ScheduleRecord | null | undefined, value: string) {
+  const closedBlocks = [...closedBlocksForSchedule(schedule, value)].sort((a, b) => a.start - b.start);
+  const openBlocks: Array<{ start: number; end: number }> = [];
+  let cursor = 0;
+
+  for (const block of closedBlocks) {
+    if (block.start > cursor) {
+      openBlocks.push({ start: cursor, end: block.start });
+    }
+    cursor = Math.max(cursor, block.end);
+  }
+
+  if (cursor < 1439) {
+    openBlocks.push({ start: cursor, end: 1439 });
+  }
+
+  return openBlocks.filter((block) => block.end > block.start);
+}
+
 function scheduleScrollTargetTime(schedule: ScheduleRecord | null | undefined, date: string) {
   const today = isoDate(new Date());
 
@@ -1499,6 +1518,23 @@ function scheduleScrollTargetTime(schedule: ScheduleRecord | null | undefined, d
   const config = dayConfigForDate(schedule, date);
   if (!config.enabled || !config.slots.length) return "00:00";
   return [...config.slots].sort((a, b) => a.sortOrder - b.sortOrder)[0].start;
+}
+
+function scheduleRangeForDate(schedule: ScheduleRecord | null | undefined, value: string) {
+  const openBlocks = openBlocksForSchedule(schedule, value);
+  if (!openBlocks.length) {
+    return {
+      isOpen: false,
+      openStart: "00:00",
+      openEnd: "23:59",
+    };
+  }
+
+  return {
+    isOpen: true,
+    openStart: minutesToTime(openBlocks[0].start),
+    openEnd: minutesToTime(openBlocks[openBlocks.length - 1].end),
+  };
 }
 
 function availabilityForDate(availability: AppState["availability"], value: string) {
@@ -1659,7 +1695,7 @@ type MobileCalendarTimelineSegment =
 
 function buildMobileCalendarTimeline(
   bookings: Booking[],
-  availability: AppState["availability"],
+  schedule: ScheduleRecord | null | undefined,
   date: string
 ): MobileCalendarTimelineSegment[] {
   function pushAvailableBlocks(segments: MobileCalendarTimelineSegment[], start: number, end: number) {
@@ -1671,58 +1707,74 @@ function buildMobileCalendarTimeline(
     }
   }
 
-  const [, isOpen, openStart, openEnd] = availabilityForDate(availability, date);
+  const openBlocks = openBlocksForSchedule(schedule, date);
+  const closedBlocks = closedBlocksForSchedule(schedule, date).sort((a, b) => a.start - b.start);
 
-  if (!isOpen) {
-    return [{ type: "closed", start: 0, end: 1439 }];
+  if (!openBlocks.length) {
+    return closedBlocks.length ? closedBlocks.map((block) => ({ type: "closed" as const, ...block })) : [{ type: "closed", start: 0, end: 1439 }];
   }
 
-  const startMinutes = Math.max(0, timeToMinutes(openStart));
-  const endMinutes = Math.min(1439, timeToMinutes(openEnd));
   const segments: MobileCalendarTimelineSegment[] = [];
   const sortedBookings = [...bookings].sort(
     (a, b) =>
       timeToMinutes(a.start) - timeToMinutes(b.start) ||
       timeToMinutes(a.end) - timeToMinutes(b.end)
   );
+  let closedIndex = 0;
+  let bookingIndex = 0;
 
-  if (startMinutes > 0) {
-    segments.push({ type: "closed", start: 0, end: startMinutes });
-  }
-
-  let cursor = startMinutes;
-
-  for (const booking of sortedBookings) {
-    const bookingStart = Math.max(startMinutes, timeToMinutes(booking.start));
-    const bookingEnd = Math.min(endMinutes, Math.max(bookingStart + 30, timeToMinutes(booking.end)));
-
-    if (bookingEnd <= startMinutes || bookingStart >= endMinutes) {
-      continue;
+  for (const openBlock of openBlocks) {
+    while (closedIndex < closedBlocks.length && closedBlocks[closedIndex].end <= openBlock.start) {
+      segments.push({ type: "closed", ...closedBlocks[closedIndex] });
+      closedIndex += 1;
     }
 
-    if (bookingStart > cursor) {
-      pushAvailableBlocks(segments, cursor, bookingStart);
+    let cursor = openBlock.start;
+
+    while (bookingIndex < sortedBookings.length && timeToMinutes(sortedBookings[bookingIndex].end) <= openBlock.start) {
+      bookingIndex += 1;
     }
 
-    segments.push({
-      type: "booking",
-      start: Math.max(cursor, bookingStart),
-      end: bookingEnd,
-      booking,
-    });
+    for (let index = bookingIndex; index < sortedBookings.length; index += 1) {
+      const booking = sortedBookings[index];
+      const bookingStart = Math.max(openBlock.start, timeToMinutes(booking.start));
+      const bookingEnd = Math.min(openBlock.end, Math.max(bookingStart + 30, timeToMinutes(booking.end)));
 
-    cursor = Math.max(cursor, bookingEnd);
+      if (bookingStart >= openBlock.end) {
+        break;
+      }
+
+      if (bookingEnd <= openBlock.start) {
+        continue;
+      }
+
+      if (bookingStart > cursor) {
+        pushAvailableBlocks(segments, cursor, bookingStart);
+      }
+
+      segments.push({
+        type: "booking",
+        start: Math.max(cursor, bookingStart),
+        end: bookingEnd,
+        booking,
+      });
+
+      cursor = Math.max(cursor, bookingEnd);
+    }
+
+    if (cursor < openBlock.end) {
+      pushAvailableBlocks(segments, cursor, openBlock.end);
+    }
   }
 
-  if (cursor < endMinutes) {
-    pushAvailableBlocks(segments, cursor, endMinutes);
+  while (closedIndex < closedBlocks.length) {
+    segments.push({ type: "closed", ...closedBlocks[closedIndex] });
+    closedIndex += 1;
   }
 
-  if (endMinutes < 1439) {
-    segments.push({ type: "closed", start: endMinutes, end: 1439 });
-  }
-
-  return segments.filter((segment) => segment.end > segment.start);
+  return segments
+    .filter((segment) => segment.end > segment.start)
+    .sort((a, b) => a.start - b.start);
 }
 
 function dateLabel(value: string) {
@@ -3288,6 +3340,7 @@ export default function BookingAdminApp({
               activeDate={activeDate}
               bookings={state.bookings}
               availability={state.availability}
+              schedules={state.schedules}
               customersById={customersById}
               resources={state.resources}
               servicesById={servicesById}
@@ -4796,6 +4849,7 @@ function CalendarView({
   activeDate,
   bookings,
   availability,
+  schedules,
   customersById,
   resources,
   servicesById,
@@ -4807,6 +4861,7 @@ function CalendarView({
   activeDate: string;
   bookings: Booking[];
   availability: AppState["availability"];
+  schedules: ScheduleRecord[];
   customersById: Map<string, Customer>;
   resources: string[];
   servicesById: Map<string, Service>;
@@ -4825,8 +4880,23 @@ function CalendarView({
   const mobileDayTimeTargetRef = useRef<HTMLDivElement | null>(null);
   const desktopDayTimeTargetRef = useRef<HTMLDivElement | null>(null);
   const dayName = weekdayName(activeDate);
-  const availabilityRow = availabilityForDate(availability, activeDate);
-  const [, isOpen, openStart, openEnd] = availabilityRow;
+  const scheduleCollection = schedules.length ? schedules : defaultState.schedules;
+  const defaultSchedule =
+    scheduleCollection.find((schedule) => schedule.isDefault || schedule.slug === "working-hours") ??
+    scheduleCollection[0] ??
+    null;
+  const scheduleByResource = useMemo(
+    () =>
+      new Map(
+        resources.map((resource) => [resource, scheduleForRoom(scheduleCollection, resource) ?? defaultSchedule] as const)
+      ),
+    [defaultSchedule, resources, scheduleCollection]
+  );
+  const selectedScheduleForMobile =
+    mobileResource !== allMobileResourcesValue
+      ? scheduleByResource.get(mobileResource) ?? defaultSchedule
+      : defaultSchedule;
+  const { isOpen, openStart, openEnd } = scheduleRangeForDate(selectedScheduleForMobile, activeDate);
   const slots = useMemo(() => Array.from({ length: 48 }, (_, index) => minutesToTime(index * 30)), []);
   const slotHeight = 50;
   const mobileSlotHeight = 46;
@@ -4846,7 +4916,10 @@ function CalendarView({
       ),
     [activeDate, activeCalendarBookings]
   );
-  const closedBlocks = useMemo(() => closedBlocksForDate(availability, activeDate), [availability, activeDate]);
+  const closedBlocks = useMemo(
+    () => closedBlocksForSchedule(selectedScheduleForMobile, activeDate),
+    [activeDate, selectedScheduleForMobile]
+  );
   const week = useMemo(() => weekDates(activeDate), [activeDate]);
   const weekBookings = useMemo(() => {
     return week.map((date) => ({
@@ -4874,16 +4947,18 @@ function CalendarView({
     () =>
       resources.map((resource) => {
         const resourceBookings = visibleDayBookings.filter((booking) => booking.resource === resource);
-        const timeline = buildMobileCalendarTimeline(resourceBookings, availability, activeDate);
+        const schedule = scheduleByResource.get(resource) ?? defaultSchedule;
+        const timeline = buildMobileCalendarTimeline(resourceBookings, schedule, activeDate);
         const availableBlocks = timeline.filter((segment) => segment.type === "available");
         return {
           resource,
+          schedule,
           bookings: resourceBookings,
           timeline,
           availableBlocks,
         };
       }),
-    [activeDate, availability, resources, visibleDayBookings]
+    [activeDate, defaultSchedule, resources, scheduleByResource, visibleDayBookings]
   );
   const mobileVisibleDayResourceViews = useMemo(
     () =>
@@ -4893,8 +4968,18 @@ function CalendarView({
     [mobileDayResourceViews, mobileResource]
   );
   const scrollTargetTime = useMemo(
-    () => calendarScrollTargetTime(availability, activeDate),
-    [activeDate, availability]
+    () => {
+      const targets = resources
+        .map((resource) => scheduleScrollTargetTime(scheduleByResource.get(resource) ?? defaultSchedule, activeDate))
+        .map(timeToMinutes);
+
+      if (!targets.length) {
+        return calendarScrollTargetTime(availability, activeDate);
+      }
+
+      return minutesToTime(Math.min(...targets));
+    },
+    [activeDate, availability, defaultSchedule, resources, scheduleByResource]
   );
 
   useEffect(() => {
@@ -5276,6 +5361,8 @@ function CalendarView({
 
                 {resources.map((resource) => {
                   const resourceBookings = visibleDayBookings.filter((booking) => booking.resource === resource);
+                  const resourceSchedule = scheduleByResource.get(resource) ?? defaultSchedule;
+                  const resourceClosedBlocks = closedBlocksForSchedule(resourceSchedule, activeDate);
 
                   return (
                     <div key={resource} className="relative border-r border-black/10 last:border-r-0" style={{ height: columnHeight }}>
@@ -5283,7 +5370,7 @@ function CalendarView({
                         <div key={`${resource}-${slot}`} className="border-b border-black/10" style={{ height: slotHeight }} />
                       ))}
 
-                      {closedBlocks.map((block, index) => {
+                      {resourceClosedBlocks.map((block, index) => {
                         const top = (block.start / 30) * slotHeight;
                         const height = Math.max(slotHeight, ((block.end - block.start) / 30) * slotHeight);
                         return (
@@ -5354,6 +5441,14 @@ function CalendarView({
             <div className="space-y-3 xl:hidden">
               {mobileWeekBookings.map(({ date, items }) => (
                 <div key={date} className="rounded-xl border border-black/10 bg-white p-4 shadow-sm">
+                  {(() => {
+                    const weekSchedule =
+                      mobileResource !== allMobileResourcesValue
+                        ? scheduleByResource.get(mobileResource) ?? defaultSchedule
+                        : defaultSchedule;
+                    const weekClosedBlocks = closedBlocksForSchedule(weekSchedule, date);
+                    return (
+                      <>
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <div className="text-[12px] font-semibold uppercase tracking-[0.12em] text-black/45">
@@ -5367,7 +5462,7 @@ function CalendarView({
                   </div>
 
                   <div className="mt-4 space-y-3">
-                    {closedBlocksForDate(availability, date).map((block, index) => (
+                    {weekClosedBlocks.map((block, index) => (
                       <div key={`${date}-closed-${index}`} className="rounded-lg border border-black/10 bg-[#8a8f98] px-4 py-3 text-white">
                         <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/80">
                           {timeLabel(minutesToTime(block.start))} - {timeLabel(minutesToTime(block.end))}
@@ -5415,6 +5510,9 @@ function CalendarView({
                       </div>
                     )}
                   </div>
+                      </>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
@@ -7854,6 +7952,21 @@ function SchedulesSettingsView({
 }) {
   const router = useRouter();
   const schedules = state.schedules.length ? state.schedules : defaultState.schedules;
+  const [search, setSearch] = useState("");
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredSchedules = useMemo(() => {
+    if (!normalizedSearch) return schedules;
+    return schedules.filter((schedule) => {
+      const haystack = [
+        schedule.name,
+        schedule.serviceNames.join(" "),
+        schedule.roomNames.join(" "),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(normalizedSearch);
+    });
+  }, [normalizedSearch, schedules]);
 
   return (
     <section className="min-h-screen bg-white">
@@ -7929,23 +8042,42 @@ function SchedulesSettingsView({
               </PrimaryButton>
             </PageHeader>
 
+            <div className="mb-5 max-w-full">
+              <div className="relative">
+                <Icon name="search" className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-black/35" />
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search schedules"
+                  className="min-h-12 w-full rounded-lg border border-black/10 bg-white pl-14 pr-4 text-[15px] outline-none focus:border-black/30"
+                />
+              </div>
+            </div>
+
             <div className="overflow-hidden rounded-[10px] border border-black/10 bg-white shadow-sm">
               <table className="w-full border-collapse">
+                <colgroup>
+                  <col className="w-[28%]" />
+                  <col className="w-[40%]" />
+                  <col className="w-[32%]" />
+                </colgroup>
                 <thead>
                   <tr className="bg-[#f3f6fa]">
                     <th className="px-5 py-5 text-left text-[15px] font-semibold text-black">Name</th>
                     <th className="px-5 py-5 text-left text-[15px] font-semibold text-black">Services</th>
-                    <th className="px-5 py-5 text-left text-[15px] font-semibold text-black">Rooms</th>
+                    <th className="px-5 py-5 text-right text-[15px] font-semibold text-black">Rooms</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-black/10">
-                  {schedules.map((schedule) => (
+                  {filteredSchedules.map((schedule) => (
                     <tr
                       key={schedule.id}
                       className="cursor-pointer bg-white transition hover:bg-black/[0.02]"
                       onClick={() => router.push(scheduleHref(schedule.id))}
                     >
-                      <td className="px-5 py-6 align-middle text-[18px] font-medium text-black">{schedule.name}</td>
+                      <td className="px-5 py-6 align-middle text-[18px] font-medium leading-[1.35] text-black">
+                        <div className="max-w-[140px] break-words">{schedule.name}</div>
+                      </td>
                       <td className="px-5 py-6 align-middle text-[16px] text-black/75">
                         {schedule.serviceNames.length ? (
                           <div className="flex flex-wrap gap-3">
@@ -7964,7 +8096,7 @@ function SchedulesSettingsView({
                       </td>
                       <td className="px-5 py-6 align-middle">
                         {schedule.roomNames.length ? (
-                          <div className="flex flex-wrap justify-end gap-3 xl:justify-start">
+                          <div className="flex flex-wrap justify-end gap-3">
                             {schedule.roomNames.map((room) => (
                               <span
                                 key={`${schedule.id}-room-${room}`}
@@ -7980,6 +8112,13 @@ function SchedulesSettingsView({
                       </td>
                     </tr>
                   ))}
+                  {filteredSchedules.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="px-5 py-12 text-center text-[15px] text-black/45">
+                        No schedules found.
+                      </td>
+                    </tr>
+                  ) : null}
                 </tbody>
               </table>
             </div>
@@ -8003,7 +8142,17 @@ function SchedulesSettingsView({
           </PrimaryButton>
         </div>
 
-        {schedules.map((schedule) => (
+        <div className="relative">
+          <Icon name="search" className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-black/35" />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search schedules"
+            className="min-h-12 w-full rounded-[12px] border border-black/12 bg-white pl-14 pr-4 text-[15px] outline-none focus:border-black/30"
+          />
+        </div>
+
+        {filteredSchedules.map((schedule) => (
           <button
             key={schedule.id}
             type="button"
@@ -8032,6 +8181,11 @@ function SchedulesSettingsView({
             </div>
           </button>
         ))}
+        {filteredSchedules.length === 0 ? (
+          <div className="rounded-[16px] border border-black/12 bg-white px-5 py-10 text-center text-[15px] text-black/45 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+            No schedules found.
+          </div>
+        ) : null}
       </div>
     </section>
   );
