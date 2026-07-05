@@ -68,6 +68,27 @@ type FamilyMember = {
   birthDate: string;
 };
 
+type BillingCard = {
+  id: string;
+  brand: string;
+  last4: string;
+  expMonth: number;
+  expYear: number;
+};
+
+type BillingPayment = {
+  id: string;
+  amountCents: number;
+  currency: string;
+  status: "Pending" | "Succeeded" | "Failed" | "Cancelled" | "Refunded";
+  description: string | null;
+  receiptUrl: string | null;
+  paymentMethodBrand: string | null;
+  paymentMethodLast4: string | null;
+  processedAt: string | null;
+  createdAt: string;
+};
+
 type Customer = {
   id: string;
   name: string;
@@ -1364,7 +1385,8 @@ type IconName =
   | "chevron"
   | "eye"
   | "x"
-  | "arrow-left";
+  | "arrow-left"
+  | "refresh";
 
 const iconPaths: Record<IconName, string[]> = {
   home: ["m3 11 9-8 9 8", "M5 10v10h14V10", "M10 20v-6h4v6"],
@@ -1400,6 +1422,7 @@ const iconPaths: Record<IconName, string[]> = {
   eye: ["M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z", "M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"],
   x: ["M18 6 6 18", "M6 6l12 12"],
   "arrow-left": ["m12 19-7-7 7-7", "M19 12H5"],
+  refresh: ["M21 12a9 9 0 1 1-2.64-6.36", "M21 3v6h-6"],
 };
 
 function Icon({ name, className = "h-5 w-5" }: { name: IconName; className?: string }) {
@@ -2153,6 +2176,15 @@ function money(value: number) {
     style: "currency",
     currency: "USD",
     maximumFractionDigits: 0,
+  });
+}
+
+function moneyPrecise(value: number, currency = "USD") {
+  return value.toLocaleString("en-US", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
 }
 
@@ -4585,6 +4617,7 @@ export default function BookingAdminApp({
                     silent: options?.silent,
                   })
                 }
+                showToast={showToast}
               />
             ) : (
               <CustomersView
@@ -7841,11 +7874,13 @@ function CustomerDetailView({
   bookings,
   servicesById,
   onSaveCustomer,
+  showToast,
 }: {
   customer: Customer | null;
   bookings: Booking[];
   servicesById: Map<string, Service>;
   onSaveCustomer: (item: Customer, options?: { message?: string; silent?: boolean }) => Promise<boolean>;
+  showToast: (message: string) => void;
 }) {
   const tabLabels = ["Profile", "Billing", "Memberships", "Packages", "Activity", "Invoices", "Credits"] as const;
   type CustomerDetailTab = (typeof tabLabels)[number];
@@ -7892,6 +7927,18 @@ function CustomerDetailView({
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [marketingEnabled, setMarketingEnabled] = useState(true);
   const [emergencyDeleted, setEmergencyDeleted] = useState(false);
+  const [billingCards, setBillingCards] = useState<BillingCard[]>([]);
+  const [billingPayments, setBillingPayments] = useState<BillingPayment[]>([]);
+  const [defaultPaymentMethodId, setDefaultPaymentMethodId] = useState<string | null>(null);
+  const [billingLoaded, setBillingLoaded] = useState(false);
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [billingError, setBillingError] = useState("");
+  const [startingCardSetup, setStartingCardSetup] = useState(false);
+  const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
+  const [showChargeModal, setShowChargeModal] = useState(false);
+  const [chargeAmount, setChargeAmount] = useState("");
+  const [chargeDescription, setChargeDescription] = useState("");
+  const [submittingCharge, setSubmittingCharge] = useState(false);
 
   const customerBookings = useMemo(
     () =>
@@ -7906,6 +7953,18 @@ function CustomerDetailView({
   useEffect(() => {
     setActiveTab(normalizedInitialTab);
   }, [normalizedInitialTab]);
+
+  useEffect(() => {
+    setBillingCards([]);
+    setBillingPayments([]);
+    setDefaultPaymentMethodId(null);
+    setBillingLoaded(false);
+    setBillingLoading(false);
+    setBillingError("");
+    setShowChargeModal(false);
+    setChargeAmount("");
+    setChargeDescription("");
+  }, [customer?.id]);
 
   if (!customer) {
     return (
@@ -7949,6 +8008,82 @@ function CustomerDetailView({
   )
     .sort((left, right) => right[1] - left[1])
     .slice(0, 5);
+
+  const defaultCard = billingCards.find((card) => card.id === defaultPaymentMethodId) ?? null;
+  const walletBalance = 0;
+
+  const loadBillingData = useCallback(
+    async (options?: { silent?: boolean }) => {
+      setBillingLoading(true);
+      if (!options?.silent) {
+        setBillingError("");
+      }
+
+      try {
+        const [cardsResponse, paymentsResponse] = await Promise.all([
+          fetch(`/api/stripe/cards?customerId=${encodeURIComponent(currentCustomer.id)}`, { cache: "no-store" }),
+          fetch(`/api/stripe/payments?customerId=${encodeURIComponent(currentCustomer.id)}`, { cache: "no-store" }),
+        ]);
+
+        const [cardsPayload, paymentsPayload] = await Promise.all([cardsResponse.json(), paymentsResponse.json()]);
+
+        if (!cardsResponse.ok) {
+          throw new Error(cardsPayload?.error || "Could not load saved cards.");
+        }
+
+        if (!paymentsResponse.ok) {
+          throw new Error(paymentsPayload?.error || "Could not load payments.");
+        }
+
+        setBillingCards(Array.isArray(cardsPayload.cards) ? (cardsPayload.cards as BillingCard[]) : []);
+        setDefaultPaymentMethodId(
+          typeof cardsPayload.defaultPaymentMethodId === "string" ? cardsPayload.defaultPaymentMethodId : null
+        );
+        setBillingPayments(Array.isArray(paymentsPayload.payments) ? (paymentsPayload.payments as BillingPayment[]) : []);
+        setBillingLoaded(true);
+      } catch (error) {
+        console.error(error);
+        const message = error instanceof Error ? error.message : "Could not load customer billing.";
+        setBillingError(message);
+        if (!options?.silent) {
+          showToast(message);
+        }
+      } finally {
+        setBillingLoading(false);
+      }
+    },
+    [currentCustomer.id, showToast]
+  );
+
+  useEffect(() => {
+    if (activeTab === "Billing" && !billingLoaded && !billingLoading) {
+      void loadBillingData({ silent: true });
+    }
+  }, [activeTab, billingLoaded, billingLoading, loadBillingData]);
+
+  useEffect(() => {
+    const stripeState = detailSearchParams.get("stripe");
+    if (!stripeState) return;
+
+    const messages: Record<string, string> = {
+      "card-added": "Card added.",
+      "card-cancelled": "Card setup cancelled.",
+      "charge-paid": "Charge paid.",
+      "charge-cancelled": "Charge cancelled.",
+    };
+
+    const message = messages[stripeState];
+    if (message) {
+      showToast(message);
+    }
+
+    void loadBillingData({ silent: true });
+
+    const params = new URLSearchParams(detailSearchParams.toString());
+    params.delete("stripe");
+    const nextUrl = params.toString() ? `${detailPathname}?${params.toString()}` : detailPathname;
+    detailRouter.replace(nextUrl);
+  }, [detailPathname, detailRouter, detailSearchParams, loadBillingData, showToast]);
 
   async function saveCustomerPatch(
     patch: Partial<Customer>,
@@ -8191,6 +8326,136 @@ function CustomerDetailView({
         })}
       </div>
     );
+  }
+
+  function cardBrandLabel(brand: string) {
+    return brand
+      .split(/[_\s-]+/)
+      .filter(Boolean)
+      .map((chunk) => chunk.slice(0, 1).toUpperCase() + chunk.slice(1))
+      .join(" ");
+  }
+
+  function paymentStatusClasses(status: BillingPayment["status"]) {
+    switch (status) {
+      case "Succeeded":
+        return "bg-emerald-50 text-emerald-700";
+      case "Failed":
+        return "bg-red-50 text-red-700";
+      case "Cancelled":
+        return "bg-black/[0.06] text-black/55";
+      case "Refunded":
+        return "bg-sky-50 text-sky-700";
+      default:
+        return "bg-amber-50 text-amber-700";
+    }
+  }
+
+  function paymentDateLabel(value: string | null) {
+    if (!value) return "Pending";
+    return new Date(value).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }
+
+  async function startCardSetup() {
+    setStartingCardSetup(true);
+    try {
+      const response = await fetch("/api/stripe/cards/setup-session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          customerId: currentCustomer.id,
+          returnPath: `${detailPathname}?tab=billing`,
+        }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok || !payload?.url) {
+        throw new Error(payload?.error || "Could not open card setup.");
+      }
+
+      window.location.assign(payload.url as string);
+    } catch (error) {
+      console.error(error);
+      showToast(error instanceof Error ? error.message : "Could not open card setup.");
+    } finally {
+      setStartingCardSetup(false);
+    }
+  }
+
+  async function removeSavedCard(paymentMethodId: string) {
+    const confirmed = window.confirm("Remove this saved card?");
+    if (!confirmed) return;
+
+    setDeletingCardId(paymentMethodId);
+    try {
+      const response = await fetch("/api/stripe/cards", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          customerId: currentCustomer.id,
+          paymentMethodId,
+        }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Could not remove card.");
+      }
+
+      showToast("Card removed.");
+      await loadBillingData({ silent: true });
+    } catch (error) {
+      console.error(error);
+      showToast(error instanceof Error ? error.message : "Could not remove card.");
+    } finally {
+      setDeletingCardId(null);
+    }
+  }
+
+  async function submitNewCharge() {
+    const amountValue = Number(chargeAmount);
+    if (!Number.isFinite(amountValue) || amountValue <= 0) {
+      showToast("Enter a valid charge amount.");
+      return;
+    }
+
+    setSubmittingCharge(true);
+    try {
+      const response = await fetch("/api/stripe/charges/checkout-session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          customerId: currentCustomer.id,
+          amount: amountValue,
+          description: chargeDescription,
+          returnPath: `${detailPathname}?tab=billing`,
+        }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload?.url) {
+        throw new Error(payload?.error || "Could not start charge checkout.");
+      }
+
+      window.location.assign(payload.url as string);
+    } catch (error) {
+      console.error(error);
+      showToast(error instanceof Error ? error.message : "Could not start charge checkout.");
+    } finally {
+      setSubmittingCharge(false);
+    }
   }
 
   function renderProfileTab() {
@@ -8561,15 +8826,16 @@ function CustomerDetailView({
                   <Icon name="file" className="h-4 w-4" />
                   Wallet Balance
                 </div>
-                <div className="mt-3 text-[24px] font-medium text-black">$0.00</div>
+                <div className="mt-3 text-[24px] font-medium text-black">{moneyPrecise(walletBalance)}</div>
               </div>
               <div className="flex items-center gap-3">
                 <button
                   type="button"
+                  onClick={() => setShowChargeModal(true)}
                   className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-black px-4 text-[14px] font-medium text-white shadow-sm"
                 >
                   <Icon name="plus" className="h-4 w-4" />
-                  Add
+                  Charge
                 </button>
                 <button
                   type="button"
@@ -8588,12 +8854,25 @@ function CustomerDetailView({
               <Icon name="file" className="h-4 w-4" />
               Default Card
             </div>
-            <div className="mt-3 text-[16px] text-black/55">No card on file</div>
+            <div className="mt-3 text-[16px] text-black/55">
+              {billingLoading && !billingLoaded
+                ? "Loading..."
+                : defaultCard
+                  ? `${cardBrandLabel(defaultCard.brand)} ending in ${defaultCard.last4}`
+                  : "No card on file"}
+            </div>
+            {defaultCard ? (
+              <div className="mt-1 text-[13px] text-black/45">
+                Expires {String(defaultCard.expMonth).padStart(2, "0")}/{defaultCard.expYear}
+              </div>
+            ) : null}
             <button
               type="button"
+              onClick={() => void startCardSetup()}
+              disabled={startingCardSetup}
               className="mt-4 inline-flex min-h-10 items-center rounded-lg border border-black/12 bg-white px-4 text-[14px] font-medium text-black"
             >
-              Add Card
+              {startingCardSetup ? "Opening..." : defaultCard ? "Replace Card" : "Add Card"}
             </button>
           </div>
         </div>
@@ -8626,32 +8905,17 @@ function CustomerDetailView({
                 </div>
               </div>
               <div className="mt-4 flex flex-wrap gap-3 lg:mt-0 lg:justify-end">
-                <label className="relative min-w-[226px]">
-                  <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-black/35">
-                    <Icon name="search" className="h-4 w-4" />
-                  </span>
-                  <input
-                    type="text"
-                    placeholder="Search"
-                    className="min-h-10 w-full rounded-lg border border-black/12 bg-white pl-11 pr-4 text-[14px] outline-none"
-                  />
-                </label>
                 <button
                   type="button"
+                  onClick={() => void loadBillingData()}
                   className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-black/12 bg-white px-4 text-[14px] font-medium text-black"
                 >
-                  <Icon name="table" className="h-4 w-4" />
-                  Filters
+                  <Icon name="refresh" className="h-4 w-4" />
+                  Refresh
                 </button>
                 <button
                   type="button"
-                  className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-black/12 bg-white px-4 text-[14px] font-medium text-black"
-                >
-                  <Icon name="download" className="h-4 w-4" />
-                  Export
-                </button>
-                <button
-                  type="button"
+                  onClick={() => setShowChargeModal(true)}
                   className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-black px-4 text-[14px] font-medium text-white shadow-sm"
                 >
                   <Icon name="plus" className="h-4 w-4" />
@@ -8660,12 +8924,61 @@ function CustomerDetailView({
               </div>
             </div>
 
-            <div className="grid min-h-[240px] place-items-center px-6 py-12 text-center">
-              <div>
-                <div className="text-[15px] font-medium text-black">No payments</div>
-                <div className="mt-2 text-[14px] text-black/45">This customer has no payments.</div>
+            {billingError ? <div className="border-b border-black/10 px-5 py-3 text-[14px] text-red-700">{billingError}</div> : null}
+
+            {billingLoading && !billingLoaded ? (
+              <div className="grid min-h-[240px] place-items-center px-6 py-12 text-center">
+                <div className="text-[14px] text-black/45">Loading payments...</div>
               </div>
-            </div>
+            ) : billingPayments.length ? (
+              <div className="divide-y divide-black/10">
+                {billingPayments.map((payment) => (
+                  <div key={payment.id} className="grid gap-3 px-5 py-4 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-center">
+                    <div className="min-w-0">
+                      <div className="text-[14px] font-medium text-black">
+                        {payment.description || "Stripe payment"}
+                      </div>
+                      <div className="mt-1 text-[13px] text-black/55">
+                        {paymentDateLabel(payment.processedAt || payment.createdAt)}
+                        {payment.paymentMethodBrand || payment.paymentMethodLast4
+                          ? ` - ${[
+                              payment.paymentMethodBrand ? cardBrandLabel(payment.paymentMethodBrand) : "",
+                              payment.paymentMethodLast4 ? `**** ${payment.paymentMethodLast4}` : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}`
+                          : ""}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={["rounded-full px-3 py-1 text-[12px] font-semibold", paymentStatusClasses(payment.status)].join(" ")}>
+                        {payment.status}
+                      </span>
+                      {payment.receiptUrl ? (
+                        <a
+                          href={payment.receiptUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[13px] font-medium text-[#5b83b8] underline underline-offset-2"
+                        >
+                          Receipt
+                        </a>
+                      ) : null}
+                    </div>
+                    <div className="text-[14px] font-semibold text-black lg:text-right">
+                      {moneyPrecise(payment.amountCents / 100, payment.currency.toUpperCase())}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="grid min-h-[240px] place-items-center px-6 py-12 text-center">
+                <div>
+                  <div className="text-[15px] font-medium text-black">No payments</div>
+                  <div className="mt-2 text-[14px] text-black/45">This customer has no payments.</div>
+                </div>
+              </div>
+            )}
           </DetailPanel>
         ) : null}
 
@@ -8682,12 +8995,59 @@ function CustomerDetailView({
 
         {activeBillingTab === "Saved Cards" ? (
           <DetailPanel title="Saved Cards">
-            <div className="grid min-h-[220px] place-items-center px-6 py-12 text-center">
-              <div>
-                <div className="text-[15px] font-medium text-black">No saved cards</div>
-                <div className="mt-2 text-[14px] text-black/45">Cards saved for this customer will appear here.</div>
-              </div>
+            <div className="border-b border-black/10 px-5 py-4">
+              <button
+                type="button"
+                onClick={() => void startCardSetup()}
+                disabled={startingCardSetup}
+                className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-black px-4 text-[14px] font-medium text-white shadow-sm"
+              >
+                <Icon name="plus" className="h-4 w-4" />
+                {startingCardSetup ? "Opening..." : "Add Card"}
+              </button>
             </div>
+
+            {billingLoading && !billingLoaded ? (
+              <div className="grid min-h-[220px] place-items-center px-6 py-12 text-center">
+                <div className="text-[14px] text-black/45">Loading saved cards...</div>
+              </div>
+            ) : billingCards.length ? (
+              <div className="divide-y divide-black/10">
+                {billingCards.map((card) => (
+                  <div key={card.id} className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
+                    <div>
+                      <div className="flex items-center gap-2 text-[14px] font-medium text-black">
+                        <span>{cardBrandLabel(card.brand)}</span>
+                        <span>**** {card.last4}</span>
+                        {card.id === defaultPaymentMethodId ? (
+                          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                            Default
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="mt-1 text-[13px] text-black/45">
+                        Expires {String(card.expMonth).padStart(2, "0")}/{card.expYear}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void removeSavedCard(card.id)}
+                      disabled={deletingCardId === card.id}
+                      className="rounded-lg border border-black/12 px-4 py-2 text-[13px] font-medium text-black/70 transition hover:bg-black/[0.03] disabled:opacity-50"
+                    >
+                      {deletingCardId === card.id ? "Removing..." : "Remove"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="grid min-h-[220px] place-items-center px-6 py-12 text-center">
+                <div>
+                  <div className="text-[15px] font-medium text-black">No saved cards</div>
+                  <div className="mt-2 text-[14px] text-black/45">Cards saved for this customer will appear here.</div>
+                </div>
+              </div>
+            )}
           </DetailPanel>
         ) : null}
       </div>
@@ -8789,6 +9149,7 @@ function CustomerDetailView({
   };
 
   return (
+    <>
     <section className="min-h-screen px-5 py-6">
       <div className="flex flex-wrap items-center gap-2 text-[14px] text-black/55">
         <Link href="/admin/customers" className="font-medium text-black/75 hover:text-black">
@@ -8905,6 +9266,83 @@ function CustomerDetailView({
         />
       ) : null}
     </section>
+
+      {showChargeModal ? (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/45 p-4">
+          <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-black/10 px-6 py-5">
+              <h2 className="text-[18px] font-semibold text-black">New Charge</h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowChargeModal(false);
+                  setChargeAmount("");
+                  setChargeDescription("");
+                }}
+                className="text-black/45"
+                aria-label="Close charge modal"
+              >
+                <Icon name="x" className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="grid gap-4 px-6 py-5">
+              <label className="grid gap-1.5">
+                <span className="text-[13px] font-medium text-black/85">Amount</span>
+                <div className="relative">
+                  <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-black/45">
+                    $
+                  </span>
+                  <input
+                    value={chargeAmount}
+                    onChange={(event) => setChargeAmount(event.target.value.replace(/[^\d.]/g, ""))}
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    className="min-h-11 w-full rounded-lg border border-black/12 pl-8 pr-4 text-[15px] outline-none"
+                  />
+                </div>
+              </label>
+
+              <label className="grid gap-1.5">
+                <span className="text-[13px] font-medium text-black/85">Description</span>
+                <input
+                  value={chargeDescription}
+                  onChange={(event) => setChargeDescription(event.target.value)}
+                  placeholder={`Manual charge for ${customer.name}`}
+                  className="min-h-11 w-full rounded-lg border border-black/12 px-4 text-[15px] outline-none"
+                />
+              </label>
+
+              <div className="rounded-xl border border-black/8 bg-black/[0.02] px-4 py-3 text-[13px] text-black/55">
+                We'll send this customer through Stripe Checkout to complete the payment securely.
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-black/10 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowChargeModal(false);
+                  setChargeAmount("");
+                  setChargeDescription("");
+                }}
+                className="rounded-lg border border-black/10 px-4 py-2 text-[14px] font-medium text-black/65"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void submitNewCharge()}
+                disabled={submittingCharge}
+                className="rounded-lg bg-black px-5 py-2.5 text-[14px] font-semibold text-white disabled:opacity-50"
+              >
+                {submittingCharge ? "Opening..." : "Continue to Checkout"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -9500,7 +9938,7 @@ function TaxesAndFeesSettingsEditor({
                         className="text-[20px] leading-none transition hover:text-black"
                         aria-label={`Delete ${item.name || "tax rate"}`}
                       >
-                        â€¦
+                        Ã¢â‚¬Â¦
                       </button>
                       <button
                         type="button"
@@ -9609,7 +10047,7 @@ function TaxesAndFeesSettingsEditor({
                         className="text-[20px] leading-none transition hover:text-black"
                         aria-label={`Delete ${item.name || "custom fee"}`}
                       >
-                        â€¦
+                        Ã¢â‚¬Â¦
                       </button>
                       <button
                         type="button"
@@ -14337,7 +14775,7 @@ function EditorModal({
                       {effectiveBookingService?.name || "No matching service selected"}
                     </div>
                     <div className="mt-1 text-sm text-black/55">
-                      {bookingDraft ? `${bookingDurationMinutes(bookingDraft)} minutes â€¢ ${bookingDraft.resource || "No room selected"}` : ""}
+                      {bookingDraft ? `${bookingDurationMinutes(bookingDraft)} minutes - ${bookingDraft.resource || "No room selected"}` : ""}
                     </div>
                   </div>
                   <div className="text-right">
