@@ -101,6 +101,11 @@ type StaffMember = {
   active: boolean;
 };
 
+type StaffRoleSummary = {
+  role: StaffRole;
+  permissions: "All" | "Limited";
+};
+
 type Booking = {
   id: string;
   date: string;
@@ -406,7 +411,7 @@ type ParsedCsvFile = {
 
 const storageKey = "grind_booking_admin_v1";
 const lastAppRouteKey = "grind_booking_admin_last_app_route";
-type SettingsSection = "basics" | "rooms" | "policies" | "schedules" | "staff" | "taxes-fees";
+type SettingsSection = "basics" | "rooms" | "policies" | "schedules" | "staff" | "roles" | "taxes-fees";
 
 type RoomEditorDraft = {
   name: string;
@@ -591,7 +596,12 @@ const settingsNavGroups: {
         href: bookingAdminRouteByView["settings-staff"],
         section: "staff",
       },
-      { label: "Roles & Permissions", icon: "gear" },
+      {
+        label: "Roles & Permissions",
+        icon: "gear",
+        href: bookingAdminRouteByView["settings-roles"],
+        section: "roles",
+      },
     ],
   },
   {
@@ -4048,6 +4058,9 @@ export default function BookingAdminApp({
               showToast={showToast}
               onSave={saveStaffMembers}
             />
+          ) : null}
+          {view === "settings-roles" ? (
+            <StaffRolesSettingsView backHref={backToAppHref} staff={state.staff} />
           ) : null}
           {view === "settings-rooms-add" ? (
             <RoomEditorView
@@ -8318,6 +8331,136 @@ function StaffSettingsView({
           </div>
         </div>
       ) : null}
+    </section>
+  );
+}
+
+const staffRoleDisplayOrder: StaffRoleSummary[] = [
+  { role: "Owner", permissions: "All" },
+  { role: "Admin", permissions: "All" },
+  { role: "Staff", permissions: "Limited" },
+  { role: "Instructor", permissions: "Limited" },
+];
+
+function StaffRolesSettingsView({
+  backHref,
+  staff,
+}: {
+  backHref: string;
+  staff: StaffMember[];
+}) {
+  const roleRows = useMemo(() => {
+    const presentRoles = new Set(staff.map((member) => member.role));
+    return staffRoleDisplayOrder.filter((item) => presentRoles.has(item.role));
+  }, [staff]);
+
+  return (
+    <section className="min-h-screen bg-white">
+      <div className="px-5 py-4 xl:hidden">
+        <Link href={backHref} className="inline-flex items-center gap-2 text-[15px] font-medium text-black">
+          <Icon name="arrow-left" className="h-4 w-4" />
+          Roles &amp; Permissions
+        </Link>
+      </div>
+
+      <div className="hidden min-h-screen xl:grid xl:grid-cols-[284px_minmax(0,1fr)]">
+        <aside className="border-b border-black/10 bg-[#f7f7f7] px-4 py-5 lg:border-b-0 lg:border-r">
+          <Link
+            href={backHref}
+            className="inline-flex items-center gap-2 text-sm font-semibold text-black/70 transition hover:text-black"
+          >
+            <Icon name="arrow-left" className="h-4 w-4" />
+            Back to app
+          </Link>
+
+          <div className="mt-6 space-y-6">
+            {settingsNavGroups.map((group) => (
+              <div key={group.title}>
+                <div className="mb-2 text-sm font-medium text-black/45">{group.title}</div>
+                <div className="space-y-1">
+                  {group.items.map((item) => {
+                    const isActive = item.section === "roles";
+                    const className = [
+                      "flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-[15px] transition",
+                      isActive && item.section === "roles"
+                        ? "bg-[#e9e9e9] font-semibold"
+                        : "text-black/75 hover:bg-black/5",
+                    ].join(" ");
+
+                    const content = (
+                      <>
+                        <Icon name={item.icon} className="h-[18px] w-[18px]" />
+                        <span>{item.label}</span>
+                      </>
+                    );
+
+                    return item.href ? (
+                      <Link key={item.label} href={item.href} className={className}>
+                        {content}
+                      </Link>
+                    ) : (
+                      <button key={item.label} type="button" className={className}>
+                        {content}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </aside>
+
+        <div className="px-8 py-9">
+          <div className="max-w-[1084px]">
+            <PageHeader
+              title="Roles & Permissions"
+              subtitle="Manage the permissions & access for each staff role"
+            />
+
+            <div className="overflow-hidden rounded-[10px] border border-black/10 bg-white shadow-sm">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-[#f3f6fa]">
+                    <th className="px-5 py-5 text-left text-[15px] font-semibold text-black">Name</th>
+                    <th className="px-5 py-5 text-left text-[15px] font-semibold text-black">Permissions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-black/10">
+                  {roleRows.map((item) => (
+                    <tr key={item.role} className="bg-white">
+                      <td className="px-5 py-5 text-[18px] text-black">{item.role}</td>
+                      <td className="px-5 py-5 text-[18px] text-black/80">{item.permissions}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-4 px-5 pb-8 xl:hidden">
+        <PageHeader
+          title="Roles & Permissions"
+          subtitle="Manage the permissions & access for each staff role"
+        />
+
+        <div className="overflow-hidden rounded-[16px] border border-black/10 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+          <div className="grid grid-cols-[1.1fr_.9fr] gap-3 bg-[#f3f6fa] px-4 py-4 text-[14px] font-semibold text-black">
+            <span>Name</span>
+            <span>Permissions</span>
+          </div>
+          {roleRows.map((item) => (
+            <div
+              key={item.role}
+              className="grid grid-cols-[1.1fr_.9fr] gap-3 border-t border-black/10 px-4 py-4"
+            >
+              <div className="text-[17px] text-black">{item.role}</div>
+              <div className="text-[17px] text-black/75">{item.permissions}</div>
+            </div>
+          ))}
+        </div>
+      </div>
     </section>
   );
 }
