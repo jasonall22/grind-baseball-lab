@@ -5534,7 +5534,7 @@ function ServicesView({
       <div className="mt-5 overflow-hidden rounded-lg border border-black/10 bg-white">
         <div>
           {isLessonsSection ? (
-            <div className="grid grid-cols-[minmax(0,1.5fr)_96px_84px_84px_40px] gap-2 bg-[#f5f6f8] px-4 py-5 text-[14px] font-semibold text-black md:grid-cols-[minmax(180px,1.5fr)_130px_120px_140px_48px] md:gap-3 xl:grid-cols-[minmax(0,1.6fr)_180px_140px_140px_280px_76px] xl:gap-4">
+            <div className="grid grid-cols-[minmax(0,1.5fr)_96px_84px_84px_40px] gap-2 bg-[#f5f6f8] px-4 py-4 text-[14px] font-semibold text-black md:grid-cols-[minmax(180px,1.5fr)_130px_120px_140px_48px] md:gap-3 md:py-4 xl:grid-cols-[minmax(0,1.65fr)_170px_120px_120px_250px_76px] xl:gap-3 xl:px-5 xl:py-4">
               <div>Name</div>
               <div>Visibility</div>
               <div>Price</div>
@@ -5565,18 +5565,18 @@ function ServicesView({
                   key={service.id}
                   className={
                     isLessonsSection
-                      ? "grid grid-cols-[minmax(0,1.5fr)_96px_84px_84px_40px] items-start gap-2 border-t border-black/10 px-4 py-6 md:grid-cols-[minmax(180px,1.5fr)_130px_120px_140px_48px] md:gap-3 md:py-7 xl:grid-cols-[minmax(0,1.6fr)_180px_140px_140px_280px_76px] xl:gap-4 xl:px-5 xl:py-8"
+                      ? "grid grid-cols-[minmax(0,1.5fr)_96px_84px_84px_40px] items-start gap-2 border-t border-black/10 px-4 py-4 md:grid-cols-[minmax(180px,1.5fr)_130px_120px_140px_48px] md:gap-3 md:py-5 xl:grid-cols-[minmax(0,1.65fr)_170px_120px_120px_250px_76px] xl:gap-3 xl:px-5 xl:py-5"
                       : "grid grid-cols-[minmax(0,1.2fr)_86px_88px_40px] items-start gap-2 border-t border-black/10 px-4 py-6 md:grid-cols-[minmax(150px,1.35fr)_120px_minmax(140px,1fr)_48px] md:gap-3 md:py-7 xl:grid-cols-[minmax(0,1.6fr)_180px_240px_76px] xl:gap-4 xl:px-5 xl:py-8"
                   }
                 >
                   <button
                     type="button"
                     onClick={() => onEdit(service.id)}
-                    className="min-w-0 text-left text-[14px] font-medium leading-7 text-black md:text-[16px] md:leading-6 xl:text-[17px]"
+                    className="min-w-0 text-left text-[14px] font-medium leading-6 text-black md:text-[15px] md:leading-6 xl:text-[16px]"
                   >
                     <span className="block break-words">{service.name}</span>
                     {isLessonsSection && compactInstructorNames ? (
-                      <span className="mt-1 block text-[12px] font-normal leading-5 text-black/55 xl:hidden">{compactInstructorNames}</span>
+                      <span className="mt-1 block text-[12px] font-normal leading-4 text-black/55 xl:hidden">{compactInstructorNames}</span>
                     ) : null}
                   </button>
 
@@ -5593,28 +5593,28 @@ function ServicesView({
 
                   {isLessonsSection ? (
                     <>
-                      <div className="min-w-0 pt-1 text-[13px] font-medium text-black md:text-[15px]">
+                      <div className="min-w-0 pt-1 text-[13px] font-medium text-black md:text-[14px] xl:text-[15px]">
                         {formatServicePrice(service.price)}
                       </div>
-                      <div className="min-w-0 pt-1 text-[13px] font-medium text-black md:text-[15px]">
+                      <div className="min-w-0 pt-1 text-[13px] font-medium text-black md:text-[14px] xl:text-[15px]">
                         {formatServiceDuration(service.duration)}
                       </div>
                       <div className="hidden min-w-0 pt-1 xl:block">
                         {instructorNames.length ? (
-                          <div className="flex flex-wrap items-center gap-1.5">
+                          <div className="flex flex-wrap items-center gap-1">
                             {visibleInstructorNames.map((name) => (
                               <span
                                 key={name}
-                                className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-[#f1efef] px-2.5 py-1 text-[12px] font-medium leading-none text-black"
+                                className="inline-flex max-w-full items-center gap-1 rounded-full bg-[#f1efef] px-2 py-1 text-[11px] font-medium leading-none text-black"
                               >
-                                <span className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[#d9d9d9] text-[#777]">
-                                  <Icon name="user" className="h-3 w-3" />
+                                <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#d9d9d9] text-[#777]">
+                                  <Icon name="user" className="h-[10px] w-[10px]" />
                                 </span>
                                 <span className="truncate whitespace-nowrap">{name}</span>
                               </span>
                             ))}
                             {remainingInstructorCount > 0 ? (
-                              <span className="inline-flex items-center rounded-full bg-[#f1efef] px-2.5 py-1 text-[12px] font-medium leading-none text-black/80">
+                              <span className="inline-flex items-center rounded-full bg-[#f1efef] px-2 py-1 text-[11px] font-medium leading-none text-black/80">
                                 +{remainingInstructorCount} more
                               </span>
                             ) : null}
