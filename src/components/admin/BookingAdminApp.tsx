@@ -3280,7 +3280,7 @@ function formatServiceDuration(duration: number) {
 }
 
 function getLessonInstructorNames(service: Service) {
-  return (service.instructors ?? []).filter(Boolean);
+  return (service.instructors ?? []).map((item) => item.trim()).filter(Boolean);
 }
 
 function reorderServicesByVisibleList(
@@ -5556,6 +5556,7 @@ function ServicesView({
               const rooms = (service.rooms?.length ? service.rooms : [service.resource]).map((item) => item.trim()).filter(Boolean);
               const visibility = service.status === "Active" ? "Everyone" : "Private";
               const instructorNames = getLessonInstructorNames(service);
+              const compactInstructorNames = instructorNames.join(", ");
 
               return (
                 <div
@@ -5572,8 +5573,8 @@ function ServicesView({
                     className="min-w-0 text-left text-[14px] font-medium leading-7 text-black md:text-[16px] md:leading-6 xl:text-[17px]"
                   >
                     <span className="block break-words">{service.name}</span>
-                    {isLessonsSection && instructorNames ? (
-                      <span className="mt-1 block text-[12px] font-normal leading-5 text-black/55 xl:hidden">{instructorNames}</span>
+                    {isLessonsSection && compactInstructorNames ? (
+                      <span className="mt-1 block text-[12px] font-normal leading-5 text-black/55 xl:hidden">{compactInstructorNames}</span>
                     ) : null}
                   </button>
 
@@ -5597,9 +5598,17 @@ function ServicesView({
                         {formatServiceDuration(service.duration)}
                       </div>
                       <div className="hidden min-w-0 pt-1 xl:block">
-                        <span className="block break-words text-[13px] text-black/65">
-                          {instructorNames || "No instructors"}
-                        </span>
+                        {instructorNames.length ? (
+                          <div className="flex flex-col gap-1 text-[13px] leading-5 text-black/65">
+                            {instructorNames.map((name) => (
+                              <span key={name} className="break-words">
+                                {name}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="block break-words text-[13px] text-black/45">No instructors</span>
+                        )}
                       </div>
                     </>
                   ) : (
