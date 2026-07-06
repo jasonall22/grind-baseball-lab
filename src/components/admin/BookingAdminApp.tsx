@@ -8000,6 +8000,7 @@ function CustomerDetailView({
   const tabLabels = ["Profile", "Billing", "Memberships", "Packages", "Activity", "Invoices", "Credits"] as const;
   type CustomerDetailTab = (typeof tabLabels)[number];
   type CustomerBillingSubtab = "Payments" | "Wallet" | "Saved Cards";
+  type ChargeMethod = "card" | "cash" | "waive";
   const detailRouter = useRouter();
   const detailPathname = usePathname();
   const detailSearchParams = useSearchParams();
@@ -8052,7 +8053,9 @@ function CustomerDetailView({
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
   const [showAddCardModal, setShowAddCardModal] = useState(false);
   const [addCardClientSecret, setAddCardClientSecret] = useState("");
+  const [showPaymentMethodModal, setShowPaymentMethodModal] = useState(false);
   const [showChargeModal, setShowChargeModal] = useState(false);
+  const [chargeMethod, setChargeMethod] = useState<ChargeMethod | null>(null);
   const [chargeBookingId, setChargeBookingId] = useState("");
   const [chargeAmount, setChargeAmount] = useState("");
   const [chargeDescription, setChargeDescription] = useState("");
@@ -8083,7 +8086,9 @@ function CustomerDetailView({
     setBillingError("");
     setShowAddCardModal(false);
     setAddCardClientSecret("");
+    setShowPaymentMethodModal(false);
     setShowChargeModal(false);
+    setChargeMethod(null);
     setChargeBookingId("");
     setChargeAmount("");
     setChargeDescription("");
@@ -8229,7 +8234,7 @@ function CustomerDetailView({
     setChargeDescription(resolvedDescription);
     setChargeReturnTo(requestedReturnTo === "calendar" ? "calendar" : null);
     setChargeReturnDate(requestedReturnDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedReturnDate) ? requestedReturnDate : selectedBooking.date);
-    setShowChargeModal(true);
+    setShowPaymentMethodModal(true);
     void loadBillingData({ silent: true });
 
     const params = new URLSearchParams(detailSearchParams.toString());
@@ -8609,10 +8614,107 @@ function CustomerDetailView({
     }
   }
 
+  function resetChargeState() {
+    setShowPaymentMethodModal(false);
+    setShowChargeModal(false);
+    setChargeMethod(null);
+    setChargeBookingId("");
+    setChargeAmount("");
+    setChargeDescription("");
+    setChargeReturnTo(null);
+    setChargeReturnDate("");
+  }
+
+  async function finishChargeSuccess(message: string) {
+    const returnTo = chargeReturnTo;
+    const returnDate = chargeReturnDate;
+    resetChargeState();
+    await loadBillingData({ silent: true });
+
+    if (returnTo === "calendar") {
+      const params = new URLSearchParams();
+      if (returnDate) {
+        params.set("date", returnDate);
+      }
+      params.set("payment", "paid");
+      detailRouter.push(`/admin/calendar?${params.toString()}`);
+      return;
+    }
+
+    showToast(message);
+  }
+
+  function openPaymentMethodModal() {
+    setShowPaymentMethodModal(true);
+  }
+
+  function chooseChargeMethod(method: "card" | "cash" | "waive" | "scan") {
+    if (method === "scan") {
+      showToast("Scan card using iPhone is not connected yet. Use Card, Cash, or Waive Payment for now.");
+      return;
+    }
+
+    if (method === "card" && !defaultCard) {
+      showToast("Add a saved card first.");
+      return;
+    }
+
+    setChargeMethod(method);
+    setShowPaymentMethodModal(false);
+    setShowChargeModal(true);
+  }
+
+  async function submitManualPayment(method: "cash" | "waive") {
+    const amountValue = Number(chargeAmount);
+    if (!Number.isFinite(amountValue) || amountValue < 0) {
+      showToast("Enter a valid charge amount.");
+      return;
+    }
+
+    setSubmittingCharge(true);
+    try {
+      const response = await fetch("/api/stripe/payments", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          customerId: currentCustomer.id,
+          bookingId: chargeBookingId || undefined,
+          amount: amountValue,
+          description: chargeDescription,
+          method,
+        }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Could not save payment.");
+      }
+
+      await finishChargeSuccess(method === "cash" ? "Cash payment recorded." : "Payment waived.");
+    } catch (error) {
+      console.error(error);
+      showToast(error instanceof Error ? error.message : "Could not save payment.");
+    } finally {
+      setSubmittingCharge(false);
+    }
+  }
+
   async function submitNewCharge() {
     const amountValue = Number(chargeAmount);
     if (!Number.isFinite(amountValue) || amountValue <= 0) {
       showToast("Enter a valid charge amount.");
+      return;
+    }
+
+    if (!chargeMethod) {
+      showToast("Choose a payment method.");
+      return;
+    }
+
+    if (chargeMethod === "cash" || chargeMethod === "waive") {
+      await submitManualPayment(chargeMethod);
       return;
     }
 
@@ -8635,28 +8737,7 @@ function CustomerDetailView({
       if (!response.ok || !payload?.ok) {
         throw new Error(payload?.error || "Could not charge saved card.");
       }
-
-      const returnTo = chargeReturnTo;
-      const returnDate = chargeReturnDate;
-      setShowChargeModal(false);
-      setChargeBookingId("");
-      setChargeAmount("");
-      setChargeDescription("");
-      setChargeReturnTo(null);
-      setChargeReturnDate("");
-      await loadBillingData({ silent: true });
-
-      if (returnTo === "calendar") {
-        const params = new URLSearchParams();
-        if (returnDate) {
-          params.set("date", returnDate);
-        }
-        params.set("payment", "paid");
-        detailRouter.push(`/admin/calendar?${params.toString()}`);
-        return;
-      }
-
-      showToast("Charge completed.");
+      await finishChargeSuccess("Charge completed.");
     } catch (error) {
       console.error(error);
       showToast(error instanceof Error ? error.message : "Could not charge saved card.");
@@ -9038,7 +9119,7 @@ function CustomerDetailView({
               <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => setShowChargeModal(true)}
+                  onClick={openPaymentMethodModal}
                   className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-black px-4 text-[14px] font-medium text-white shadow-sm"
                 >
                   <Icon name="plus" className="h-4 w-4" />
@@ -9122,7 +9203,7 @@ function CustomerDetailView({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowChargeModal(true)}
+                  onClick={openPaymentMethodModal}
                   className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-black px-4 text-[14px] font-medium text-white shadow-sm"
                 >
                   <Icon name="plus" className="h-4 w-4" />
@@ -9474,21 +9555,106 @@ function CustomerDetailView({
       ) : null}
     </section>
 
+      {showPaymentMethodModal ? (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/45 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-black/10 px-6 py-5">
+              <h2 className="text-[18px] font-semibold text-black">Payment Method</h2>
+              <button
+                type="button"
+                onClick={resetChargeState}
+                className="text-black/45"
+                aria-label="Close payment method modal"
+              >
+                <Icon name="x" className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="grid gap-3 px-6 py-5">
+              <button
+                type="button"
+                onClick={() => chooseChargeMethod("card")}
+                className="flex items-center justify-between rounded-xl border border-black/10 px-4 py-3 text-left transition hover:border-black/20 hover:bg-black/[0.02]"
+              >
+                <span>
+                  <span className="block text-[15px] font-semibold text-black">Card</span>
+                  <span className="block text-[13px] text-black/55">
+                    Charge the saved card on file.
+                  </span>
+                </span>
+                <Icon name="bag" className="h-5 w-5 text-black/45" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => chooseChargeMethod("cash")}
+                className="flex items-center justify-between rounded-xl border border-black/10 px-4 py-3 text-left transition hover:border-black/20 hover:bg-black/[0.02]"
+              >
+                <span>
+                  <span className="block text-[15px] font-semibold text-black">Cash</span>
+                  <span className="block text-[13px] text-black/55">
+                    Record a cash payment and mark it paid.
+                  </span>
+                </span>
+                <Icon name="file" className="h-5 w-5 text-black/45" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => chooseChargeMethod("scan")}
+                className="flex items-center justify-between rounded-xl border border-black/10 px-4 py-3 text-left transition hover:border-black/20 hover:bg-black/[0.02]"
+              >
+                <span>
+                  <span className="block text-[15px] font-semibold text-black">Scan card using iPhone</span>
+                  <span className="block text-[13px] text-black/55">
+                    Use Tap to Pay style checkout when connected.
+                  </span>
+                </span>
+                <Icon name="phone" className="h-5 w-5 text-black/45" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => chooseChargeMethod("waive")}
+                className="flex items-center justify-between rounded-xl border border-black/10 px-4 py-3 text-left transition hover:border-black/20 hover:bg-black/[0.02]"
+              >
+                <span>
+                  <span className="block text-[15px] font-semibold text-black">Waive payment</span>
+                  <span className="block text-[13px] text-black/55">
+                    Mark the balance waived without charging.
+                  </span>
+                </span>
+                <Icon name="check" className="h-5 w-5 text-black/45" />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-end border-t border-black/10 px-6 py-4">
+              <button
+                type="button"
+                onClick={resetChargeState}
+                className="rounded-lg border border-black/10 px-4 py-2 text-[14px] font-medium text-black/65"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {showChargeModal ? (
         <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/45 p-4">
           <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-black/10 px-6 py-5">
-              <h2 className="text-[18px] font-semibold text-black">New Charge</h2>
+              <h2 className="text-[18px] font-semibold text-black">
+                {chargeMethod === "cash"
+                  ? "Record Cash Payment"
+                  : chargeMethod === "waive"
+                    ? "Waive Payment"
+                    : "New Charge"}
+              </h2>
               <button
                 type="button"
-                onClick={() => {
-                  setShowChargeModal(false);
-                  setChargeBookingId("");
-                  setChargeAmount("");
-                  setChargeDescription("");
-                  setChargeReturnTo(null);
-                  setChargeReturnDate("");
-                }}
+                onClick={resetChargeState}
                 className="text-black/45"
                 aria-label="Close charge modal"
               >
@@ -9524,21 +9690,18 @@ function CustomerDetailView({
               </label>
 
               <div className="rounded-xl border border-black/8 bg-black/[0.02] px-4 py-3 text-[13px] text-black/55">
-                This will charge the customer's saved default card immediately.
+                {chargeMethod === "cash"
+                  ? "This will record a cash payment and mark this balance as paid."
+                  : chargeMethod === "waive"
+                    ? "This will waive the balance and mark this booking as paid."
+                    : "This will charge the customer's saved default card immediately."}
               </div>
             </div>
 
             <div className="flex items-center justify-end gap-3 border-t border-black/10 px-6 py-4">
               <button
                 type="button"
-                onClick={() => {
-                  setShowChargeModal(false);
-                  setChargeBookingId("");
-                  setChargeAmount("");
-                  setChargeDescription("");
-                  setChargeReturnTo(null);
-                  setChargeReturnDate("");
-                }}
+                onClick={resetChargeState}
                 className="rounded-lg border border-black/10 px-4 py-2 text-[14px] font-medium text-black/65"
               >
                 Cancel
@@ -9549,7 +9712,17 @@ function CustomerDetailView({
                 disabled={submittingCharge}
                 className="rounded-lg bg-black px-5 py-2.5 text-[14px] font-semibold text-white disabled:opacity-50"
               >
-                {submittingCharge ? "Charging..." : "Charge card"}
+                {submittingCharge
+                  ? chargeMethod === "cash"
+                    ? "Saving..."
+                    : chargeMethod === "waive"
+                      ? "Saving..."
+                      : "Charging..."
+                  : chargeMethod === "cash"
+                    ? "Record cash payment"
+                    : chargeMethod === "waive"
+                      ? "Waive payment"
+                      : "Charge card"}
               </button>
             </div>
           </div>
