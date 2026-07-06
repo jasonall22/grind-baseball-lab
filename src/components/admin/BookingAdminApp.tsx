@@ -9685,7 +9685,7 @@ function CustomerDetailView({
 
       {showChargeModal ? (
         <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/45 p-4">
-          <div className="flex max-h-[92vh] w-full max-w-[920px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <div className="flex max-h-[92vh] w-full max-w-[1080px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-black/10 px-6 py-5">
               <h2 className="text-[18px] font-semibold text-black">
                 {chargeMethod === "cash"
@@ -9705,40 +9705,45 @@ function CustomerDetailView({
             </div>
 
             <div className="min-h-0 overflow-y-auto px-5 py-4">
-              <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-                <div className="flex flex-col gap-3 self-start">
-                  <label className="flex flex-col gap-1.5">
-                    <span className="text-[13px] font-medium text-black/85">Price</span>
-                    <div className="flex h-11 items-center rounded-lg border border-black/12 bg-white pl-4 pr-4">
-                      <span className="pointer-events-none shrink-0 text-[18px] leading-none text-black/45">
-                        $
-                      </span>
-                      <input
-                        value={chargeAmount}
-                        onChange={(event) => setChargeAmount(event.target.value.replace(/[^\d.]/g, ""))}
-                        inputMode="decimal"
-                        placeholder="0.00"
-                        className="h-11 w-full border-0 bg-transparent pl-3 pr-0 text-[15px] outline-none"
-                      />
+              <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
+                <div className="grid gap-4 self-start">
+                  <div className="rounded-2xl border border-black/8 bg-black/[0.015] p-4">
+                    <div className="grid gap-4">
+                      <label className="flex flex-col gap-1.5">
+                        <span className="text-[13px] font-medium text-black/85">Price</span>
+                        <div className="flex h-12 items-center rounded-lg border border-black/12 bg-white pl-4 pr-4">
+                          <span className="pointer-events-none shrink-0 text-[18px] leading-none text-black/45">
+                            $
+                          </span>
+                          <input
+                            value={chargeAmount}
+                            onChange={(event) => setChargeAmount(event.target.value.replace(/[^\d.]/g, ""))}
+                            inputMode="decimal"
+                            placeholder="0.00"
+                            className="h-12 w-full border-0 bg-transparent pl-3 pr-0 text-[16px] outline-none"
+                          />
+                        </div>
+                      </label>
+
+                      <label className="flex flex-col gap-1.5">
+                        <span className="text-[13px] font-medium text-black/85">Description</span>
+                        <textarea
+                          value={chargeDescription}
+                          onChange={(event) => setChargeDescription(event.target.value)}
+                          placeholder={`Manual charge for ${customer.name}`}
+                          rows={4}
+                          className="min-h-[116px] w-full resize-none rounded-lg border border-black/12 px-4 py-3 text-[15px] leading-6 outline-none"
+                        />
+                      </label>
+
+                      <div className="rounded-xl border border-black/8 bg-white px-4 py-3 text-[13px] leading-5 text-black/55">
+                        {chargeMethod === "cash"
+                          ? "This will record a cash payment and mark this balance as paid."
+                          : chargeMethod === "waive"
+                            ? "This will waive the balance and mark this booking as paid."
+                            : "This will charge the customer's saved default card immediately."}
+                      </div>
                     </div>
-                  </label>
-
-                  <label className="flex flex-col gap-1.5">
-                    <span className="text-[13px] font-medium text-black/85">Description</span>
-                    <input
-                      value={chargeDescription}
-                      onChange={(event) => setChargeDescription(event.target.value)}
-                      placeholder={`Manual charge for ${customer.name}`}
-                      className="h-11 w-full rounded-lg border border-black/12 px-4 text-[15px] outline-none"
-                    />
-                  </label>
-
-                  <div className="rounded-xl border border-black/8 bg-black/[0.02] px-4 py-2.5 text-[13px] leading-5 text-black/55">
-                    {chargeMethod === "cash"
-                      ? "This will record a cash payment and mark this balance as paid."
-                      : chargeMethod === "waive"
-                        ? "This will waive the balance and mark this booking as paid."
-                        : "This will charge the customer's saved default card immediately."}
                   </div>
                 </div>
 
@@ -9746,14 +9751,14 @@ function CustomerDetailView({
                   <div className="border-b border-black/8 px-4 py-3">
                     <p className="text-[14px] font-semibold text-black">Invoice Summary</p>
                   </div>
-                  <div className="grid gap-2.5 px-4 py-4">
+                  <div className="grid gap-3 px-4 py-4">
                     <div className="flex items-center justify-between gap-4 text-[14px]">
                       <span className="text-black/65">Subtotal</span>
-                      <span className="font-medium text-black">{moneyPrecise(chargeSubtotal)}</span>
+                      <span className="text-[15px] font-semibold text-black">{moneyPrecise(chargeSubtotal)}</span>
                     </div>
 
-                    <div className="rounded-xl border border-black/8 p-2.5">
-                      <div className="mb-2 flex items-center justify-between gap-3">
+                    <div className="rounded-xl border border-black/8 px-3 py-3">
+                      <div className="mb-2 flex items-start justify-between gap-3">
                         <div>
                           <p className="text-[14px] font-medium text-black">Tax</p>
                           <p className="text-[12px] text-black/45">
@@ -9784,7 +9789,7 @@ function CustomerDetailView({
                           <select
                             value={chargeTaxRateId}
                             onChange={(event) => setChargeTaxRateId(event.target.value)}
-                            className="min-h-10 w-full rounded-lg border border-black/12 px-3 text-[14px] outline-none"
+                            className="h-10 w-full rounded-lg border border-black/12 px-3 text-[14px] outline-none"
                           >
                             {availableTaxRates.map((rate) => (
                               <option key={rate.id} value={rate.id}>
@@ -9800,8 +9805,8 @@ function CustomerDetailView({
                       ) : null}
                     </div>
 
-                    <div className="rounded-xl border border-black/8 p-2.5">
-                      <div className="mb-2 flex items-center justify-between gap-3">
+                    <div className="rounded-xl border border-black/8 px-3 py-3">
+                      <div className="mb-2 flex items-start justify-between gap-3">
                         <div>
                           <p className="text-[14px] font-medium text-black">Service Fee</p>
                           <p className="text-[12px] text-black/45">
@@ -9832,7 +9837,7 @@ function CustomerDetailView({
                           <select
                             value={chargeFeeId}
                             onChange={(event) => setChargeFeeId(event.target.value)}
-                            className="min-h-10 w-full rounded-lg border border-black/12 px-3 text-[14px] outline-none"
+                            className="h-10 w-full rounded-lg border border-black/12 px-3 text-[14px] outline-none"
                           >
                             {availableCustomFees.map((fee) => (
                               <option key={fee.id} value={fee.id}>
@@ -9848,8 +9853,8 @@ function CustomerDetailView({
                       ) : null}
                     </div>
 
-                    <div className="rounded-xl border border-black/8 p-2.5">
-                      <div className="mb-2 flex items-center justify-between gap-3">
+                    <div className="rounded-xl border border-black/8 px-3 py-3">
+                      <div className="mb-2 flex items-start justify-between gap-3">
                         <div>
                           <p className="text-[14px] font-medium text-black">Discount</p>
                           <p className="text-[12px] text-black/45">
@@ -9879,7 +9884,7 @@ function CustomerDetailView({
                         <div className="grid gap-2">
                           <label className="grid gap-1.5">
                             <span className="text-[13px] text-black/55">Discount amount</span>
-                            <div className="flex min-h-10 items-center rounded-lg border border-black/12 bg-white pl-3 pr-3">
+                            <div className="flex h-10 items-center rounded-lg border border-black/12 bg-white pl-3 pr-3">
                               <span className="pointer-events-none shrink-0 text-[15px] leading-none text-black/45">
                                 $
                               </span>
@@ -9888,7 +9893,7 @@ function CustomerDetailView({
                                 onChange={(event) => setChargeDiscount(event.target.value.replace(/[^\d.]/g, ""))}
                                 inputMode="decimal"
                                 placeholder="0.00"
-                                className="min-h-10 w-full border-0 bg-transparent pl-2 text-[14px] outline-none"
+                                className="h-10 w-full border-0 bg-transparent pl-2 text-[14px] outline-none"
                               />
                             </div>
                           </label>
@@ -9900,7 +9905,7 @@ function CustomerDetailView({
                       ) : null}
                     </div>
 
-                    <div className="flex items-center justify-between gap-4 border-t border-black/8 pt-1 text-[15px]">
+                    <div className="flex items-center justify-between gap-4 border-t border-black/8 pt-3 text-[15px]">
                       <span className="font-semibold text-black">Total</span>
                       <span className="text-[18px] font-semibold text-black">{moneyPrecise(chargeTotal)}</span>
                     </div>
