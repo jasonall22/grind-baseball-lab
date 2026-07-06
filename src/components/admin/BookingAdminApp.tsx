@@ -3,13 +3,18 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { CardElement, Elements, useElements, useStripe } from "@stripe/react-stripe-js";
+import { loadStripe } from "@stripe/stripe-js";
 
 import {
   type BookingAdminView,
   bookingAdminRouteByView,
 } from "@/components/admin/bookingAdminRoutes";
 import { hasSupabaseEnv, supabase } from "@/lib/supabaseClient";
+
+const stripePublishableKey = (process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || "").trim();
+const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : null;
 
 type Service = {
   id: string;
@@ -7935,6 +7940,8 @@ function CustomerDetailView({
   const [billingError, setBillingError] = useState("");
   const [startingCardSetup, setStartingCardSetup] = useState(false);
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
+  const [showAddCardModal, setShowAddCardModal] = useState(false);
+  const [addCardClientSecret, setAddCardClientSecret] = useState("");
   const [showChargeModal, setShowChargeModal] = useState(false);
   const [chargeAmount, setChargeAmount] = useState("");
   const [chargeDescription, setChargeDescription] = useState("");
@@ -7961,6 +7968,8 @@ function CustomerDetailView({
     setBillingLoaded(false);
     setBillingLoading(false);
     setBillingError("");
+    setShowAddCardModal(false);
+    setAddCardClientSecret("");
     setShowChargeModal(false);
     setChargeAmount("");
     setChargeDescription("");
@@ -8363,28 +8372,33 @@ function CustomerDetailView({
   }
 
   async function startCardSetup() {
+    if (!stripePromise) {
+      showToast("Stripe client setup is missing. Add the publishable key and redeploy.");
+      return;
+    }
+
     setStartingCardSetup(true);
     try {
-      const response = await fetch("/api/stripe/cards/setup-session", {
+      const response = await fetch("/api/stripe/cards/setup-intent", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           customerId: currentCustomer.id,
-          returnPath: `${detailPathname}?tab=billing`,
         }),
       });
 
       const payload = await response.json();
-      if (!response.ok || !payload?.url) {
-        throw new Error(payload?.error || "Could not open card setup.");
+      if (!response.ok || typeof payload?.clientSecret !== "string") {
+        throw new Error(payload?.error || "Could not prepare card setup.");
       }
 
-      window.location.assign(payload.url as string);
+      setAddCardClientSecret(payload.clientSecret);
+      setShowAddCardModal(true);
     } catch (error) {
       console.error(error);
-      showToast(error instanceof Error ? error.message : "Could not open card setup.");
+      showToast(error instanceof Error ? error.message : "Could not prepare card setup.");
     } finally {
       setStartingCardSetup(false);
     }
@@ -8875,7 +8889,7 @@ function CustomerDetailView({
               disabled={startingCardSetup}
               className="mt-4 inline-flex min-h-10 items-center rounded-lg border border-black/12 bg-white px-4 text-[14px] font-medium text-black"
             >
-              {startingCardSetup ? "Opening..." : defaultCard ? "Replace Card" : "Add Card"}
+              {startingCardSetup ? "Preparing..." : defaultCard ? "Replace Card" : "Add Card"}
             </button>
           </div>
         </div>
@@ -9006,7 +9020,7 @@ function CustomerDetailView({
                 className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-black px-4 text-[14px] font-medium text-white shadow-sm"
               >
                 <Icon name="plus" className="h-4 w-4" />
-                {startingCardSetup ? "Opening..." : "Add Card"}
+                {startingCardSetup ? "Preparing..." : "Add Card"}
               </button>
             </div>
 
@@ -9345,7 +9359,197 @@ function CustomerDetailView({
           </div>
         </div>
       ) : null}
+
+      {showAddCardModal && addCardClientSecret ? (
+        <AddCardModal
+          customer={currentCustomer}
+          clientSecret={addCardClientSecret}
+          onClose={() => {
+            setShowAddCardModal(false);
+            setAddCardClientSecret("");
+          }}
+          onSaved={async () => {
+            setShowAddCardModal(false);
+            setAddCardClientSecret("");
+            await loadBillingData({ silent: true });
+            showToast("Card added.");
+          }}
+          onError={(message) => showToast(message)}
+        />
+      ) : null}
     </>
+  );
+}
+
+type AddCardModalProps = {
+  customer: Customer;
+  clientSecret: string;
+  onClose: () => void;
+  onSaved: () => Promise<void> | void;
+  onError: (message: string) => void;
+};
+
+function AddCardModal({ customer, clientSecret, onClose, onSaved, onError }: AddCardModalProps) {
+  if (!stripePromise) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-[86] flex items-center justify-center bg-black/45 p-4">
+      <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-black/10 px-6 py-5">
+          <h2 className="text-[18px] font-semibold text-black">Add Card</h2>
+          <button type="button" onClick={onClose} className="text-black/45" aria-label="Close add card modal">
+            <Icon name="x" className="h-6 w-6" />
+          </button>
+        </div>
+
+        <Elements stripe={stripePromise} key={clientSecret}>
+          <AddCardModalForm
+            customer={customer}
+            clientSecret={clientSecret}
+            onClose={onClose}
+            onSaved={onSaved}
+            onError={onError}
+          />
+        </Elements>
+      </div>
+    </div>
+  );
+}
+
+type AddCardModalFormProps = {
+  customer: Customer;
+  clientSecret: string;
+  onClose: () => void;
+  onSaved: () => Promise<void> | void;
+  onError: (message: string) => void;
+};
+
+function AddCardModalForm({ customer, clientSecret, onClose, onSaved, onError }: AddCardModalFormProps) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [cardholderName, setCardholderName] = useState(customer.name || customer.player || "");
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!stripe || !elements) return;
+
+    const cardElement = elements.getElement(CardElement);
+    if (!cardElement) {
+      setErrorMessage("Card form is not ready yet.");
+      return;
+    }
+
+    setSubmitting(true);
+    setErrorMessage("");
+
+    try {
+      const result = await stripe.confirmCardSetup(clientSecret, {
+        payment_method: {
+          card: cardElement,
+          billing_details: {
+            name: cardholderName || customer.name || undefined,
+            email: customer.email || undefined,
+            phone: customer.phone || undefined,
+          },
+        },
+      });
+
+      if (result.error) {
+        throw new Error(result.error.message || "Could not save card.");
+      }
+
+      if (!result.setupIntent || result.setupIntent.status !== "succeeded") {
+        throw new Error("Card setup is not complete yet.");
+      }
+
+      const response = await fetch("/api/stripe/cards/confirm", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          customerId: customer.id,
+          setupIntentId: result.setupIntent.id,
+        }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Could not save card.");
+      }
+
+      await onSaved();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not save card.";
+      console.error(error);
+      setErrorMessage(message);
+      onError(message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form onSubmit={(event) => void handleSubmit(event)}>
+      <div className="grid gap-4 px-6 py-5">
+        <label className="grid gap-1.5">
+          <span className="text-[13px] font-medium text-black/85">Cardholder name</span>
+          <input
+            value={cardholderName}
+            onChange={(event) => setCardholderName(event.target.value)}
+            placeholder={customer.name || "Full name on card"}
+            className="min-h-11 w-full rounded-lg border border-black/12 px-4 text-[15px] outline-none"
+          />
+        </label>
+
+        <label className="grid gap-1.5">
+          <span className="text-[13px] font-medium text-black/85">Card information</span>
+          <div className="rounded-lg border border-black/12 px-4 py-3">
+            <CardElement
+              options={{
+                hidePostalCode: false,
+                style: {
+                  base: {
+                    fontSize: "15px",
+                    color: "#111111",
+                    "::placeholder": {
+                      color: "rgba(17,17,17,0.38)",
+                    },
+                  },
+                },
+              }}
+            />
+          </div>
+        </label>
+
+        <div className="rounded-xl border border-black/8 bg-black/[0.02] px-4 py-3 text-[13px] text-black/55">
+          This saves the card to the customer and makes it the default payment method for future charges.
+        </div>
+
+        {errorMessage ? <div className="text-[13px] font-medium text-red-700">{errorMessage}</div> : null}
+      </div>
+
+      <div className="flex items-center justify-end gap-3 border-t border-black/10 px-6 py-4">
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-lg border border-black/10 px-4 py-2 text-[14px] font-medium text-black/65"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={!stripe || submitting}
+          className="rounded-lg bg-black px-5 py-2.5 text-[14px] font-semibold text-white disabled:opacity-50"
+        >
+          {submitting ? "Saving..." : "Save card"}
+        </button>
+      </div>
+    </form>
   );
 }
 
