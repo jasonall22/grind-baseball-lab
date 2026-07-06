@@ -9685,7 +9685,7 @@ function CustomerDetailView({
 
       {showChargeModal ? (
         <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/45 p-4">
-          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
+          <div className="flex max-h-[92vh] w-full max-w-[920px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-black/10 px-6 py-5">
               <h2 className="text-[18px] font-semibold text-black">
                 {chargeMethod === "cash"
@@ -9704,12 +9704,12 @@ function CustomerDetailView({
               </button>
             </div>
 
-            <div className="grid gap-4 px-6 py-5">
-              <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-                <div className="grid content-start self-start gap-4">
-                  <label className="grid gap-1.5">
+            <div className="min-h-0 overflow-y-auto px-5 py-4">
+              <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+                <div className="flex flex-col gap-3 self-start">
+                  <label className="flex flex-col gap-1.5">
                     <span className="text-[13px] font-medium text-black/85">Price</span>
-                    <div className="flex min-h-11 items-center rounded-lg border border-black/12 bg-white pl-4 pr-4">
+                    <div className="flex h-11 items-center rounded-lg border border-black/12 bg-white pl-4 pr-4">
                       <span className="pointer-events-none shrink-0 text-[18px] leading-none text-black/45">
                         $
                       </span>
@@ -9718,22 +9718,22 @@ function CustomerDetailView({
                         onChange={(event) => setChargeAmount(event.target.value.replace(/[^\d.]/g, ""))}
                         inputMode="decimal"
                         placeholder="0.00"
-                        className="min-h-11 w-full border-0 bg-transparent pl-3 pr-0 text-[15px] outline-none"
+                        className="h-11 w-full border-0 bg-transparent pl-3 pr-0 text-[15px] outline-none"
                       />
                     </div>
                   </label>
 
-                  <label className="grid gap-1.5">
+                  <label className="flex flex-col gap-1.5">
                     <span className="text-[13px] font-medium text-black/85">Description</span>
                     <input
                       value={chargeDescription}
                       onChange={(event) => setChargeDescription(event.target.value)}
                       placeholder={`Manual charge for ${customer.name}`}
-                      className="min-h-11 w-full rounded-lg border border-black/12 px-4 text-[15px] outline-none"
+                      className="h-11 w-full rounded-lg border border-black/12 px-4 text-[15px] outline-none"
                     />
                   </label>
 
-                  <div className="rounded-xl border border-black/8 bg-black/[0.02] px-4 py-3 text-[13px] leading-5 text-black/55">
+                  <div className="rounded-xl border border-black/8 bg-black/[0.02] px-4 py-2.5 text-[13px] leading-5 text-black/55">
                     {chargeMethod === "cash"
                       ? "This will record a cash payment and mark this balance as paid."
                       : chargeMethod === "waive"
@@ -9746,13 +9746,13 @@ function CustomerDetailView({
                   <div className="border-b border-black/8 px-4 py-3">
                     <p className="text-[14px] font-semibold text-black">Invoice Summary</p>
                   </div>
-                  <div className="grid gap-3 px-4 py-4">
+                  <div className="grid gap-2.5 px-4 py-4">
                     <div className="flex items-center justify-between gap-4 text-[14px]">
                       <span className="text-black/65">Subtotal</span>
                       <span className="font-medium text-black">{moneyPrecise(chargeSubtotal)}</span>
                     </div>
 
-                    <div className="rounded-xl border border-black/8 p-3">
+                    <div className="rounded-xl border border-black/8 p-2.5">
                       <div className="mb-2 flex items-center justify-between gap-3">
                         <div>
                           <p className="text-[14px] font-medium text-black">Tax</p>
@@ -9800,7 +9800,7 @@ function CustomerDetailView({
                       ) : null}
                     </div>
 
-                    <div className="rounded-xl border border-black/8 p-3">
+                    <div className="rounded-xl border border-black/8 p-2.5">
                       <div className="mb-2 flex items-center justify-between gap-3">
                         <div>
                           <p className="text-[14px] font-medium text-black">Service Fee</p>
@@ -9848,7 +9848,7 @@ function CustomerDetailView({
                       ) : null}
                     </div>
 
-                    <div className="rounded-xl border border-black/8 p-3">
+                    <div className="rounded-xl border border-black/8 p-2.5">
                       <div className="mb-2 flex items-center justify-between gap-3">
                         <div>
                           <p className="text-[14px] font-medium text-black">Discount</p>
