@@ -8066,6 +8066,8 @@ function CustomerDetailView({
   const [chargeTaxRateId, setChargeTaxRateId] = useState("");
   const [chargeFeeEnabled, setChargeFeeEnabled] = useState(false);
   const [chargeFeeId, setChargeFeeId] = useState("");
+  const [chargeDiscountEnabled, setChargeDiscountEnabled] = useState(false);
+  const [chargeDiscount, setChargeDiscount] = useState("");
   const [chargeReturnTo, setChargeReturnTo] = useState<"calendar" | null>(null);
   const [chargeReturnDate, setChargeReturnDate] = useState("");
   const [submittingCharge, setSubmittingCharge] = useState(false);
@@ -8103,6 +8105,8 @@ function CustomerDetailView({
     setChargeTaxRateId("");
     setChargeFeeEnabled(false);
     setChargeFeeId("");
+    setChargeDiscountEnabled(false);
+    setChargeDiscount("");
     setChargeReturnTo(null);
     setChargeReturnDate("");
   }, [customer?.id]);
@@ -8163,7 +8167,9 @@ function CustomerDetailView({
     chargeTaxEnabled && Number.isFinite(chargeTaxPercent) ? (chargeSubtotal * chargeTaxPercent) / 100 : 0;
   const chargeFeeAmount =
     chargeFeeEnabled && Number.isFinite(chargeFeePercent) ? (chargeSubtotal * chargeFeePercent) / 100 : 0;
-  const chargeTotal = Math.max(0, chargeSubtotal + chargeTaxAmount + chargeFeeAmount);
+  const chargeDiscountAmountRaw = Number.isFinite(Number(chargeDiscount)) ? Number(chargeDiscount) : 0;
+  const chargeDiscountAmount = chargeDiscountEnabled ? Math.max(0, chargeDiscountAmountRaw) : 0;
+  const chargeTotal = Math.max(0, chargeSubtotal + chargeTaxAmount + chargeFeeAmount - chargeDiscountAmount);
 
   const loadBillingData = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -8648,6 +8654,8 @@ function CustomerDetailView({
     setChargeTaxRateId("");
     setChargeFeeEnabled(false);
     setChargeFeeId("");
+    setChargeDiscountEnabled(false);
+    setChargeDiscount("");
     setChargeReturnTo(null);
     setChargeReturnDate("");
   }
@@ -9835,6 +9843,58 @@ function CustomerDetailView({
                           <div className="flex items-center justify-between gap-4 text-[13px]">
                             <span className="text-black/55">Service fee amount</span>
                             <span className="font-medium text-black">{moneyPrecise(chargeFeeAmount)}</span>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="rounded-xl border border-black/8 p-3">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-[14px] font-medium text-black">Discount</p>
+                          <p className="text-[12px] text-black/45">
+                            {chargeDiscountEnabled
+                              ? chargeDiscountAmount > 0
+                                ? `${moneyPrecise(chargeDiscountAmount)} off`
+                                : "Enter a discount amount"
+                              : "Not applied"}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (chargeDiscountEnabled) {
+                              setChargeDiscountEnabled(false);
+                              setChargeDiscount("");
+                              return;
+                            }
+                            setChargeDiscountEnabled(true);
+                          }}
+                          className="rounded-lg border border-black/10 px-3 py-1.5 text-[13px] font-medium text-black/70"
+                        >
+                          {chargeDiscountEnabled ? "Remove" : "Add"}
+                        </button>
+                      </div>
+                      {chargeDiscountEnabled ? (
+                        <div className="grid gap-2">
+                          <label className="grid gap-1.5">
+                            <span className="text-[13px] text-black/55">Discount amount</span>
+                            <div className="flex min-h-10 items-center rounded-lg border border-black/12 bg-white pl-3 pr-3">
+                              <span className="pointer-events-none shrink-0 text-[15px] leading-none text-black/45">
+                                $
+                              </span>
+                              <input
+                                value={chargeDiscount}
+                                onChange={(event) => setChargeDiscount(event.target.value.replace(/[^\d.]/g, ""))}
+                                inputMode="decimal"
+                                placeholder="0.00"
+                                className="min-h-10 w-full border-0 bg-transparent pl-2 text-[14px] outline-none"
+                              />
+                            </div>
+                          </label>
+                          <div className="flex items-center justify-between gap-4 text-[13px]">
+                            <span className="text-black/55">Discount applied</span>
+                            <span className="font-medium text-red-600">-{moneyPrecise(chargeDiscountAmount)}</span>
                           </div>
                         </div>
                       ) : null}
