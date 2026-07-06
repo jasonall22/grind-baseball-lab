@@ -23,6 +23,7 @@ type Service = {
   price: number;
   resource: string;
   rooms: string[];
+  instructors?: string[];
   category: ServiceSection;
   status: "Active" | "Draft" | "Off";
   previewText?: string;
@@ -290,6 +291,7 @@ type BookingServiceRow = {
   price: number | string;
   resource_id: string | null;
   resource_names: string[] | null;
+  instructor_names: string[] | null;
   service_type: ServiceSection | null;
   status: Service["status"];
   sort_order: number;
@@ -923,6 +925,48 @@ const serviceSectionItems: { key: ServiceSection; label: string; icon: IconName 
   { key: "packages", label: "Packages", icon: "bag" },
 ];
 
+const serviceSectionMeta: Record<
+  ServiceSection,
+  { label: string; singular: string; subtitle: string; basePath: string }
+> = {
+  rentals: {
+    label: "Rentals",
+    singular: "Rental",
+    subtitle: "Let customers rent rooms at your facility.",
+    basePath: "/admin/services/rentals",
+  },
+  lessons: {
+    label: "Lessons",
+    singular: "Lesson",
+    subtitle: "Offer one-on-one and small-group instruction.",
+    basePath: "/admin/services/lessons",
+  },
+  camps: {
+    label: "Camps",
+    singular: "Camp",
+    subtitle: "Set up camp offerings and seasonal training programs.",
+    basePath: "/admin/services/camps",
+  },
+  classes: {
+    label: "Classes",
+    singular: "Class",
+    subtitle: "Create recurring class offerings for your athletes.",
+    basePath: "/admin/services/classes",
+  },
+  memberships: {
+    label: "Memberships",
+    singular: "Membership",
+    subtitle: "Manage membership-based access and recurring offers.",
+    basePath: "/admin/services/memberships",
+  },
+  packages: {
+    label: "Packages",
+    singular: "Package",
+    subtitle: "Bundle services together into bookable packages.",
+    basePath: "/admin/services/packages",
+  },
+};
+
 const WAIVER_BUCKET_PRIMARY =
   (process.env.NEXT_PUBLIC_BOOKING_WAIVER_BUCKET &&
     process.env.NEXT_PUBLIC_BOOKING_WAIVER_BUCKET.trim()) ||
@@ -1539,6 +1583,9 @@ function isLightCalendarColor(value: string) {
 function normalizeService(service: Service): Service {
   return {
     ...service,
+    instructors: Array.isArray(service.instructors)
+      ? service.instructors.map((item) => item.trim()).filter(Boolean)
+      : [],
     calendarColor: normalizeCalendarColor(service.calendarColor),
     scheduleId: service.scheduleId ?? null,
   };
@@ -2070,6 +2117,7 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
       price: item.price,
       resource_id: resourceIdsByName[roomNames[0] ?? item.resource] || null,
       resource_names: roomNames,
+      instructor_names: item.instructors?.length ? item.instructors : [],
       service_type: item.category,
       status: item.status,
       calendar_color: normalizeCalendarColor(item.calendarColor),
@@ -3140,11 +3188,12 @@ function createRentalDraftFromService(service: Service, defaultScheduleId: strin
 }
 
 function getRentalDeleteGuard(service: Service, state: AppState) {
+  const serviceLabel = getServiceSectionSingular(service.category ?? inferServiceCategory(service.name)).toLowerCase();
   const hasBookings = state.bookings.some(
     (booking) => booking.serviceId === service.id && booking.status !== "Cancelled"
   );
   if (hasBookings) {
-    return "This rental can't be deleted because it's tied to existing bookings.";
+    return `This ${serviceLabel} can't be deleted because it's tied to existing bookings.`;
   }
 
   const normalizedName = service.name.trim().toLowerCase();
@@ -3152,7 +3201,7 @@ function getRentalDeleteGuard(service: Service, state: AppState) {
     customer.memberships.some((membership) => membership.trim().toLowerCase() === normalizedName)
   );
   if (hasAvailableCredits) {
-    return "This rental can't be deleted because it's tied to available credits.";
+    return `This ${serviceLabel} can't be deleted because it's tied to available credits.`;
   }
 
   return null;
@@ -3200,6 +3249,35 @@ function inferServiceCategory(name: string): ServiceSection {
   if (value.includes("membership")) return "memberships";
   if (value.includes("package")) return "packages";
   return "rentals";
+}
+
+function isServiceSection(value: string): value is ServiceSection {
+  return value in serviceSectionMeta;
+}
+
+function getServiceSectionBasePath(section: ServiceSection) {
+  return serviceSectionMeta[section].basePath;
+}
+
+function getServiceSectionLabel(section: ServiceSection) {
+  return serviceSectionMeta[section].label;
+}
+
+function getServiceSectionSingular(section: ServiceSection) {
+  return serviceSectionMeta[section].singular;
+}
+
+function formatServicePrice(price: number) {
+  return `$${price.toFixed(2)}`;
+}
+
+function formatServiceDuration(duration: number) {
+  const safeDuration = Number.isFinite(duration) ? duration : 0;
+  return `${safeDuration} min`;
+}
+
+function getLessonInstructorNames(service: Service) {
+  return (service.instructors ?? []).filter(Boolean);
 }
 
 function reorderServicesByVisibleList(
@@ -3279,8 +3357,17 @@ export default function BookingAdminApp({
   const [showCustomerImport, setShowCustomerImport] = useState(false);
   const [bookingConflictDialog, setBookingConflictDialog] = useState<string | null>(null);
   const [calendarChargeBookingId, setCalendarChargeBookingId] = useState<string | null>(null);
-  const isRentalAddPage = pathname === "/admin/services/rentals/add";
-  const isRentalEditPage = Boolean(selectedServiceId && /^\/admin\/services\/rentals\/[^/]+$/.test(pathname));
+  const routeServiceSection = useMemo(() => {
+    const match = pathname.match(/^\/admin\/services\/([^/]+)/);
+    const section = match?.[1];
+    return section && isServiceSection(section) ? section : null;
+  }, [pathname]);
+  const isServiceAddPage = Boolean(routeServiceSection && pathname === `${getServiceSectionBasePath(routeServiceSection)}/add`);
+  const isServiceEditPage = Boolean(
+    routeServiceSection &&
+      selectedServiceId &&
+      new RegExp(`^${getServiceSectionBasePath(routeServiceSection).replace(/\//g, "\\/")}\\/[^/]+$`).test(pathname)
+  );
   const isRoomEditPage = Boolean(selectedRoomId && /^\/admin\/settings\/rooms\/[^/]+$/.test(pathname) && !pathname.endsWith("/add"));
   const isScheduleEditPage = Boolean(
     selectedScheduleId && /^\/admin\/settings\/schedules\/[^/]+$/.test(pathname) && !pathname.endsWith("/add")
@@ -3357,10 +3444,10 @@ export default function BookingAdminApp({
 
   useEffect(() => {
     if (!pathname.startsWith("/admin/services")) return;
-    if (pathname.startsWith("/admin/services/rentals")) {
-      setServiceSection("rentals");
+    if (routeServiceSection) {
+      setServiceSection(routeServiceSection);
     }
-  }, [pathname]);
+  }, [pathname, routeServiceSection]);
 
   useEffect(() => {
     if (!pathname.startsWith("/admin/calendar")) return;
@@ -3631,6 +3718,7 @@ export default function BookingAdminApp({
               : service.resource_id
                 ? [namesById.get(service.resource_id) ?? ""].filter(Boolean)
               : [],
+          instructors: service.instructor_names ?? [],
           category: service.service_type ?? inferServiceCategory(service.name),
           status: service.status,
           calendarColor: normalizeCalendarColor(service.calendar_color),
@@ -4224,6 +4312,9 @@ export default function BookingAdminApp({
   async function saveRentalDraft(rentalDraft: RentalDraft, existingService?: Service | null) {
     const firstDefaultPrice = rentalDraft.defaultPricing[0];
     const scheduleId = rentalDraft.serviceScheduleEnabled ? rentalDraft.scheduleId || null : null;
+    const serviceCategory = existingService?.category ?? serviceSection;
+    const serviceLabel = getServiceSectionSingular(serviceCategory);
+    const serviceBasePath = getServiceSectionBasePath(serviceCategory);
     const item: Service = {
       id: existingService?.id ?? makeId("svc"),
       name: rentalDraft.name.trim(),
@@ -4231,7 +4322,7 @@ export default function BookingAdminApp({
       price: Number(firstDefaultPrice?.price || 0),
       resource: rentalDraft.selectedRooms[0] ?? "",
       rooms: rentalDraft.selectedRooms,
-      category: existingService?.category ?? "rentals",
+      category: serviceCategory,
       status: rentalDraft.private ? "Off" : existingService?.status === "Draft" ? "Draft" : "Active",
       previewText: rentalDraft.previewText,
       description: rentalDraft.description,
@@ -4244,11 +4335,11 @@ export default function BookingAdminApp({
       services: upsert(state.services, item),
       schedules: assignServiceToSchedule(state.schedules, item.name, item.scheduleId, existingService?.name),
     };
-    const successMessage = existingService ? "Rental updated." : "Rental saved.";
+    const successMessage = existingService ? `${serviceLabel} updated.` : `${serviceLabel} saved.`;
 
     if (dataSource === "local") {
       saveLocal(next, successMessage);
-      router.push("/admin/services/rentals");
+      router.push(serviceBasePath);
       return;
     }
 
@@ -4257,7 +4348,7 @@ export default function BookingAdminApp({
     try {
       await upsertModalChange({ type: "service", item }, resourceIdsByName);
       showToast(successMessage);
-      router.push("/admin/services/rentals");
+      router.push(serviceBasePath);
     } catch (error) {
       console.error(error);
       const fallbackMessage = "That change could not be saved.";
@@ -4267,6 +4358,9 @@ export default function BookingAdminApp({
   }
 
   async function duplicateRental(service: Service) {
+    const serviceCategory = service.category ?? inferServiceCategory(service.name);
+    const serviceLabel = getServiceSectionSingular(serviceCategory);
+    const serviceBasePath = getServiceSectionBasePath(serviceCategory);
     const duplicate: Service = {
       ...service,
       id: makeId("svc"),
@@ -4275,8 +4369,8 @@ export default function BookingAdminApp({
     const next = { ...state, services: upsert(state.services, duplicate) };
 
     if (dataSource === "local") {
-      saveLocal(next, "Rental duplicated.");
-      router.push(`/admin/services/rentals/${duplicate.id}`);
+      saveLocal(next, `${serviceLabel} duplicated.`);
+      router.push(`${serviceBasePath}/${duplicate.id}`);
       return;
     }
 
@@ -4284,8 +4378,8 @@ export default function BookingAdminApp({
 
     try {
       await upsertModalChange({ type: "service", item: duplicate }, resourceIdsByName);
-      showToast("Rental duplicated.");
-      router.push(`/admin/services/rentals/${duplicate.id}`);
+      showToast(`${serviceLabel} duplicated.`);
+      router.push(`${serviceBasePath}/${duplicate.id}`);
     } catch (error) {
       console.error(error);
       const fallbackMessage = "That change could not be saved.";
@@ -4301,7 +4395,10 @@ export default function BookingAdminApp({
       return;
     }
 
-    const confirmed = window.confirm("Delete this rental? This cannot be undone.");
+    const serviceCategory = service.category ?? inferServiceCategory(service.name);
+    const serviceLabel = getServiceSectionSingular(serviceCategory);
+    const serviceBasePath = getServiceSectionBasePath(serviceCategory);
+    const confirmed = window.confirm(`Delete this ${serviceLabel.toLowerCase()}? This cannot be undone.`);
     if (!confirmed) return;
 
     const previousState = state;
@@ -4311,8 +4408,8 @@ export default function BookingAdminApp({
     };
 
     if (dataSource === "local") {
-      saveLocal(next, "Rental deleted.");
-      router.push("/admin/services/rentals");
+      saveLocal(next, `${serviceLabel} deleted.`);
+      router.push(serviceBasePath);
       return;
     }
 
@@ -4321,8 +4418,8 @@ export default function BookingAdminApp({
     try {
       const { error } = await supabase.from("booking_services").delete().eq("id", service.id);
       if (error) throw error;
-      showToast("Rental deleted.");
-      router.push("/admin/services/rentals");
+      showToast(`${serviceLabel} deleted.`);
+      router.push(serviceBasePath);
     } catch (error) {
       console.error(error);
       setState(previousState);
@@ -4532,10 +4629,9 @@ export default function BookingAdminApp({
                   {item.key === "services" && activeMainView === "services" ? (
                     <div className="mt-1 hidden space-y-1 pl-5 pr-2 xl:block">
                       {serviceSectionItems.map((sectionItem) => (
-                        sectionItem.key === "rentals" ? (
                         <Link
                           key={sectionItem.key}
-                          href="/admin/services/rentals"
+                          href={getServiceSectionBasePath(sectionItem.key)}
                           className={[
                             "flex h-10 w-full items-center gap-3 rounded-lg px-4 text-left text-[18px] leading-none transition",
                             serviceSection === sectionItem.key ? "bg-[#eeeeee] font-semibold text-black" : "text-black hover:bg-black/5",
@@ -4544,23 +4640,6 @@ export default function BookingAdminApp({
                           <Icon name={sectionItem.icon} className="h-[18px] w-[18px] shrink-0" />
                           <span>{sectionItem.label}</span>
                         </Link>
-                        ) : (
-                        <button
-                          key={sectionItem.key}
-                          type="button"
-                          onClick={() => {
-                            setServiceSection(sectionItem.key);
-                            router.push("/admin/services");
-                          }}
-                          className={[
-                            "flex h-10 w-full items-center gap-3 rounded-lg px-4 text-left text-[18px] leading-none transition",
-                            serviceSection === sectionItem.key ? "bg-[#eeeeee] font-semibold text-black" : "text-black hover:bg-black/5",
-                          ].join(" ")}
-                        >
-                          <Icon name={sectionItem.icon} className="h-[18px] w-[18px] shrink-0" />
-                          <span>{sectionItem.label}</span>
-                        </button>
-                        )
                       ))}
                     </div>
                   ) : null}
@@ -4600,20 +4679,18 @@ export default function BookingAdminApp({
             <HomeView facilityName={state.facility.name} />
           ) : null}
           {view === "services" ? (
-            isRentalAddPage || isRentalEditPage ? (
+            isServiceAddPage || isServiceEditPage ? (
               <RentalEditorView
-                key={selectedService?.id ?? "new-rental"}
-                mode={isRentalEditPage ? "edit" : "add"}
+                key={selectedService?.id ?? "new-service"}
+                mode={isServiceEditPage ? "edit" : "add"}
                 facilityName={state.facility.name}
                 resources={state.resources}
                 schedules={state.schedules.length ? state.schedules : defaultState.schedules}
-                onCancel={() => router.push("/admin/services/rentals")}
+                onCancel={() => router.push(getServiceSectionBasePath(serviceSection))}
                 activeSection={serviceSection}
                 onSectionChange={(section) => {
                   setServiceSection(section);
-                  if (section !== "rentals" || isRentalEditPage) {
-                    router.push("/admin/services");
-                  }
+                  router.push(getServiceSectionBasePath(section));
                 }}
                 service={selectedService}
                 deleteGuardMessage={selectedService ? getRentalDeleteGuard(selectedService, state) : null}
@@ -4639,18 +4716,10 @@ export default function BookingAdminApp({
                   void reorderServices(visibleServiceIds, serviceId, direction)
                 }
                 onNew={() => {
-                  if (serviceSection === "rentals") {
-                    router.push("/admin/services/rentals/add");
-                    return;
-                  }
-                  setModal({ type: "service" });
+                  router.push(`${getServiceSectionBasePath(serviceSection)}/add`);
                 }}
                 onEdit={(id) => {
-                  if (serviceSection === "rentals") {
-                    router.push(`/admin/services/rentals/${id}`);
-                    return;
-                  }
-                  setModal({ type: "service", id });
+                  router.push(`${getServiceSectionBasePath(serviceSection)}/${id}`);
                 }}
               />
             )
@@ -5366,33 +5435,6 @@ function ServicesView({
 }) {
   const [search, setSearch] = useState("");
 
-  const sectionCopy: Record<ServiceSection, { title: string; subtitle: string }> = {
-    rentals: {
-      title: "Rentals",
-      subtitle: "Let customers rent rooms at your facility.",
-    },
-    lessons: {
-      title: "Lessons",
-      subtitle: "Offer one-on-one and small-group instruction.",
-    },
-    camps: {
-      title: "Camps",
-      subtitle: "Set up camp offerings and seasonal training programs.",
-    },
-    classes: {
-      title: "Classes",
-      subtitle: "Create recurring class offerings for your athletes.",
-    },
-    memberships: {
-      title: "Memberships",
-      subtitle: "Manage membership-based access and recurring offers.",
-    },
-    packages: {
-      title: "Packages",
-      subtitle: "Bundle services together into bookable packages.",
-    },
-  };
-
   const filteredServices = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
 
@@ -5404,12 +5446,18 @@ function ServicesView({
 
     return sectionServices.filter((service) => {
       const rooms = (service.rooms?.length ? service.rooms : [service.resource]).map((item) => item.trim().toLowerCase());
-      return service.name.toLowerCase().includes(normalizedSearch) || rooms.some((room) => room.includes(normalizedSearch));
+      const instructors = (service.instructors ?? []).map((item) => item.trim().toLowerCase());
+      return (
+        service.name.toLowerCase().includes(normalizedSearch) ||
+        rooms.some((room) => room.includes(normalizedSearch)) ||
+        instructors.some((instructor) => instructor.includes(normalizedSearch))
+      );
     });
   }, [activeSection, search, services]);
 
   const visibleServiceIds = useMemo(() => filteredServices.map((service) => service.id), [filteredServices]);
-  const currentCopy = sectionCopy[activeSection];
+  const currentCopy = serviceSectionMeta[activeSection];
+  const isLessonsSection = activeSection === "lessons";
 
   return (
     <section className="min-h-screen px-[18px] py-6 xl:px-6 xl:py-8">
@@ -5442,7 +5490,7 @@ function ServicesView({
 
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-[22px] font-medium text-black">{currentCopy.title}</h1>
+          <h1 className="text-[22px] font-medium text-black">{currentCopy.label}</h1>
           <p className="mt-1 text-[13px] text-black/75">{currentCopy.subtitle}</p>
         </div>
 
@@ -5480,22 +5528,38 @@ function ServicesView({
 
       <div className="mt-5 overflow-hidden rounded-lg border border-black/10 bg-white">
         <div>
-          <div className="grid grid-cols-[minmax(0,1.2fr)_86px_88px_40px] gap-2 bg-[#f5f6f8] px-4 py-5 text-[14px] font-semibold text-black md:grid-cols-[minmax(150px,1.35fr)_120px_minmax(140px,1fr)_48px] md:gap-3 xl:grid-cols-[minmax(0,1.6fr)_180px_240px_76px] xl:gap-4">
-            <div>Name</div>
-            <div>Visibility</div>
-            <div>Rooms</div>
-            <div />
-          </div>
+          {isLessonsSection ? (
+            <div className="grid grid-cols-[minmax(0,1.5fr)_96px_84px_84px_40px] gap-2 bg-[#f5f6f8] px-4 py-5 text-[14px] font-semibold text-black md:grid-cols-[minmax(180px,1.5fr)_130px_120px_140px_48px] md:gap-3 xl:grid-cols-[minmax(0,1.6fr)_180px_140px_140px_220px_76px] xl:gap-4">
+              <div>Name</div>
+              <div>Visibility</div>
+              <div>Price</div>
+              <div>Duration</div>
+              <div className="hidden xl:block">Instructors</div>
+              <div />
+            </div>
+          ) : (
+            <div className="grid grid-cols-[minmax(0,1.2fr)_86px_88px_40px] gap-2 bg-[#f5f6f8] px-4 py-5 text-[14px] font-semibold text-black md:grid-cols-[minmax(150px,1.35fr)_120px_minmax(140px,1fr)_48px] md:gap-3 xl:grid-cols-[minmax(0,1.6fr)_180px_240px_76px] xl:gap-4">
+              <div>Name</div>
+              <div>Visibility</div>
+              <div>Rooms</div>
+              <div />
+            </div>
+          )}
 
           {filteredServices.length ? (
             filteredServices.map((service, index) => {
               const rooms = (service.rooms?.length ? service.rooms : [service.resource]).map((item) => item.trim()).filter(Boolean);
               const visibility = service.status === "Active" ? "Everyone" : "Private";
+              const instructorNames = getLessonInstructorNames(service);
 
               return (
                 <div
                   key={service.id}
-                  className="grid grid-cols-[minmax(0,1.2fr)_86px_88px_40px] items-start gap-2 border-t border-black/10 px-4 py-6 md:grid-cols-[minmax(150px,1.35fr)_120px_minmax(140px,1fr)_48px] md:gap-3 md:py-7 xl:grid-cols-[minmax(0,1.6fr)_180px_240px_76px] xl:gap-4 xl:px-5 xl:py-8"
+                  className={
+                    isLessonsSection
+                      ? "grid grid-cols-[minmax(0,1.5fr)_96px_84px_84px_40px] items-start gap-2 border-t border-black/10 px-4 py-6 md:grid-cols-[minmax(180px,1.5fr)_130px_120px_140px_48px] md:gap-3 md:py-7 xl:grid-cols-[minmax(0,1.6fr)_180px_140px_140px_220px_76px] xl:gap-4 xl:px-5 xl:py-8"
+                      : "grid grid-cols-[minmax(0,1.2fr)_86px_88px_40px] items-start gap-2 border-t border-black/10 px-4 py-6 md:grid-cols-[minmax(150px,1.35fr)_120px_minmax(140px,1fr)_48px] md:gap-3 md:py-7 xl:grid-cols-[minmax(0,1.6fr)_180px_240px_76px] xl:gap-4 xl:px-5 xl:py-8"
+                  }
                 >
                   <button
                     type="button"
@@ -5503,6 +5567,9 @@ function ServicesView({
                     className="min-w-0 text-left text-[14px] font-medium leading-7 text-black md:text-[16px] md:leading-6 xl:text-[17px]"
                   >
                     <span className="block break-words">{service.name}</span>
+                    {isLessonsSection && instructorNames ? (
+                      <span className="mt-1 block text-[12px] font-normal leading-5 text-black/55 xl:hidden">{instructorNames}</span>
+                    ) : null}
                   </button>
 
                   <div className="min-w-0 pt-1">
@@ -5516,30 +5583,46 @@ function ServicesView({
                     </span>
                   </div>
 
-                  <div className="min-w-0 pt-1">
-                    <div className="flex flex-col items-start gap-2 md:flex-row md:flex-wrap md:gap-2">
-                      {rooms.length ? (
-                        rooms.map((room, roomIndex) => (
-                          <span
-                            key={room}
-                            className={[
-                              "rounded-full bg-[#f1efef] px-2.5 py-1 text-[11px] font-medium text-black md:px-3.5 md:py-1.5 md:text-[13px]",
-                              roomIndex > 1 ? "hidden xl:inline-flex" : "inline-flex",
-                            ].join(" ")}
-                          >
-                            {room}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-[11px] text-black/40 md:text-[13px]">No rooms</span>
-                      )}
-                      {rooms.length > 2 ? (
-                        <span className="inline-flex rounded-full bg-[#f1efef] px-2.5 py-1 text-[11px] font-medium text-black md:px-3.5 md:py-1.5 md:text-[13px] xl:hidden">
-                          +{rooms.length - 2} more
+                  {isLessonsSection ? (
+                    <>
+                      <div className="min-w-0 pt-1 text-[13px] font-medium text-black md:text-[15px]">
+                        {formatServicePrice(service.price)}
+                      </div>
+                      <div className="min-w-0 pt-1 text-[13px] font-medium text-black md:text-[15px]">
+                        {formatServiceDuration(service.duration)}
+                      </div>
+                      <div className="hidden min-w-0 pt-1 xl:block">
+                        <span className="block break-words text-[13px] text-black/65">
+                          {instructorNames || "No instructors"}
                         </span>
-                      ) : null}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="min-w-0 pt-1">
+                      <div className="flex flex-col items-start gap-2 md:flex-row md:flex-wrap md:gap-2">
+                        {rooms.length ? (
+                          rooms.map((room, roomIndex) => (
+                            <span
+                              key={room}
+                              className={[
+                                "rounded-full bg-[#f1efef] px-2.5 py-1 text-[11px] font-medium text-black md:px-3.5 md:py-1.5 md:text-[13px]",
+                                roomIndex > 1 ? "hidden xl:inline-flex" : "inline-flex",
+                              ].join(" ")}
+                            >
+                              {room}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-[11px] text-black/40 md:text-[13px]">No rooms</span>
+                        )}
+                        {rooms.length > 2 ? (
+                          <span className="inline-flex rounded-full bg-[#f1efef] px-2.5 py-1 text-[11px] font-medium text-black md:px-3.5 md:py-1.5 md:text-[13px] xl:hidden">
+                            +{rooms.length - 2} more
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   <div className="flex flex-col items-end gap-3 pt-1">
                     <button
@@ -5622,7 +5705,10 @@ function RentalEditorView({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const calendarColorInputRef = useRef<HTMLInputElement | null>(null);
   const isEditMode = mode === "edit";
-  const rentalName = service?.name || draft.name.trim() || "Rental";
+  const sectionLabel = getServiceSectionLabel(activeSection);
+  const singularLabel = getServiceSectionSingular(activeSection);
+  const serviceName = service?.name || draft.name.trim() || singularLabel;
+  const serviceBasePath = getServiceSectionBasePath(activeSection);
 
   const priceRows = activePriceTab === "default" ? draft.defaultPricing : draft.membershipPricing;
   const canSave = Boolean(draft.name.trim());
@@ -5711,17 +5797,17 @@ function RentalEditorView({
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-[14px] text-black/55">
-        <Link href="/admin/services/rentals" className="font-medium text-black/75 hover:text-black">
-          Rentals
+        <Link href={serviceBasePath} className="font-medium text-black/75 hover:text-black">
+          {sectionLabel}
         </Link>
         <span>/</span>
-        <span className="font-medium text-black">{isEditMode ? rentalName : "Add Rental"}</span>
+        <span className="font-medium text-black">{isEditMode ? serviceName : `Add ${singularLabel}`}</span>
       </div>
 
       <div className="mt-2 flex items-start justify-between gap-4">
         <div className="min-w-0">
           <h1 className="text-[22px] font-medium leading-8 text-black md:text-[26px]">
-            {isEditMode ? rentalName : "Add Rental"}
+            {isEditMode ? serviceName : `Add ${singularLabel}`}
           </h1>
         </div>
         <div className="relative shrink-0">
@@ -5731,7 +5817,7 @@ function RentalEditorView({
                 type="button"
                 onClick={() => setShowActions((current) => !current)}
                 className="grid h-12 w-12 place-items-center rounded-xl bg-[#efeff5] text-black/75"
-                aria-label="Rental actions"
+                aria-label={`${singularLabel} actions`}
               >
                 <span className="text-[24px] leading-none">...</span>
               </button>
@@ -5757,7 +5843,7 @@ function RentalEditorView({
                     className="flex w-full items-center gap-3 border-t border-black/8 px-4 py-4 text-left text-[15px] font-medium text-black hover:bg-black/[0.03]"
                   >
                     <Icon name="copy" className="h-5 w-5" />
-                    Duplicate rental
+                    {`Duplicate ${singularLabel.toLowerCase()}`}
                   </button>
                 </div>
               ) : null}
@@ -5768,7 +5854,7 @@ function RentalEditorView({
 
       <div className="mt-4 overflow-hidden rounded-lg border border-black/12 bg-white">
         <div className="border-t-4 border-t-[#446fbb] px-4 py-4 text-[20px] font-medium text-black">
-          Rental Details
+          {singularLabel} Details
         </div>
 
         <div className="border-t border-black/10">
