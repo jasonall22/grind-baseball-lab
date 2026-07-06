@@ -209,6 +209,8 @@ type ServiceSection =
   | "memberships"
   | "packages";
 
+type BookingModalServiceKind = "rentals" | "lessons" | "camps" | "classes" | "unavailable";
+
 type RentalPriceRow = {
   id: string;
   duration: string;
@@ -16158,6 +16160,17 @@ function EditorModal({
   const customerDraft = draft as Customer;
   const customerName = modal.type === "customer" ? splitName(customerDraft.name) : { first: "", last: "" };
   const bookingDraft = modal.type === "booking" ? (draft as Booking) : null;
+  const resolveBookingModalServiceKind = (category?: ServiceSection | null): BookingModalServiceKind => {
+    switch (category) {
+      case "lessons":
+      case "camps":
+      case "classes":
+      case "rentals":
+        return category;
+      default:
+        return "rentals";
+    }
+  };
   const matchedBookingService =
     bookingDraft
       ? findServiceForCalendarSlot(state.services, bookingDraft.resource, bookingDurationMinutes(bookingDraft), {
@@ -16170,9 +16183,44 @@ function EditorModal({
   const selectedBookingService =
     bookingDraft ? state.services.find((item) => item.id === bookingDraft.serviceId) ?? null : null;
   const effectiveBookingService = selectedBookingService ?? matchedBookingService;
+  const [bookingServiceKind, setBookingServiceKind] = useState<BookingModalServiceKind>(() => {
+    if (!bookingDraft) return "rentals";
+    if (!bookingDraft.serviceId && bookingDraft.serviceName === "Unavailable") return "unavailable";
+    return resolveBookingModalServiceKind(selectedBookingService?.category ?? matchedBookingService?.category);
+  });
+  const bookingServiceItems: { key: BookingModalServiceKind; label: string; icon: IconName }[] = [
+    { key: "rentals", label: "Rental", icon: "clock" },
+    { key: "lessons", label: "Lesson", icon: "user" },
+    { key: "camps", label: "Camp", icon: "calendar" },
+    { key: "classes", label: "Class", icon: "user" },
+    { key: "unavailable", label: "Unavailable", icon: "x" },
+  ];
+  const bookingServiceOptions =
+    bookingServiceKind === "unavailable"
+      ? []
+      : state.services
+          .filter((item) => item.category === bookingServiceKind)
+          .map((item): [string, string] => [item.id, item.name]);
   const canSave =
     modal.type !== "customer" ||
     Boolean(customerName.first.trim() && customerName.last.trim() && customerDraft.email.trim());
+
+  useEffect(() => {
+    if (!bookingDraft) return;
+
+    const nextKind: BookingModalServiceKind =
+      !bookingDraft.serviceId && bookingDraft.serviceName === "Unavailable"
+        ? "unavailable"
+        : resolveBookingModalServiceKind(selectedBookingService?.category ?? matchedBookingService?.category);
+
+    setBookingServiceKind((current) => (current === nextKind ? current : nextKind));
+  }, [
+    bookingDraft,
+    bookingDraft?.serviceId,
+    bookingDraft?.serviceName,
+    matchedBookingService?.category,
+    selectedBookingService?.category,
+  ]);
 
   function save() {
     if (modal.type === "service") {
@@ -16238,6 +16286,9 @@ function EditorModal({
 
     const durationSource = selectedServiceFromChange ?? selectedServiceFromDraft;
     let normalizedBooking: Booking = { ...merged };
+    const isUnavailableMode =
+      bookingServiceKind === "unavailable" ||
+      (!normalizedBooking.serviceId && normalizedBooking.serviceName === "Unavailable");
 
     if (selectedServiceFromChange) {
       const preferredRooms =
@@ -16259,6 +16310,16 @@ function EditorModal({
       normalizedBooking.end = minutesToTime(
         timeToMinutes(normalizedBooking.start) + durationSource.duration
       );
+    }
+
+    if (isUnavailableMode && !selectedServiceFromChange) {
+      setDraft({
+        ...normalizedBooking,
+        serviceId: "",
+        serviceName: "Unavailable",
+        calendarColor: normalizedBooking.calendarColor || "#6b7280",
+      } as typeof draft);
+      return;
     }
 
     const nextService = findServiceForCalendarSlot(
@@ -16283,6 +16344,36 @@ function EditorModal({
       serviceName: resolvedService?.name ?? normalizedBooking.serviceName,
       calendarColor: resolvedService?.calendarColor ?? normalizedBooking.calendarColor,
     } as typeof draft);
+  }
+
+  function changeBookingServiceKind(kind: BookingModalServiceKind) {
+    if (modal.type !== "booking") return;
+
+    setBookingServiceKind(kind);
+
+    if (kind === "unavailable") {
+      patchBooking({
+        serviceId: "",
+        serviceName: "Unavailable",
+        calendarColor: "#6b7280",
+        paid: false,
+      });
+      return;
+    }
+
+    const nextService = state.services.find((item) => item.category === kind) ?? null;
+
+    if (!nextService) {
+      setDraft({
+        ...(draft as Booking),
+        serviceId: "",
+        serviceName: "",
+        calendarColor: DEFAULT_SERVICE_CALENDAR_COLOR,
+      } as typeof draft);
+      return;
+    }
+
+    patchBooking({ serviceId: nextService.id });
   }
 
   function cancelBooking() {
@@ -16344,6 +16435,30 @@ function EditorModal({
 
           {modal.type === "booking" ? (
             <>
+              <div className="sm:col-span-2">
+                <div className="mb-2 text-sm font-semibold text-black/70">Booking Type</div>
+                <div className="grid gap-2 sm:grid-cols-5">
+                  {bookingServiceItems.map((item) => {
+                    const active = bookingServiceKind === item.key;
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => changeBookingServiceKind(item.key)}
+                        className={[
+                          "flex min-h-11 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-semibold transition",
+                          active
+                            ? "border-black bg-black text-white"
+                            : "border-black/10 bg-white text-black hover:bg-black/[0.03]",
+                        ].join(" ")}
+                      >
+                        <Icon name={item.icon} className="h-4 w-4" />
+                        <span>{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <TextField label="Date" type="date" value={(draft as Booking).date} onChange={(value) => patchBooking({ date: value })} />
               <SelectField label="Status" value={(draft as Booking).status} onChange={(value) => patchBooking({ status: value as Booking["status"] })} options={["Confirmed", "Pending", "Cancelled"]} />
               <TextField label="Start" type="time" value={(draft as Booking).start} onChange={(value) => patchBooking({ start: value })} />
@@ -16354,12 +16469,21 @@ function EditorModal({
                 onChange={(value) => patchBooking({ customerId: value })}
                 options={state.customers.map((item): [string, string] => [item.id, `${item.player} (${item.name})`])}
               />
-              <SelectField
-                label="Service"
-                value={(draft as Booking).serviceId}
-                onChange={(value) => patchBooking({ serviceId: value })}
-                options={state.services.map((item): [string, string] => [item.id, item.name])}
-              />
+              {bookingServiceKind === "unavailable" ? (
+                <div className="grid gap-2">
+                  <div className="text-sm font-semibold text-black/70">Service</div>
+                  <div className="min-h-10 rounded-lg border border-dashed border-black/15 bg-black/[0.02] px-3 py-2 text-sm text-black/60">
+                    This block will be marked unavailable and won&apos;t be tied to a service.
+                  </div>
+                </div>
+              ) : (
+                <SelectField
+                  label="Service"
+                  value={(draft as Booking).serviceId}
+                  onChange={(value) => patchBooking({ serviceId: value })}
+                  options={bookingServiceOptions}
+                />
+              )}
               <SelectField label="Resource" value={(draft as Booking).resource} onChange={(value) => patchBooking({ resource: value })} options={state.resources} />
               <SelectField
                 label="Payment"
