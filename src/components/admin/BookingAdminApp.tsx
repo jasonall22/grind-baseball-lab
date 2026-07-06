@@ -4608,7 +4608,7 @@ export default function BookingAdminApp({
       >
         {!isSettingsView ? (
           <aside className="hidden bg-[#f5f5f5] p-3 xl:flex xl:min-h-screen xl:flex-col xl:px-6 xl:py-6">
-            <div className="hidden items-center justify-between xl:flex">
+            <div className="-mx-6 -mt-6 mb-6 hidden items-center justify-between border-b border-white/10 bg-black px-6 py-4 shadow-[0_1px_4px_rgba(0,0,0,0.28)] xl:flex">
               <AdminBrandLogo size="desktop" />
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-black/20 text-white">
                 <Icon name="user" className="h-5 w-5" />
