@@ -5534,7 +5534,7 @@ function ServicesView({
       <div className="mt-5 overflow-hidden rounded-lg border border-black/10 bg-white">
         <div>
           {isLessonsSection ? (
-            <div className="grid grid-cols-[minmax(0,1.5fr)_96px_84px_84px_40px] gap-2 bg-[#f5f6f8] px-4 py-4 text-[14px] font-semibold text-black md:grid-cols-[minmax(180px,1.5fr)_130px_120px_140px_48px] md:gap-3 md:py-4 xl:grid-cols-[minmax(0,1.65fr)_170px_120px_120px_250px_76px] xl:gap-3 xl:px-5 xl:py-4">
+            <div className="grid grid-cols-[minmax(0,1.5fr)_96px_84px_84px_40px] gap-2 bg-[#f5f6f8] px-4 py-3 text-[14px] font-semibold text-black md:grid-cols-[minmax(180px,1.5fr)_130px_120px_140px_48px] md:gap-3 md:py-3 xl:grid-cols-[minmax(0,1.65fr)_170px_120px_120px_250px_72px] xl:gap-3 xl:px-5 xl:py-3">
               <div>Name</div>
               <div>Visibility</div>
               <div>Price</div>
@@ -5543,7 +5543,7 @@ function ServicesView({
               <div />
             </div>
           ) : (
-            <div className="grid grid-cols-[minmax(0,1.2fr)_86px_88px_40px] gap-2 bg-[#f5f6f8] px-4 py-5 text-[14px] font-semibold text-black md:grid-cols-[minmax(150px,1.35fr)_120px_minmax(140px,1fr)_48px] md:gap-3 xl:grid-cols-[minmax(0,1.6fr)_180px_240px_76px] xl:gap-4">
+            <div className="grid grid-cols-[minmax(0,1.2fr)_86px_88px_40px] gap-2 bg-[#f5f6f8] px-4 py-3 text-[14px] font-semibold text-black md:grid-cols-[minmax(150px,1.35fr)_120px_minmax(140px,1fr)_48px] md:gap-3 md:py-3 xl:grid-cols-[minmax(0,1.6fr)_170px_220px_72px] xl:gap-3 xl:px-5 xl:py-3">
               <div>Name</div>
               <div>Visibility</div>
               <div>Rooms</div>
@@ -5565,14 +5565,14 @@ function ServicesView({
                   key={service.id}
                   className={
                     isLessonsSection
-                      ? "grid grid-cols-[minmax(0,1.5fr)_96px_84px_84px_40px] items-start gap-2 border-t border-black/10 px-4 py-4 md:grid-cols-[minmax(180px,1.5fr)_130px_120px_140px_48px] md:gap-3 md:py-5 xl:grid-cols-[minmax(0,1.65fr)_170px_120px_120px_250px_76px] xl:gap-3 xl:px-5 xl:py-5"
-                      : "grid grid-cols-[minmax(0,1.2fr)_86px_88px_40px] items-start gap-2 border-t border-black/10 px-4 py-6 md:grid-cols-[minmax(150px,1.35fr)_120px_minmax(140px,1fr)_48px] md:gap-3 md:py-7 xl:grid-cols-[minmax(0,1.6fr)_180px_240px_76px] xl:gap-4 xl:px-5 xl:py-8"
+                      ? "grid grid-cols-[minmax(0,1.5fr)_96px_84px_84px_40px] items-start gap-2 border-t border-black/10 px-4 py-3 md:grid-cols-[minmax(180px,1.5fr)_130px_120px_140px_48px] md:gap-3 md:py-4 xl:grid-cols-[minmax(0,1.65fr)_170px_120px_120px_250px_72px] xl:gap-3 xl:px-5 xl:py-4"
+                      : "grid grid-cols-[minmax(0,1.2fr)_86px_88px_40px] items-start gap-2 border-t border-black/10 px-4 py-3 md:grid-cols-[minmax(150px,1.35fr)_120px_minmax(140px,1fr)_48px] md:gap-3 md:py-4 xl:grid-cols-[minmax(0,1.6fr)_170px_220px_72px] xl:gap-3 xl:px-5 xl:py-4"
                   }
                 >
                   <button
                     type="button"
                     onClick={() => onEdit(service.id)}
-                    className="min-w-0 text-left text-[14px] font-medium leading-6 text-black md:text-[15px] md:leading-6 xl:text-[16px]"
+                    className="min-w-0 text-left text-[14px] font-medium leading-5 text-black md:text-[15px] md:leading-5 xl:text-[15px]"
                   >
                     <span className="block break-words">{service.name}</span>
                     {isLessonsSection && compactInstructorNames ? (
@@ -5583,7 +5583,7 @@ function ServicesView({
                   <div className="min-w-0 pt-1">
                     <span
                       className={[
-                        "inline-flex rounded-full px-2 py-1 text-[11px] font-medium md:px-2.5 md:py-1.5 md:text-[13px] xl:px-3.5",
+                        "inline-flex rounded-full px-2 py-1 text-[11px] font-medium md:px-2.5 md:py-1 md:text-[12px] xl:px-3",
                         visibility === "Everyone" ? "bg-emerald-50 text-emerald-700" : "bg-[#f3f4f6] text-[#667085]",
                       ].join(" ")}
                     >
@@ -5632,7 +5632,7 @@ function ServicesView({
                             <span
                               key={room}
                               className={[
-                                "rounded-full bg-[#f1efef] px-2.5 py-1 text-[11px] font-medium text-black md:px-3.5 md:py-1.5 md:text-[13px]",
+                                "rounded-full bg-[#f1efef] px-2 py-1 text-[11px] font-medium text-black md:px-2.5 md:py-1 md:text-[12px]",
                                 roomIndex > 1 ? "hidden xl:inline-flex" : "inline-flex",
                               ].join(" ")}
                             >
@@ -5643,7 +5643,7 @@ function ServicesView({
                           <span className="text-[11px] text-black/40 md:text-[13px]">No rooms</span>
                         )}
                         {rooms.length > 2 ? (
-                          <span className="inline-flex rounded-full bg-[#f1efef] px-2.5 py-1 text-[11px] font-medium text-black md:px-3.5 md:py-1.5 md:text-[13px] xl:hidden">
+                          <span className="inline-flex rounded-full bg-[#f1efef] px-2 py-1 text-[11px] font-medium text-black md:px-2.5 md:py-1 md:text-[12px] xl:hidden">
                             +{rooms.length - 2} more
                           </span>
                         ) : null}
@@ -5651,24 +5651,24 @@ function ServicesView({
                     </div>
                   )}
 
-                  <div className="flex flex-col items-end gap-3 pt-1">
+                  <div className="flex flex-col items-end gap-2 pt-1">
                     <button
                       type="button"
                       onClick={() => onReorder(visibleServiceIds, service.id, "up")}
                       disabled={index === 0}
-                      className="grid h-9 w-9 place-items-center rounded-lg border border-black/12 text-black/45 disabled:opacity-40 md:h-10 md:w-10"
+                      className="grid h-8 w-8 place-items-center rounded-lg border border-black/12 text-black/45 disabled:opacity-40 md:h-9 md:w-9"
                       aria-label="Move service up"
                     >
-                      <Icon name="chevron" className="h-[18px] w-[18px] -rotate-90" />
+                      <Icon name="chevron" className="h-4 w-4 -rotate-90" />
                     </button>
                     <button
                       type="button"
                       onClick={() => onReorder(visibleServiceIds, service.id, "down")}
                       disabled={index === filteredServices.length - 1}
-                      className="grid h-9 w-9 place-items-center rounded-lg border border-black/12 text-black/45 disabled:opacity-40 md:h-10 md:w-10"
+                      className="grid h-8 w-8 place-items-center rounded-lg border border-black/12 text-black/45 disabled:opacity-40 md:h-9 md:w-9"
                       aria-label="Move service down"
                     >
-                      <Icon name="chevron" className="h-[18px] w-[18px] rotate-90" />
+                      <Icon name="chevron" className="h-4 w-4 rotate-90" />
                     </button>
                   </div>
                 </div>
