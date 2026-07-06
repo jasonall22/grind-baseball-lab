@@ -5557,6 +5557,8 @@ function ServicesView({
               const visibility = service.status === "Active" ? "Everyone" : "Private";
               const instructorNames = getLessonInstructorNames(service);
               const compactInstructorNames = instructorNames.join(", ");
+              const visibleInstructorNames = instructorNames.slice(0, 2);
+              const remainingInstructorCount = Math.max(0, instructorNames.length - visibleInstructorNames.length);
 
               return (
                 <div
@@ -5599,12 +5601,23 @@ function ServicesView({
                       </div>
                       <div className="hidden min-w-0 pt-1 xl:block">
                         {instructorNames.length ? (
-                          <div className="flex flex-col gap-1 text-[13px] leading-5 text-black/65">
-                            {instructorNames.map((name) => (
-                              <span key={name} className="break-words">
-                                {name}
+                          <div className="flex flex-wrap items-center gap-2">
+                            {visibleInstructorNames.map((name) => (
+                              <span
+                                key={name}
+                                className="inline-flex max-w-full items-center gap-2 rounded-full bg-[#f1efef] px-3 py-1 text-[13px] font-medium text-black"
+                              >
+                                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#d9d9d9] text-[#777]">
+                                  <Icon name="user" className="h-3.5 w-3.5" />
+                                </span>
+                                <span className="truncate">{name}</span>
                               </span>
                             ))}
+                            {remainingInstructorCount > 0 ? (
+                              <span className="inline-flex items-center rounded-full bg-[#f1efef] px-3 py-1 text-[13px] font-medium text-black/80">
+                                +{remainingInstructorCount} more
+                              </span>
+                            ) : null}
                           </div>
                         ) : (
                           <span className="block break-words text-[13px] text-black/45">No instructors</span>
