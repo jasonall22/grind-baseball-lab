@@ -2617,6 +2617,24 @@ function bookingStatusBadge(booking: Booking) {
   return null;
 }
 
+function bookingPaymentIndicator(booking: Booking) {
+  if (booking.status === "Cancelled") return null;
+
+  if (booking.paid) {
+    return {
+      label: "Paid",
+      icon: "check" as const,
+      className: "bg-[#22c55e] text-white ring-1 ring-black/10",
+    };
+  }
+
+  return {
+    label: "Unpaid",
+    icon: "clock" as const,
+    className: "bg-white/90 text-black/80 ring-1 ring-black/10",
+  };
+}
+
 function findServiceForCalendarSlot(
   services: Service[],
   resource: string,
@@ -3236,7 +3254,10 @@ export default function BookingAdminApp({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [state, setState] = useState<AppState>(loadInitialState);
-  const [activeDate, setActiveDate] = useState(() => isoDate(new Date()));
+  const initialQueryDate = searchParams.get("date");
+  const [activeDate, setActiveDate] = useState(() =>
+    initialQueryDate && /^\d{4}-\d{2}-\d{2}$/.test(initialQueryDate) ? initialQueryDate : isoDate(new Date())
+  );
   const [modal, setModal] = useState<ModalState>(null);
   const [toast, setToast] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
@@ -3312,6 +3333,31 @@ export default function BookingAdminApp({
       setServiceSection("rentals");
     }
   }, [pathname]);
+
+  useEffect(() => {
+    if (!pathname.startsWith("/admin/calendar")) return;
+
+    const requestedDate = searchParams.get("date");
+    if (requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate) && requestedDate !== activeDate) {
+      setActiveDate(requestedDate);
+    }
+  }, [activeDate, pathname, searchParams]);
+
+  useEffect(() => {
+    if (!pathname.startsWith("/admin/calendar")) return;
+
+    const paymentState = searchParams.get("payment");
+    if (!paymentState) return;
+
+    if (paymentState === "paid") {
+      showToast("Booking marked paid.");
+    }
+
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("payment");
+    const nextUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    router.replace(nextUrl, { scroll: false });
+  }, [pathname, router, searchParams, showToast]);
 
   const loadFromSupabase = useCallback(async () => {
     if (!hasSupabaseEnv) {
@@ -4924,6 +4970,8 @@ export default function BookingAdminApp({
             const params = new URLSearchParams();
             params.set("tab", "billing");
             params.set("chargeBooking", booking.id);
+            params.set("returnTo", "calendar");
+            params.set("returnDate", booking.date);
             if (chargeAmount > 0) {
               params.set("chargeAmount", String(chargeAmount));
             }
@@ -6664,6 +6712,7 @@ function CalendarView({
                           const customer = customersById.get(booking.customerId);
                           const service = servicesById.get(booking.serviceId);
                           const tone = bookingTonePresentation(booking, service);
+                          const paymentIndicator = bookingPaymentIndicator(booking);
                           const durationMinutes = Math.max(30, segment.end - segment.start);
                           const isCompactBooking = durationMinutes <= 30;
 
@@ -6677,8 +6726,18 @@ function CalendarView({
                               }`}
                               style={{ top, height, ...tone.style }}
                             >
-                              <div className={`${isCompactBooking ? "text-[8px]" : "text-[9px]"} ${tone.timeClass} font-semibold leading-none`}>
-                                {timeLabel(minutesToTime(segment.start))}
+                              <div className="flex items-start justify-between gap-1">
+                                <div className={`${isCompactBooking ? "text-[8px]" : "text-[9px]"} ${tone.timeClass} font-semibold leading-none`}>
+                                  {timeLabel(minutesToTime(segment.start))}
+                                </div>
+                                {paymentIndicator ? (
+                                  <span
+                                    title={paymentIndicator.label}
+                                    className={`grid h-4 w-4 shrink-0 place-items-center rounded-full ${paymentIndicator.className}`}
+                                  >
+                                    <Icon name={paymentIndicator.icon} className="h-2.5 w-2.5" />
+                                  </span>
+                                ) : null}
                               </div>
                               <div className={`truncate font-semibold leading-[1.05] ${isCompactBooking ? "mt-0.5 text-[11px]" : "mt-1 text-[12px]"}`}>
                                 {customer?.player || customer?.name || "Customer"}
@@ -6788,6 +6847,7 @@ function CalendarView({
                         const service = servicesById.get(booking.serviceId);
                         const statusBadge = bookingStatusBadge(booking);
                         const tone = bookingTonePresentation(booking, service);
+                        const paymentIndicator = bookingPaymentIndicator(booking);
                         const durationMinutes = Math.max(30, segment.end - segment.start);
                         const isCompactBooking = durationMinutes <= 30;
 
@@ -6810,6 +6870,14 @@ function CalendarView({
                                   className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.06em] ${statusBadge.className}`}
                                 >
                                   {statusBadge.label}
+                                </span>
+                              ) : null}
+                              {paymentIndicator ? (
+                                <span
+                                  title={paymentIndicator.label}
+                                  className={`grid h-5 w-5 shrink-0 place-items-center rounded-full ${paymentIndicator.className}`}
+                                >
+                                  <Icon name={paymentIndicator.icon} className="h-3 w-3" />
                                 </span>
                               ) : null}
                             </div>
@@ -6870,6 +6938,7 @@ function CalendarView({
                         const service = servicesById.get(booking.serviceId);
                         const statusBadge = bookingStatusBadge(booking);
                         const tone = bookingTonePresentation(booking, service);
+                        const paymentIndicator = bookingPaymentIndicator(booking);
                         return (
                           <button
                             key={booking.id}
@@ -6887,6 +6956,14 @@ function CalendarView({
                                   className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] ${statusBadge.className}`}
                                 >
                                   {statusBadge.label}
+                                </span>
+                              ) : null}
+                              {paymentIndicator ? (
+                                <span
+                                  title={paymentIndicator.label}
+                                  className={`grid h-5 w-5 shrink-0 place-items-center rounded-full ${paymentIndicator.className}`}
+                                >
+                                  <Icon name={paymentIndicator.icon} className="h-3 w-3" />
                                 </span>
                               ) : null}
                             </div>
@@ -6931,6 +7008,7 @@ function CalendarView({
                         const service = servicesById.get(booking.serviceId);
                         const statusBadge = bookingStatusBadge(booking);
                         const tone = bookingTonePresentation(booking, service);
+                        const paymentIndicator = bookingPaymentIndicator(booking);
                         return (
                           <button
                             key={booking.id}
@@ -6948,6 +7026,14 @@ function CalendarView({
                                   className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.06em] ${statusBadge.className}`}
                                 >
                                   {statusBadge.label}
+                                </span>
+                              ) : null}
+                              {paymentIndicator ? (
+                                <span
+                                  title={paymentIndicator.label}
+                                  className={`grid h-5 w-5 shrink-0 place-items-center rounded-full ${paymentIndicator.className}`}
+                                >
+                                  <Icon name={paymentIndicator.icon} className="h-3 w-3" />
                                 </span>
                               ) : null}
                             </div>
@@ -7970,6 +8056,8 @@ function CustomerDetailView({
   const [chargeBookingId, setChargeBookingId] = useState("");
   const [chargeAmount, setChargeAmount] = useState("");
   const [chargeDescription, setChargeDescription] = useState("");
+  const [chargeReturnTo, setChargeReturnTo] = useState<"calendar" | null>(null);
+  const [chargeReturnDate, setChargeReturnDate] = useState("");
   const [submittingCharge, setSubmittingCharge] = useState(false);
 
   const customerBookings = useMemo(
@@ -7999,6 +8087,8 @@ function CustomerDetailView({
     setChargeBookingId("");
     setChargeAmount("");
     setChargeDescription("");
+    setChargeReturnTo(null);
+    setChargeReturnDate("");
   }, [customer?.id]);
 
   if (!customer) {
@@ -8113,6 +8203,8 @@ function CustomerDetailView({
 
     const selectedService = servicesById.get(selectedBooking.serviceId);
     const requestedAmount = detailSearchParams.get("chargeAmount");
+    const requestedReturnTo = detailSearchParams.get("returnTo");
+    const requestedReturnDate = detailSearchParams.get("returnDate");
     const resolvedAmount =
       requestedAmount && Number.isFinite(Number(requestedAmount))
         ? String(Number(requestedAmount))
@@ -8135,6 +8227,8 @@ function CustomerDetailView({
     setChargeBookingId(selectedBooking.id);
     setChargeAmount(resolvedAmount);
     setChargeDescription(resolvedDescription);
+    setChargeReturnTo(requestedReturnTo === "calendar" ? "calendar" : null);
+    setChargeReturnDate(requestedReturnDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedReturnDate) ? requestedReturnDate : selectedBooking.date);
     setShowChargeModal(true);
     void loadBillingData({ silent: true });
 
@@ -8142,6 +8236,8 @@ function CustomerDetailView({
     params.delete("chargeBooking");
     params.delete("chargeAmount");
     params.delete("chargeDescription");
+    params.delete("returnTo");
+    params.delete("returnDate");
     params.set("tab", "billing");
     const nextUrl = params.toString() ? `${detailPathname}?${params.toString()}` : detailPathname;
     detailRouter.replace(nextUrl, { scroll: false });
@@ -8540,12 +8636,27 @@ function CustomerDetailView({
         throw new Error(payload?.error || "Could not charge saved card.");
       }
 
+      const returnTo = chargeReturnTo;
+      const returnDate = chargeReturnDate;
       setShowChargeModal(false);
       setChargeBookingId("");
       setChargeAmount("");
       setChargeDescription("");
-      showToast("Charge completed.");
+      setChargeReturnTo(null);
+      setChargeReturnDate("");
       await loadBillingData({ silent: true });
+
+      if (returnTo === "calendar") {
+        const params = new URLSearchParams();
+        if (returnDate) {
+          params.set("date", returnDate);
+        }
+        params.set("payment", "paid");
+        detailRouter.push(`/admin/calendar?${params.toString()}`);
+        return;
+      }
+
+      showToast("Charge completed.");
     } catch (error) {
       console.error(error);
       showToast(error instanceof Error ? error.message : "Could not charge saved card.");
@@ -9375,6 +9486,8 @@ function CustomerDetailView({
                   setChargeBookingId("");
                   setChargeAmount("");
                   setChargeDescription("");
+                  setChargeReturnTo(null);
+                  setChargeReturnDate("");
                 }}
                 className="text-black/45"
                 aria-label="Close charge modal"
@@ -9423,6 +9536,8 @@ function CustomerDetailView({
                   setChargeBookingId("");
                   setChargeAmount("");
                   setChargeDescription("");
+                  setChargeReturnTo(null);
+                  setChargeReturnDate("");
                 }}
                 className="rounded-lg border border-black/10 px-4 py-2 text-[14px] font-medium text-black/65"
               >
