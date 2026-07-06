@@ -8440,19 +8440,22 @@ function CustomerDetailView({
           customerId: currentCustomer.id,
           amount: amountValue,
           description: chargeDescription,
-          returnPath: `${detailPathname}?tab=billing`,
         }),
       });
       const payload = await response.json();
 
-      if (!response.ok || !payload?.url) {
-        throw new Error(payload?.error || "Could not start charge checkout.");
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Could not charge saved card.");
       }
 
-      window.location.assign(payload.url as string);
+      setShowChargeModal(false);
+      setChargeAmount("");
+      setChargeDescription("");
+      showToast("Charge completed.");
+      await loadBillingData({ silent: true });
     } catch (error) {
       console.error(error);
-      showToast(error instanceof Error ? error.message : "Could not start charge checkout.");
+      showToast(error instanceof Error ? error.message : "Could not charge saved card.");
     } finally {
       setSubmittingCharge(false);
     }
@@ -9314,7 +9317,7 @@ function CustomerDetailView({
               </label>
 
               <div className="rounded-xl border border-black/8 bg-black/[0.02] px-4 py-3 text-[13px] text-black/55">
-                We'll send this customer through Stripe Checkout to complete the payment securely.
+                This will charge the customer's saved default card immediately.
               </div>
             </div>
 
@@ -9336,7 +9339,7 @@ function CustomerDetailView({
                 disabled={submittingCharge}
                 className="rounded-lg bg-black px-5 py-2.5 text-[14px] font-semibold text-white disabled:opacity-50"
               >
-                {submittingCharge ? "Opening..." : "Continue to Checkout"}
+                {submittingCharge ? "Charging..." : "Charge card"}
               </button>
             </div>
           </div>
