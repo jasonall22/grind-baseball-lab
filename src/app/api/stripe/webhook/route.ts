@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 
-import { getStripe } from "@/lib/stripe";
+import { getStripe, normalizeStripeKey } from "@/lib/stripe";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -135,7 +135,7 @@ async function syncCompletedCheckoutSession(
 
 export async function POST(req: Request) {
   const signature = req.headers.get("stripe-signature");
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  const webhookSecret = normalizeStripeKey(process.env.STRIPE_WEBHOOK_SECRET);
 
   if (!signature || !webhookSecret) {
     return NextResponse.json({ ok: false, error: "Missing Stripe webhook configuration." }, { status: 400 });

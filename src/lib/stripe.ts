@@ -6,7 +6,7 @@ declare global {
 }
 
 export function getStripe() {
-  const secretKey = process.env.STRIPE_SECRET_KEY;
+  const secretKey = normalizeStripeKey(process.env.STRIPE_SECRET_KEY);
 
   if (!secretKey) {
     throw new Error("Missing STRIPE_SECRET_KEY.");
@@ -17,4 +17,9 @@ export function getStripe() {
   }
 
   return global.__grindStripe__;
+}
+
+export function normalizeStripeKey(value: string | undefined | null) {
+  if (!value) return "";
+  return value.replace(/\s+/g, "");
 }
