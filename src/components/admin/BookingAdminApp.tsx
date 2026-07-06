@@ -9701,8 +9701,8 @@ function CustomerDetailView({
                 <div className="grid gap-4">
                   <label className="grid gap-1.5">
                     <span className="text-[13px] font-medium text-black/85">Price</span>
-                    <div className="relative">
-                      <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-black/45">
+                    <div className="flex min-h-11 items-center rounded-lg border border-black/12 bg-white pl-4 pr-4">
+                      <span className="pointer-events-none shrink-0 text-[18px] leading-none text-black/45">
                         $
                       </span>
                       <input
@@ -9710,7 +9710,7 @@ function CustomerDetailView({
                         onChange={(event) => setChargeAmount(event.target.value.replace(/[^\d.]/g, ""))}
                         inputMode="decimal"
                         placeholder="0.00"
-                        className="min-h-11 w-full rounded-lg border border-black/12 pl-8 pr-4 text-[15px] outline-none"
+                        className="min-h-11 w-full border-0 bg-transparent pl-3 pr-0 text-[15px] outline-none"
                       />
                     </div>
                   </label>
