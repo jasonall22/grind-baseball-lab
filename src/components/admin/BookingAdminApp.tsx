@@ -9704,9 +9704,9 @@ function CustomerDetailView({
               </button>
             </div>
 
-            <div className="grid gap-5 px-6 py-5">
-              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-                <div className="grid gap-4">
+            <div className="grid gap-4 px-6 py-5">
+              <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+                <div className="grid content-start self-start gap-4">
                   <label className="grid gap-1.5">
                     <span className="text-[13px] font-medium text-black/85">Price</span>
                     <div className="flex min-h-11 items-center rounded-lg border border-black/12 bg-white pl-4 pr-4">
@@ -9733,7 +9733,7 @@ function CustomerDetailView({
                     />
                   </label>
 
-                  <div className="rounded-xl border border-black/8 bg-black/[0.02] px-4 py-3 text-[13px] text-black/55">
+                  <div className="rounded-xl border border-black/8 bg-black/[0.02] px-4 py-3 text-[13px] leading-5 text-black/55">
                     {chargeMethod === "cash"
                       ? "This will record a cash payment and mark this balance as paid."
                       : chargeMethod === "waive"
@@ -9742,7 +9742,7 @@ function CustomerDetailView({
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-black/10 bg-white">
+                <div className="self-start rounded-2xl border border-black/10 bg-white">
                   <div className="border-b border-black/8 px-4 py-3">
                     <p className="text-[14px] font-semibold text-black">Invoice Summary</p>
                   </div>
