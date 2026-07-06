@@ -63,8 +63,9 @@ export async function POST(req: Request) {
     if ("error" in context) return context.error;
 
     const { supabase } = context;
-    const { customerId, amount, description } = (await req.json()) as {
+    const { customerId, bookingId, amount, description } = (await req.json()) as {
       customerId?: string;
+      bookingId?: string;
       amount?: number;
       description?: string;
     };
@@ -81,6 +82,20 @@ export async function POST(req: Request) {
     const stripe = getStripe();
     const stripeCustomerId = await ensureStripeCustomerForBookingCustomer(supabase, stripe, customer);
     const itemDescription = description?.trim() || `Manual charge for ${customer.parent_name || customer.player_name}`;
+
+    if (bookingId) {
+      const bookingResult = await supabase
+        .from("booking_bookings")
+        .select("id, customer_id")
+        .eq("id", bookingId)
+        .eq("customer_id", customer.id)
+        .maybeSingle();
+
+      if (bookingResult.error) throw bookingResult.error;
+      if (!bookingResult.data) {
+        return routeJsonError("That booking could not be matched to this customer.", 409);
+      }
+    }
 
     const stripeCustomer = await stripe.customers.retrieve(stripeCustomerId, {
       expand: ["invoice_settings.default_payment_method"],
@@ -110,6 +125,7 @@ export async function POST(req: Request) {
       description: itemDescription,
       metadata: {
         local_customer_id: customer.id,
+        local_booking_id: bookingId || "",
         payment_origin: "admin_manual_charge",
         description: itemDescription,
       },
@@ -129,6 +145,16 @@ export async function POST(req: Request) {
     }
 
     await upsertPaymentIntentRecord(supabase, stripe, customer.id, intent);
+
+    if (bookingId) {
+      const updateBookingResult = await supabase
+        .from("booking_bookings")
+        .update({ paid: true })
+        .eq("id", bookingId)
+        .eq("customer_id", customer.id);
+
+      if (updateBookingResult.error) throw updateBookingResult.error;
+    }
 
     return NextResponse.json({
       ok: true,

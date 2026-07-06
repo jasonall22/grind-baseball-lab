@@ -4907,6 +4907,30 @@ export default function BookingAdminApp({
           showBookingConflictDialog={showBookingConflictDialog}
           onClose={() => setModal(null)}
           onSave={(next, message, change) => void saveModalChange(next, message, change)}
+          onChargeBooking={(booking) => {
+            if (!booking.customerId) {
+              showToast("Choose a customer before charging this booking.");
+              return;
+            }
+
+            const bookingService = state.services.find((item) => item.id === booking.serviceId) ?? null;
+            const chargeAmount = bookingService?.price ?? 0;
+            const descriptionParts = [
+              booking.serviceName || bookingService?.name || "Booking charge",
+              booking.date,
+              `${booking.start} - ${booking.end}`,
+              booking.resource,
+            ].filter(Boolean);
+            const params = new URLSearchParams();
+            params.set("tab", "billing");
+            params.set("chargeBooking", booking.id);
+            if (chargeAmount > 0) {
+              params.set("chargeAmount", String(chargeAmount));
+            }
+            params.set("chargeDescription", descriptionParts.join(" | "));
+            setModal(null);
+            router.push(`/admin/customers/${booking.customerId}?${params.toString()}`);
+          }}
         />
       ) : null}
 
@@ -7943,6 +7967,7 @@ function CustomerDetailView({
   const [showAddCardModal, setShowAddCardModal] = useState(false);
   const [addCardClientSecret, setAddCardClientSecret] = useState("");
   const [showChargeModal, setShowChargeModal] = useState(false);
+  const [chargeBookingId, setChargeBookingId] = useState("");
   const [chargeAmount, setChargeAmount] = useState("");
   const [chargeDescription, setChargeDescription] = useState("");
   const [submittingCharge, setSubmittingCharge] = useState(false);
@@ -7971,6 +7996,7 @@ function CustomerDetailView({
     setShowAddCardModal(false);
     setAddCardClientSecret("");
     setShowChargeModal(false);
+    setChargeBookingId("");
     setChargeAmount("");
     setChargeDescription("");
   }, [customer?.id]);
@@ -8069,6 +8095,57 @@ function CustomerDetailView({
       void loadBillingData({ silent: true });
     }
   }, [activeTab, billingLoaded, billingLoading, loadBillingData]);
+
+  useEffect(() => {
+    const bookingId = detailSearchParams.get("chargeBooking");
+    if (!bookingId) return;
+
+    const selectedBooking = customerBookings.find((item) => item.id === bookingId);
+    if (!selectedBooking) {
+      const params = new URLSearchParams(detailSearchParams.toString());
+      params.delete("chargeBooking");
+      params.delete("chargeAmount");
+      params.delete("chargeDescription");
+      const nextUrl = params.toString() ? `${detailPathname}?${params.toString()}` : detailPathname;
+      detailRouter.replace(nextUrl, { scroll: false });
+      return;
+    }
+
+    const selectedService = servicesById.get(selectedBooking.serviceId);
+    const requestedAmount = detailSearchParams.get("chargeAmount");
+    const resolvedAmount =
+      requestedAmount && Number.isFinite(Number(requestedAmount))
+        ? String(Number(requestedAmount))
+        : selectedService
+          ? String(selectedService.price)
+          : "";
+    const resolvedDescription =
+      detailSearchParams.get("chargeDescription") ||
+      [
+        selectedBooking.serviceName || selectedService?.name || "Booking charge",
+        selectedBooking.date,
+        `${selectedBooking.start} - ${selectedBooking.end}`,
+        selectedBooking.resource,
+      ]
+        .filter(Boolean)
+        .join(" | ");
+
+    setActiveTab("Billing");
+    setActiveBillingTab("Payments");
+    setChargeBookingId(selectedBooking.id);
+    setChargeAmount(resolvedAmount);
+    setChargeDescription(resolvedDescription);
+    setShowChargeModal(true);
+    void loadBillingData({ silent: true });
+
+    const params = new URLSearchParams(detailSearchParams.toString());
+    params.delete("chargeBooking");
+    params.delete("chargeAmount");
+    params.delete("chargeDescription");
+    params.set("tab", "billing");
+    const nextUrl = params.toString() ? `${detailPathname}?${params.toString()}` : detailPathname;
+    detailRouter.replace(nextUrl, { scroll: false });
+  }, [customerBookings, detailPathname, detailRouter, detailSearchParams, loadBillingData, servicesById]);
 
   useEffect(() => {
     const stripeState = detailSearchParams.get("stripe");
@@ -8452,6 +8529,7 @@ function CustomerDetailView({
         },
         body: JSON.stringify({
           customerId: currentCustomer.id,
+          bookingId: chargeBookingId || undefined,
           amount: amountValue,
           description: chargeDescription,
         }),
@@ -8463,6 +8541,7 @@ function CustomerDetailView({
       }
 
       setShowChargeModal(false);
+      setChargeBookingId("");
       setChargeAmount("");
       setChargeDescription("");
       showToast("Charge completed.");
@@ -9293,6 +9372,7 @@ function CustomerDetailView({
                 type="button"
                 onClick={() => {
                   setShowChargeModal(false);
+                  setChargeBookingId("");
                   setChargeAmount("");
                   setChargeDescription("");
                 }}
@@ -9340,6 +9420,7 @@ function CustomerDetailView({
                 type="button"
                 onClick={() => {
                   setShowChargeModal(false);
+                  setChargeBookingId("");
                   setChargeAmount("");
                   setChargeDescription("");
                 }}
@@ -14687,6 +14768,7 @@ function EditorModal({
   showBookingConflictDialog,
   onClose,
   onSave,
+  onChargeBooking,
 }: {
   modal: NonNullable<ModalState>;
   state: AppState;
@@ -14695,6 +14777,7 @@ function EditorModal({
   showBookingConflictDialog: (message?: string) => void;
   onClose: () => void;
   onSave: (next: AppState, message: string, change: ModalSaveChange) => void;
+  onChargeBooking: (booking: Booking) => void;
 }) {
   const service =
     modal.type === "service"
@@ -14917,6 +15000,30 @@ function EditorModal({
     if (modal.type !== "booking") return;
     const item = { ...(draft as Booking), status: "Cancelled" as const };
     onSave({ ...state, bookings: upsert(state.bookings, item) }, "Booking cancelled.", { type: "booking", item });
+  }
+
+  function chargeBooking() {
+    if (modal.type !== "booking") return;
+
+    const item = draft as Booking;
+    if (!item.id) {
+      showToast("Save the booking before charging it.");
+      return;
+    }
+    if (!item.customerId) {
+      showToast("Choose a customer before charging this booking.");
+      return;
+    }
+    if (item.status === "Cancelled") {
+      showToast("Cancelled bookings cannot be charged.");
+      return;
+    }
+    if (item.paid) {
+      showToast("This booking is already marked paid.");
+      return;
+    }
+
+    onChargeBooking(item);
   }
 
   function toggleCustomerSection(section: string) {
@@ -15231,15 +15338,25 @@ function EditorModal({
         </div>
 
         <div className="flex items-center justify-between gap-3 border-t border-black/10 px-5 py-4">
-          <div>
+          <div className="flex items-center gap-2">
             {modal.type === "booking" && modal.id && (draft as Booking).status !== "Cancelled" ? (
-              <button
-                type="button"
-                onClick={cancelBooking}
-                className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"
-              >
-                Cancel Booking
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={chargeBooking}
+                  disabled={(draft as Booking).paid || !effectiveBookingService || effectiveBookingService.price <= 0}
+                  className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white disabled:bg-black/15 disabled:text-black/35"
+                >
+                  {(draft as Booking).paid ? "Already Paid" : "Charge Customer"}
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelBooking}
+                  className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"
+                >
+                  Cancel Booking
+                </button>
+              </>
             ) : null}
           </div>
           <div className="flex gap-2">
