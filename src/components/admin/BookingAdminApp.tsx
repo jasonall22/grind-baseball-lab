@@ -223,6 +223,7 @@ type RentalDraft = {
   defaultPricing: RentalPriceRow[];
   membershipPricing: RentalPriceRow[];
   selectedRooms: string[];
+  instructors: string[];
   reserveOnPurchase: "any" | "all";
   reserveEquipment: boolean;
   collectTax: boolean;
@@ -3150,6 +3151,7 @@ function createRentalDraft(resources: string[], defaultScheduleId: string): Rent
     defaultPricing: [{ id: makeId("price"), duration: "", price: "" }],
     membershipPricing: [],
     selectedRooms: resources,
+    instructors: [],
     reserveOnPurchase: "any",
     reserveEquipment: false,
     collectTax: false,
@@ -3173,6 +3175,7 @@ function createRentalDraftFromService(service: Service, defaultScheduleId: strin
     defaultPricing: [{ id: makeId("price"), duration: String(service.duration || 30), price: String(service.price || 0) }],
     membershipPricing: [],
     selectedRooms: service.rooms?.length ? service.rooms : service.resource ? [service.resource] : [],
+    instructors: service.instructors ?? [],
     reserveOnPurchase: "any",
     reserveEquipment: false,
     collectTax: false,
@@ -4322,6 +4325,7 @@ export default function BookingAdminApp({
       price: Number(firstDefaultPrice?.price || 0),
       resource: rentalDraft.selectedRooms[0] ?? "",
       rooms: rentalDraft.selectedRooms,
+      instructors: (rentalDraft.instructors ?? []).map((item) => item.trim()).filter(Boolean),
       category: serviceCategory,
       status: rentalDraft.private ? "Off" : existingService?.status === "Draft" ? "Draft" : "Active",
       previewText: rentalDraft.previewText,
@@ -4693,6 +4697,7 @@ export default function BookingAdminApp({
                   router.push(getServiceSectionBasePath(section));
                 }}
                 service={selectedService}
+                staff={state.staff}
                 deleteGuardMessage={selectedService ? getRentalDeleteGuard(selectedService, state) : null}
                 onCopyBookingLink={() => void copyRentalBookingLink()}
                 onDuplicate={() => {
@@ -5663,6 +5668,7 @@ function RentalEditorView({
   facilityName,
   resources,
   schedules,
+  staff,
   activeSection,
   onSectionChange,
   service,
@@ -5677,6 +5683,7 @@ function RentalEditorView({
   facilityName: string;
   resources: string[];
   schedules: ScheduleRecord[];
+  staff: StaffMember[];
   activeSection: ServiceSection;
   onSectionChange: (section: ServiceSection) => void;
   service?: Service | null;
@@ -5709,6 +5716,16 @@ function RentalEditorView({
   const singularLabel = getServiceSectionSingular(activeSection);
   const serviceName = service?.name || draft.name.trim() || singularLabel;
   const serviceBasePath = getServiceSectionBasePath(activeSection);
+  const instructorOptions = useMemo(
+    () =>
+      staff
+        .filter((member) => member.active)
+        .map((member) => member.name.trim())
+        .filter(Boolean)
+        .filter((name, index, all) => all.indexOf(name) === index)
+        .sort((left, right) => left.localeCompare(right)),
+    [staff]
+  );
 
   const priceRows = activePriceTab === "default" ? draft.defaultPricing : draft.membershipPricing;
   const canSave = Boolean(draft.name.trim());
@@ -5752,6 +5769,14 @@ function RentalEditorView({
       selectedRooms: draft.selectedRooms.includes(room)
         ? draft.selectedRooms.filter((item) => item !== room)
         : [...draft.selectedRooms, room],
+    });
+  }
+
+  function toggleInstructor(name: string) {
+    patch({
+      instructors: draft.instructors.includes(name)
+        ? draft.instructors.filter((item) => item !== name)
+        : [...draft.instructors, name],
     });
   }
 
@@ -6054,6 +6079,34 @@ function RentalEditorView({
               </div>
             </div>
           </RentalSettingRow>
+
+          {activeSection === "lessons" ? (
+            <RentalSettingRow
+              title="Instructors"
+              description="Choose which staff members can be booked for this lesson"
+            >
+              <div>
+                <div className="mb-2 text-[14px] font-medium text-black/85">Available Instructors</div>
+                {instructorOptions.length ? (
+                  <div className="grid gap-3 text-[14px]">
+                    {instructorOptions.map((instructorName) => (
+                      <label key={instructorName} className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={draft.instructors.includes(instructorName)}
+                          onChange={() => toggleInstructor(instructorName)}
+                          className="h-5 w-5 rounded border-black/20"
+                        />
+                        <span>{instructorName}</span>
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[14px] text-black/55">No active staff members available yet.</p>
+                )}
+              </div>
+            </RentalSettingRow>
+          ) : null}
 
           <RentalSettingRow
             title="Equipment"
