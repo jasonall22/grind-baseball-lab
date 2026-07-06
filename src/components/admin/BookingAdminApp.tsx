@@ -4663,6 +4663,7 @@ export default function BookingAdminApp({
                 customer={selectedCustomer}
                 bookings={state.bookings}
                 servicesById={servicesById}
+                taxesAndFees={state.taxesAndFees}
                 onSaveCustomer={(item, options) =>
                   saveCustomerDetail(item, options?.message ?? "Customer updated.", {
                     silent: options?.silent,
@@ -7988,12 +7989,14 @@ function CustomerDetailView({
   customer,
   bookings,
   servicesById,
+  taxesAndFees,
   onSaveCustomer,
   showToast,
 }: {
   customer: Customer | null;
   bookings: Booking[];
   servicesById: Map<string, Service>;
+  taxesAndFees: AppState["taxesAndFees"];
   onSaveCustomer: (item: Customer, options?: { message?: string; silent?: boolean }) => Promise<boolean>;
   showToast: (message: string) => void;
 }) {
@@ -8059,6 +8062,10 @@ function CustomerDetailView({
   const [chargeBookingId, setChargeBookingId] = useState("");
   const [chargeAmount, setChargeAmount] = useState("");
   const [chargeDescription, setChargeDescription] = useState("");
+  const [chargeTaxEnabled, setChargeTaxEnabled] = useState(false);
+  const [chargeTaxRateId, setChargeTaxRateId] = useState("");
+  const [chargeFeeEnabled, setChargeFeeEnabled] = useState(false);
+  const [chargeFeeId, setChargeFeeId] = useState("");
   const [chargeReturnTo, setChargeReturnTo] = useState<"calendar" | null>(null);
   const [chargeReturnDate, setChargeReturnDate] = useState("");
   const [submittingCharge, setSubmittingCharge] = useState(false);
@@ -8092,6 +8099,10 @@ function CustomerDetailView({
     setChargeBookingId("");
     setChargeAmount("");
     setChargeDescription("");
+    setChargeTaxEnabled(false);
+    setChargeTaxRateId("");
+    setChargeFeeEnabled(false);
+    setChargeFeeId("");
     setChargeReturnTo(null);
     setChargeReturnDate("");
   }, [customer?.id]);
@@ -8141,6 +8152,18 @@ function CustomerDetailView({
 
   const defaultCard = billingCards.find((card) => card.id === defaultPaymentMethodId) ?? null;
   const walletBalance = 0;
+  const availableTaxRates = taxesAndFees.taxRates;
+  const availableCustomFees = taxesAndFees.customFees;
+  const selectedChargeTaxRate = availableTaxRates.find((item) => item.id === chargeTaxRateId) ?? null;
+  const selectedChargeFee = availableCustomFees.find((item) => item.id === chargeFeeId) ?? null;
+  const chargeSubtotal = Number.isFinite(Number(chargeAmount)) ? Number(chargeAmount) : 0;
+  const chargeTaxPercent = chargeTaxEnabled ? Number(selectedChargeTaxRate?.percentage ?? 0) : 0;
+  const chargeFeePercent = chargeFeeEnabled ? Number(selectedChargeFee?.amount ?? 0) : 0;
+  const chargeTaxAmount =
+    chargeTaxEnabled && Number.isFinite(chargeTaxPercent) ? (chargeSubtotal * chargeTaxPercent) / 100 : 0;
+  const chargeFeeAmount =
+    chargeFeeEnabled && Number.isFinite(chargeFeePercent) ? (chargeSubtotal * chargeFeePercent) / 100 : 0;
+  const chargeTotal = Math.max(0, chargeSubtotal + chargeTaxAmount + chargeFeeAmount);
 
   const loadBillingData = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -8621,6 +8644,10 @@ function CustomerDetailView({
     setChargeBookingId("");
     setChargeAmount("");
     setChargeDescription("");
+    setChargeTaxEnabled(false);
+    setChargeTaxRateId("");
+    setChargeFeeEnabled(false);
+    setChargeFeeId("");
     setChargeReturnTo(null);
     setChargeReturnDate("");
   }
@@ -8659,13 +8686,20 @@ function CustomerDetailView({
       return;
     }
 
+    if (!chargeTaxRateId && availableTaxRates[0]) {
+      setChargeTaxRateId(availableTaxRates[0].id);
+    }
+    if (!chargeFeeId && availableCustomFees[0]) {
+      setChargeFeeId(availableCustomFees[0].id);
+    }
+
     setChargeMethod(method);
     setShowPaymentMethodModal(false);
     setShowChargeModal(true);
   }
 
   async function submitManualPayment(method: "cash" | "waive") {
-    const amountValue = Number(chargeAmount);
+    const amountValue = chargeTotal;
     if (!Number.isFinite(amountValue) || amountValue < 0) {
       showToast("Enter a valid charge amount.");
       return;
@@ -8702,7 +8736,7 @@ function CustomerDetailView({
   }
 
   async function submitNewCharge() {
-    const amountValue = Number(chargeAmount);
+    const amountValue = chargeTotal;
     if (!Number.isFinite(amountValue) || amountValue <= 0) {
       showToast("Enter a valid charge amount.");
       return;
@@ -9643,7 +9677,7 @@ function CustomerDetailView({
 
       {showChargeModal ? (
         <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/45 p-4">
-          <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-black/10 px-6 py-5">
               <h2 className="text-[18px] font-semibold text-black">
                 {chargeMethod === "cash"
@@ -9662,39 +9696,156 @@ function CustomerDetailView({
               </button>
             </div>
 
-            <div className="grid gap-4 px-6 py-5">
-              <label className="grid gap-1.5">
-                <span className="text-[13px] font-medium text-black/85">Amount</span>
-                <div className="relative">
-                  <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-black/45">
-                    $
-                  </span>
-                  <input
-                    value={chargeAmount}
-                    onChange={(event) => setChargeAmount(event.target.value.replace(/[^\d.]/g, ""))}
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    className="min-h-11 w-full rounded-lg border border-black/12 pl-8 pr-4 text-[15px] outline-none"
-                  />
+            <div className="grid gap-5 px-6 py-5">
+              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+                <div className="grid gap-4">
+                  <label className="grid gap-1.5">
+                    <span className="text-[13px] font-medium text-black/85">Price</span>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-black/45">
+                        $
+                      </span>
+                      <input
+                        value={chargeAmount}
+                        onChange={(event) => setChargeAmount(event.target.value.replace(/[^\d.]/g, ""))}
+                        inputMode="decimal"
+                        placeholder="0.00"
+                        className="min-h-11 w-full rounded-lg border border-black/12 pl-8 pr-4 text-[15px] outline-none"
+                      />
+                    </div>
+                  </label>
+
+                  <label className="grid gap-1.5">
+                    <span className="text-[13px] font-medium text-black/85">Description</span>
+                    <input
+                      value={chargeDescription}
+                      onChange={(event) => setChargeDescription(event.target.value)}
+                      placeholder={`Manual charge for ${customer.name}`}
+                      className="min-h-11 w-full rounded-lg border border-black/12 px-4 text-[15px] outline-none"
+                    />
+                  </label>
+
+                  <div className="rounded-xl border border-black/8 bg-black/[0.02] px-4 py-3 text-[13px] text-black/55">
+                    {chargeMethod === "cash"
+                      ? "This will record a cash payment and mark this balance as paid."
+                      : chargeMethod === "waive"
+                        ? "This will waive the balance and mark this booking as paid."
+                        : "This will charge the customer's saved default card immediately."}
+                  </div>
                 </div>
-              </label>
 
-              <label className="grid gap-1.5">
-                <span className="text-[13px] font-medium text-black/85">Description</span>
-                <input
-                  value={chargeDescription}
-                  onChange={(event) => setChargeDescription(event.target.value)}
-                  placeholder={`Manual charge for ${customer.name}`}
-                  className="min-h-11 w-full rounded-lg border border-black/12 px-4 text-[15px] outline-none"
-                />
-              </label>
+                <div className="rounded-2xl border border-black/10 bg-white">
+                  <div className="border-b border-black/8 px-4 py-3">
+                    <p className="text-[14px] font-semibold text-black">Invoice Summary</p>
+                  </div>
+                  <div className="grid gap-3 px-4 py-4">
+                    <div className="flex items-center justify-between gap-4 text-[14px]">
+                      <span className="text-black/65">Subtotal</span>
+                      <span className="font-medium text-black">{moneyPrecise(chargeSubtotal)}</span>
+                    </div>
 
-              <div className="rounded-xl border border-black/8 bg-black/[0.02] px-4 py-3 text-[13px] text-black/55">
-                {chargeMethod === "cash"
-                  ? "This will record a cash payment and mark this balance as paid."
-                  : chargeMethod === "waive"
-                    ? "This will waive the balance and mark this booking as paid."
-                    : "This will charge the customer's saved default card immediately."}
+                    <div className="rounded-xl border border-black/8 p-3">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-[14px] font-medium text-black">Tax</p>
+                          <p className="text-[12px] text-black/45">
+                            {chargeTaxEnabled && selectedChargeTaxRate
+                              ? `${selectedChargeTaxRate.name} (${selectedChargeTaxRate.percentage}%)`
+                              : "Not applied"}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (chargeTaxEnabled) {
+                              setChargeTaxEnabled(false);
+                              return;
+                            }
+                            if (availableTaxRates[0] && !chargeTaxRateId) {
+                              setChargeTaxRateId(availableTaxRates[0].id);
+                            }
+                            setChargeTaxEnabled(true);
+                          }}
+                          className="rounded-lg border border-black/10 px-3 py-1.5 text-[13px] font-medium text-black/70"
+                        >
+                          {chargeTaxEnabled ? "Remove" : "Add"}
+                        </button>
+                      </div>
+                      {chargeTaxEnabled ? (
+                        <div className="grid gap-2">
+                          <select
+                            value={chargeTaxRateId}
+                            onChange={(event) => setChargeTaxRateId(event.target.value)}
+                            className="min-h-10 w-full rounded-lg border border-black/12 px-3 text-[14px] outline-none"
+                          >
+                            {availableTaxRates.map((rate) => (
+                              <option key={rate.id} value={rate.id}>
+                                {rate.name} ({rate.percentage}%)
+                              </option>
+                            ))}
+                          </select>
+                          <div className="flex items-center justify-between gap-4 text-[13px]">
+                            <span className="text-black/55">Tax amount</span>
+                            <span className="font-medium text-black">{moneyPrecise(chargeTaxAmount)}</span>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="rounded-xl border border-black/8 p-3">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-[14px] font-medium text-black">Service Fee</p>
+                          <p className="text-[12px] text-black/45">
+                            {chargeFeeEnabled && selectedChargeFee
+                              ? `${selectedChargeFee.name} (${selectedChargeFee.amount}%)`
+                              : "Not applied"}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (chargeFeeEnabled) {
+                              setChargeFeeEnabled(false);
+                              return;
+                            }
+                            if (availableCustomFees[0] && !chargeFeeId) {
+                              setChargeFeeId(availableCustomFees[0].id);
+                            }
+                            setChargeFeeEnabled(true);
+                          }}
+                          className="rounded-lg border border-black/10 px-3 py-1.5 text-[13px] font-medium text-black/70"
+                        >
+                          {chargeFeeEnabled ? "Remove" : "Add"}
+                        </button>
+                      </div>
+                      {chargeFeeEnabled ? (
+                        <div className="grid gap-2">
+                          <select
+                            value={chargeFeeId}
+                            onChange={(event) => setChargeFeeId(event.target.value)}
+                            className="min-h-10 w-full rounded-lg border border-black/12 px-3 text-[14px] outline-none"
+                          >
+                            {availableCustomFees.map((fee) => (
+                              <option key={fee.id} value={fee.id}>
+                                {fee.name} ({fee.amount}%)
+                              </option>
+                            ))}
+                          </select>
+                          <div className="flex items-center justify-between gap-4 text-[13px]">
+                            <span className="text-black/55">Service fee amount</span>
+                            <span className="font-medium text-black">{moneyPrecise(chargeFeeAmount)}</span>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4 border-t border-black/8 pt-1 text-[15px]">
+                      <span className="font-semibold text-black">Total</span>
+                      <span className="text-[18px] font-semibold text-black">{moneyPrecise(chargeTotal)}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
