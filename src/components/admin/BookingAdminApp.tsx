@@ -2193,6 +2193,15 @@ function moneyPrecise(value: number, currency = "USD") {
   });
 }
 
+function formatCardBrand(brand?: string | null) {
+  if (!brand) return "card";
+
+  return brand
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
 function timeLabel(value: string) {
   const [hour, minute] = value.split(":").map(Number);
   return new Date(2026, 0, 1, hour, minute).toLocaleTimeString([], {
@@ -3269,6 +3278,7 @@ export default function BookingAdminApp({
   const [backToAppHref, setBackToAppHref] = useState(bookingAdminRouteByView.home);
   const [showCustomerImport, setShowCustomerImport] = useState(false);
   const [bookingConflictDialog, setBookingConflictDialog] = useState<string | null>(null);
+  const [calendarChargeBookingId, setCalendarChargeBookingId] = useState<string | null>(null);
   const isRentalAddPage = pathname === "/admin/services/rentals/add";
   const isRentalEditPage = Boolean(selectedServiceId && /^\/admin\/services\/rentals\/[^/]+$/.test(pathname));
   const isRoomEditPage = Boolean(selectedRoomId && /^\/admin\/settings\/rooms\/[^/]+$/.test(pathname) && !pathname.endsWith("/add"));
@@ -3315,6 +3325,24 @@ export default function BookingAdminApp({
     );
   }, [selectedScheduleId, selectedScheduleName, state.schedules]);
   const selectedRole = useMemo(() => roleFromSlug(selectedRoleId), [selectedRoleId]);
+  const calendarChargeBooking = useMemo(
+    () => (calendarChargeBookingId ? state.bookings.find((item) => item.id === calendarChargeBookingId) ?? null : null),
+    [calendarChargeBookingId, state.bookings]
+  );
+  const calendarChargeCustomer = useMemo(
+    () =>
+      calendarChargeBooking?.customerId
+        ? state.customers.find((item) => item.id === calendarChargeBooking.customerId) ?? null
+        : null,
+    [calendarChargeBooking, state.customers]
+  );
+  const calendarChargeService = useMemo(
+    () =>
+      calendarChargeBooking?.serviceId
+        ? state.services.find((item) => item.id === calendarChargeBooking.serviceId) ?? null
+        : null,
+    [calendarChargeBooking, state.services]
+  );
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -4959,26 +4987,8 @@ export default function BookingAdminApp({
               showToast("Choose a customer before charging this booking.");
               return;
             }
-
-            const bookingService = state.services.find((item) => item.id === booking.serviceId) ?? null;
-            const chargeAmount = bookingService?.price ?? 0;
-            const descriptionParts = [
-              booking.serviceName || bookingService?.name || "Booking charge",
-              booking.date,
-              `${booking.start} - ${booking.end}`,
-              booking.resource,
-            ].filter(Boolean);
-            const params = new URLSearchParams();
-            params.set("tab", "billing");
-            params.set("chargeBooking", booking.id);
-            params.set("returnTo", "calendar");
-            params.set("returnDate", booking.date);
-            if (chargeAmount > 0) {
-              params.set("chargeAmount", String(chargeAmount));
-            }
-            params.set("chargeDescription", descriptionParts.join(" | "));
             setModal(null);
-            router.push(`/admin/customers/${booking.customerId}?${params.toString()}`);
+            setCalendarChargeBookingId(booking.id);
           }}
         />
       ) : null}
@@ -4987,6 +4997,27 @@ export default function BookingAdminApp({
         <CustomerImportModal
           onClose={() => setShowCustomerImport(false)}
           onImport={(customersToImport) => void importCustomers(customersToImport)}
+        />
+      ) : null}
+
+      {calendarChargeBooking && calendarChargeCustomer ? (
+        <CalendarChargeModal
+          booking={calendarChargeBooking}
+          customer={calendarChargeCustomer}
+          service={calendarChargeService}
+          taxesAndFees={state.taxesAndFees}
+          showToast={showToast}
+          onClose={() => setCalendarChargeBookingId(null)}
+          onPaid={(bookingId, message) => {
+            setState((current) => ({
+              ...current,
+              bookings: current.bookings.map((item) =>
+                item.id === bookingId ? { ...item, paid: true } : item
+              ),
+            }));
+            setCalendarChargeBookingId(null);
+            showToast(message);
+          }}
         />
       ) : null}
 
@@ -10135,6 +10166,599 @@ function AddCardModalForm({ customer, clientSecret, onClose, onSaved, onError }:
         </button>
       </div>
     </form>
+  );
+}
+
+type CalendarChargeModalProps = {
+  booking: Booking;
+  customer: Customer;
+  service: Service | null;
+  taxesAndFees: AppState["taxesAndFees"];
+  showToast: (message: string) => void;
+  onClose: () => void;
+  onPaid: (bookingId: string, message: string) => void;
+};
+
+function CalendarChargeModal({
+  booking,
+  customer,
+  service,
+  taxesAndFees,
+  showToast,
+  onClose,
+  onPaid,
+}: CalendarChargeModalProps) {
+  const [billingCards, setBillingCards] = useState<BillingCard[]>([]);
+  const [defaultPaymentMethodId, setDefaultPaymentMethodId] = useState<string | null>(null);
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [showPaymentMethodModal, setShowPaymentMethodModal] = useState(true);
+  const [showChargeModal, setShowChargeModal] = useState(false);
+  const [chargeMethod, setChargeMethod] = useState<"card" | "cash" | "waive" | null>(null);
+  const [chargeAmount, setChargeAmount] = useState(service ? String(service.price) : "");
+  const [chargeDescription, setChargeDescription] = useState(
+    [
+      booking.serviceName || service?.name || "Booking charge",
+      booking.date,
+      `${booking.start} - ${booking.end}`,
+      booking.resource,
+    ]
+      .filter(Boolean)
+      .join(" | ")
+  );
+  const [chargeTaxEnabled, setChargeTaxEnabled] = useState(false);
+  const [chargeTaxRateId, setChargeTaxRateId] = useState("");
+  const [chargeFeeEnabled, setChargeFeeEnabled] = useState(false);
+  const [chargeFeeId, setChargeFeeId] = useState("");
+  const [chargeDiscountEnabled, setChargeDiscountEnabled] = useState(false);
+  const [chargeDiscount, setChargeDiscount] = useState("");
+  const [submittingCharge, setSubmittingCharge] = useState(false);
+
+  const availableTaxRates = taxesAndFees.taxRates;
+  const availableCustomFees = taxesAndFees.customFees;
+  const selectedChargeTaxRate = availableTaxRates.find((item) => item.id === chargeTaxRateId) ?? null;
+  const selectedChargeFee = availableCustomFees.find((item) => item.id === chargeFeeId) ?? null;
+  const chargeSubtotal = Number.isFinite(Number(chargeAmount)) ? Number(chargeAmount) : 0;
+  const chargeTaxPercent = chargeTaxEnabled ? Number(selectedChargeTaxRate?.percentage ?? 0) : 0;
+  const chargeFeePercent = chargeFeeEnabled ? Number(selectedChargeFee?.amount ?? 0) : 0;
+  const chargeTaxAmount =
+    chargeTaxEnabled && Number.isFinite(chargeTaxPercent) ? (chargeSubtotal * chargeTaxPercent) / 100 : 0;
+  const chargeFeeAmount =
+    chargeFeeEnabled && Number.isFinite(chargeFeePercent) ? (chargeSubtotal * chargeFeePercent) / 100 : 0;
+  const chargeDiscountAmountRaw = Number.isFinite(Number(chargeDiscount)) ? Number(chargeDiscount) : 0;
+  const chargeDiscountAmount = chargeDiscountEnabled ? Math.max(0, chargeDiscountAmountRaw) : 0;
+  const chargeTotal = Math.max(0, chargeSubtotal + chargeTaxAmount + chargeFeeAmount - chargeDiscountAmount);
+  const defaultCard = billingCards.find((card) => card.id === defaultPaymentMethodId) ?? null;
+
+  const loadBillingCards = useCallback(async () => {
+    setBillingLoading(true);
+    try {
+      const cardsResponse = await fetch(`/api/stripe/cards?customerId=${encodeURIComponent(customer.id)}`, {
+        cache: "no-store",
+      });
+      const cardsPayload = await cardsResponse.json();
+
+      if (!cardsResponse.ok) {
+        throw new Error(cardsPayload?.error || "Could not load saved cards.");
+      }
+
+      setBillingCards(Array.isArray(cardsPayload.cards) ? (cardsPayload.cards as BillingCard[]) : []);
+      setDefaultPaymentMethodId(cardsPayload.defaultPaymentMethodId ?? null);
+    } catch (error) {
+      console.error(error);
+      showToast(error instanceof Error ? error.message : "Could not load saved cards.");
+    } finally {
+      setBillingLoading(false);
+    }
+  }, [customer.id, showToast]);
+
+  useEffect(() => {
+    void loadBillingCards();
+  }, [loadBillingCards]);
+
+  function resetChargeState() {
+    setShowPaymentMethodModal(true);
+    setShowChargeModal(false);
+    setChargeMethod(null);
+    setChargeTaxEnabled(false);
+    setChargeTaxRateId("");
+    setChargeFeeEnabled(false);
+    setChargeFeeId("");
+    setChargeDiscountEnabled(false);
+    setChargeDiscount("");
+    setChargeAmount(service ? String(service.price) : "");
+    setChargeDescription(
+      [
+        booking.serviceName || service?.name || "Booking charge",
+        booking.date,
+        `${booking.start} - ${booking.end}`,
+        booking.resource,
+      ]
+        .filter(Boolean)
+        .join(" | ")
+    );
+  }
+
+  function closeAll() {
+    resetChargeState();
+    onClose();
+  }
+
+  function chooseChargeMethod(method: "card" | "cash" | "waive" | "scan") {
+    if (method === "scan") {
+      showToast("Scan card using iPhone is not connected yet. Use Card, Cash, or Waive Payment for now.");
+      return;
+    }
+
+    if (method === "card") {
+      if (billingLoading) {
+        showToast("Still loading saved cards. Try again in a second.");
+        return;
+      }
+      if (!defaultCard) {
+        showToast("Add a saved card first from the customer billing page.");
+        return;
+      }
+    }
+
+    if (!chargeTaxRateId && availableTaxRates[0]) {
+      setChargeTaxRateId(availableTaxRates[0].id);
+    }
+    if (!chargeFeeId && availableCustomFees[0]) {
+      setChargeFeeId(availableCustomFees[0].id);
+    }
+
+    setChargeMethod(method);
+    setShowPaymentMethodModal(false);
+    setShowChargeModal(true);
+  }
+
+  async function submitManualPayment(method: "cash" | "waive") {
+    const amountValue = chargeTotal;
+    if (!Number.isFinite(amountValue) || amountValue < 0) {
+      showToast("Enter a valid charge amount.");
+      return;
+    }
+
+    setSubmittingCharge(true);
+    try {
+      const response = await fetch("/api/stripe/payments", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          customerId: customer.id,
+          bookingId: booking.id,
+          amount: amountValue,
+          description: chargeDescription,
+          method,
+        }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Could not save payment.");
+      }
+
+      onPaid(booking.id, method === "cash" ? "Cash payment recorded." : "Payment waived.");
+    } catch (error) {
+      console.error(error);
+      showToast(error instanceof Error ? error.message : "Could not save payment.");
+    } finally {
+      setSubmittingCharge(false);
+    }
+  }
+
+  async function submitNewCharge() {
+    const amountValue = chargeTotal;
+    if (!Number.isFinite(amountValue) || amountValue <= 0) {
+      showToast("Enter a valid charge amount.");
+      return;
+    }
+
+    if (!chargeMethod) {
+      showToast("Choose a payment method.");
+      return;
+    }
+
+    if (chargeMethod === "cash" || chargeMethod === "waive") {
+      await submitManualPayment(chargeMethod);
+      return;
+    }
+
+    setSubmittingCharge(true);
+    try {
+      const response = await fetch("/api/stripe/charges/checkout-session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          customerId: customer.id,
+          bookingId: booking.id,
+          amount: amountValue,
+          description: chargeDescription,
+        }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Could not charge saved card.");
+      }
+
+      onPaid(booking.id, "Charge completed.");
+    } catch (error) {
+      console.error(error);
+      showToast(error instanceof Error ? error.message : "Could not charge saved card.");
+    } finally {
+      setSubmittingCharge(false);
+    }
+  }
+
+  return (
+    <>
+      {showPaymentMethodModal ? (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/45 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-black/10 px-6 py-5">
+              <h2 className="text-[18px] font-semibold text-black">Payment Method</h2>
+              <button
+                type="button"
+                onClick={closeAll}
+                className="text-black/45"
+                aria-label="Close payment method modal"
+              >
+                <Icon name="x" className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="grid gap-3 px-6 py-5">
+              <button
+                type="button"
+                onClick={() => chooseChargeMethod("card")}
+                className="flex items-center justify-between rounded-xl border border-black/10 px-4 py-3 text-left transition hover:border-black/20 hover:bg-black/[0.02]"
+              >
+                <span>
+                  <span className="block text-[15px] font-semibold text-black">Card</span>
+                  <span className="block text-[13px] text-black/55">
+                    {defaultCard
+                      ? `Charge ${formatCardBrand(defaultCard.brand)} ending in ${defaultCard.last4}.`
+                      : billingLoading
+                        ? "Loading saved card on file."
+                        : "Charge the saved card on file."}
+                  </span>
+                </span>
+                <Icon name="bag" className="h-5 w-5 text-black/45" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => chooseChargeMethod("cash")}
+                className="flex items-center justify-between rounded-xl border border-black/10 px-4 py-3 text-left transition hover:border-black/20 hover:bg-black/[0.02]"
+              >
+                <span>
+                  <span className="block text-[15px] font-semibold text-black">Cash</span>
+                  <span className="block text-[13px] text-black/55">
+                    Record a cash payment and mark it paid.
+                  </span>
+                </span>
+                <Icon name="file" className="h-5 w-5 text-black/45" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => chooseChargeMethod("scan")}
+                className="flex items-center justify-between rounded-xl border border-black/10 px-4 py-3 text-left transition hover:border-black/20 hover:bg-black/[0.02]"
+              >
+                <span>
+                  <span className="block text-[15px] font-semibold text-black">Scan card using iPhone</span>
+                  <span className="block text-[13px] text-black/55">
+                    Use Tap to Pay style checkout when connected.
+                  </span>
+                </span>
+                <Icon name="phone" className="h-5 w-5 text-black/45" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => chooseChargeMethod("waive")}
+                className="flex items-center justify-between rounded-xl border border-black/10 px-4 py-3 text-left transition hover:border-black/20 hover:bg-black/[0.02]"
+              >
+                <span>
+                  <span className="block text-[15px] font-semibold text-black">Waive payment</span>
+                  <span className="block text-[13px] text-black/55">
+                    Mark the balance waived without charging.
+                  </span>
+                </span>
+                <Icon name="check" className="h-5 w-5 text-black/45" />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-end border-t border-black/10 px-6 py-4">
+              <button
+                type="button"
+                onClick={closeAll}
+                className="rounded-lg border border-black/10 px-4 py-2 text-[14px] font-medium text-black/65"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showChargeModal ? (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/45 p-4">
+          <div className="flex max-h-[92vh] w-full max-w-[1080px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-black/10 px-6 py-5">
+              <h2 className="text-[18px] font-semibold text-black">
+                {chargeMethod === "cash"
+                  ? "Record Cash Payment"
+                  : chargeMethod === "waive"
+                    ? "Waive Payment"
+                    : "New Charge"}
+              </h2>
+              <button
+                type="button"
+                onClick={closeAll}
+                className="text-black/45"
+                aria-label="Close charge modal"
+              >
+                <Icon name="x" className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="min-h-0 overflow-y-auto px-5 py-4">
+              <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
+                <div className="grid gap-4 self-start">
+                  <div className="rounded-2xl border border-black/8 bg-black/[0.015] p-4">
+                    <div className="grid gap-4">
+                      <div className="rounded-xl border border-black/8 bg-white px-4 py-3">
+                        <p className="text-[12px] font-medium uppercase tracking-[0.14em] text-black/40">
+                          Booking
+                        </p>
+                        <p className="mt-2 text-[18px] font-semibold text-black">
+                          {booking.serviceName || service?.name || "Booking charge"}
+                        </p>
+                        <p className="mt-1 text-[14px] text-black/55">
+                          {customer.name} | {booking.date} | {timeLabel(booking.start)} - {timeLabel(booking.end)} | {booking.resource}
+                        </p>
+                      </div>
+
+                      <label className="flex flex-col gap-1.5">
+                        <span className="text-[13px] font-medium text-black/85">Price</span>
+                        <div className="flex h-12 items-center rounded-lg border border-black/12 bg-white pl-4 pr-4">
+                          <span className="pointer-events-none shrink-0 text-[18px] leading-none text-black/45">
+                            $
+                          </span>
+                          <input
+                            value={chargeAmount}
+                            onChange={(event) => setChargeAmount(event.target.value.replace(/[^\d.]/g, ""))}
+                            inputMode="decimal"
+                            placeholder="0.00"
+                            className="h-12 w-full border-0 bg-transparent pl-3 pr-0 text-[16px] outline-none"
+                          />
+                        </div>
+                      </label>
+
+                      <label className="flex flex-col gap-1.5">
+                        <span className="text-[13px] font-medium text-black/85">Description</span>
+                        <textarea
+                          value={chargeDescription}
+                          onChange={(event) => setChargeDescription(event.target.value)}
+                          placeholder={`Manual charge for ${customer.name}`}
+                          rows={3}
+                          className="min-h-[96px] w-full resize-none rounded-lg border border-black/12 px-4 py-3 text-[15px] leading-6 outline-none"
+                        />
+                      </label>
+
+                      <div className="rounded-xl border border-black/8 bg-white px-4 py-3 text-[13px] leading-5 text-black/55">
+                        {chargeMethod === "cash"
+                          ? "This will record a cash payment and mark this booking as paid."
+                          : chargeMethod === "waive"
+                            ? "This will waive the balance and mark this booking as paid."
+                            : "This will charge the customer's saved default card immediately."}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="self-start rounded-2xl border border-black/10 bg-white">
+                  <div className="border-b border-black/8 px-4 py-3">
+                    <p className="text-[14px] font-semibold text-black">Invoice Summary</p>
+                  </div>
+                  <div className="grid gap-3 px-4 py-4">
+                    <div className="flex items-center justify-between gap-4 text-[14px]">
+                      <span className="text-black/65">Subtotal</span>
+                      <span className="text-[15px] font-semibold text-black">{moneyPrecise(chargeSubtotal)}</span>
+                    </div>
+
+                    <div className="rounded-xl border border-black/8 px-3 py-3">
+                      <div className="mb-2 flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[14px] font-medium text-black">Tax</p>
+                          <p className="text-[12px] text-black/45">
+                            {chargeTaxEnabled && selectedChargeTaxRate
+                              ? `${selectedChargeTaxRate.name} (${selectedChargeTaxRate.percentage}%)`
+                              : "Not applied"}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (chargeTaxEnabled) {
+                              setChargeTaxEnabled(false);
+                              return;
+                            }
+                            if (availableTaxRates[0] && !chargeTaxRateId) {
+                              setChargeTaxRateId(availableTaxRates[0].id);
+                            }
+                            setChargeTaxEnabled(true);
+                          }}
+                          className="rounded-lg border border-black/10 px-3 py-1.5 text-[13px] font-medium text-black/70"
+                        >
+                          {chargeTaxEnabled ? "Remove" : "Add"}
+                        </button>
+                      </div>
+                      {chargeTaxEnabled ? (
+                        <div className="grid gap-2">
+                          <select
+                            value={chargeTaxRateId}
+                            onChange={(event) => setChargeTaxRateId(event.target.value)}
+                            className="h-10 w-full rounded-lg border border-black/12 px-3 text-[14px] outline-none"
+                          >
+                            {availableTaxRates.map((rate) => (
+                              <option key={rate.id} value={rate.id}>
+                                {rate.name} ({rate.percentage}%)
+                              </option>
+                            ))}
+                          </select>
+                          <div className="flex items-center justify-between gap-4 text-[13px]">
+                            <span className="text-black/55">Tax amount</span>
+                            <span className="font-medium text-black">{moneyPrecise(chargeTaxAmount)}</span>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="rounded-xl border border-black/8 px-3 py-3">
+                      <div className="mb-2 flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[14px] font-medium text-black">Service Fee</p>
+                          <p className="text-[12px] text-black/45">
+                            {chargeFeeEnabled && selectedChargeFee
+                              ? `${selectedChargeFee.name} (${selectedChargeFee.amount}%)`
+                              : "Not applied"}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (chargeFeeEnabled) {
+                              setChargeFeeEnabled(false);
+                              return;
+                            }
+                            if (availableCustomFees[0] && !chargeFeeId) {
+                              setChargeFeeId(availableCustomFees[0].id);
+                            }
+                            setChargeFeeEnabled(true);
+                          }}
+                          className="rounded-lg border border-black/10 px-3 py-1.5 text-[13px] font-medium text-black/70"
+                        >
+                          {chargeFeeEnabled ? "Remove" : "Add"}
+                        </button>
+                      </div>
+                      {chargeFeeEnabled ? (
+                        <div className="grid gap-2">
+                          <select
+                            value={chargeFeeId}
+                            onChange={(event) => setChargeFeeId(event.target.value)}
+                            className="h-10 w-full rounded-lg border border-black/12 px-3 text-[14px] outline-none"
+                          >
+                            {availableCustomFees.map((fee) => (
+                              <option key={fee.id} value={fee.id}>
+                                {fee.name} ({fee.amount}%)
+                              </option>
+                            ))}
+                          </select>
+                          <div className="flex items-center justify-between gap-4 text-[13px]">
+                            <span className="text-black/55">Service fee amount</span>
+                            <span className="font-medium text-black">{moneyPrecise(chargeFeeAmount)}</span>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="rounded-xl border border-black/8 px-3 py-3">
+                      <div className="mb-2 flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[14px] font-medium text-black">Discount</p>
+                          <p className="text-[12px] text-black/45">
+                            {chargeDiscountEnabled
+                              ? chargeDiscountAmount > 0
+                                ? `${moneyPrecise(chargeDiscountAmount)} off`
+                                : "Enter a discount amount"
+                              : "Not applied"}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (chargeDiscountEnabled) {
+                              setChargeDiscountEnabled(false);
+                              setChargeDiscount("");
+                              return;
+                            }
+                            setChargeDiscountEnabled(true);
+                          }}
+                          className="rounded-lg border border-black/10 px-3 py-1.5 text-[13px] font-medium text-black/70"
+                        >
+                          {chargeDiscountEnabled ? "Remove" : "Add"}
+                        </button>
+                      </div>
+                      {chargeDiscountEnabled ? (
+                        <div className="grid gap-2">
+                          <label className="grid gap-1.5">
+                            <span className="text-[13px] text-black/55">Discount amount</span>
+                            <div className="flex h-10 items-center rounded-lg border border-black/12 bg-white pl-3 pr-3">
+                              <span className="pointer-events-none shrink-0 text-[15px] leading-none text-black/45">
+                                $
+                              </span>
+                              <input
+                                value={chargeDiscount}
+                                onChange={(event) => setChargeDiscount(event.target.value.replace(/[^\d.]/g, ""))}
+                                inputMode="decimal"
+                                placeholder="0.00"
+                                className="h-10 w-full border-0 bg-transparent pl-2 text-[14px] outline-none"
+                              />
+                            </div>
+                          </label>
+                          <div className="flex items-center justify-between gap-4 text-[13px]">
+                            <span className="text-black/55">Discount applied</span>
+                            <span className="font-medium text-red-600">-{moneyPrecise(chargeDiscountAmount)}</span>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4 border-t border-black/8 pt-3 text-[15px]">
+                      <span className="font-semibold text-black">Total</span>
+                      <span className="text-[18px] font-semibold text-black">{moneyPrecise(chargeTotal)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-black/10 px-6 py-4">
+              <button
+                type="button"
+                onClick={closeAll}
+                className="rounded-lg border border-black/10 px-4 py-2 text-[14px] font-medium text-black/65"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void submitNewCharge()}
+                disabled={submittingCharge}
+                className="rounded-lg bg-black px-5 py-2.5 text-[14px] font-semibold text-white disabled:opacity-50"
+              >
+                {submittingCharge
+                  ? chargeMethod === "cash" || chargeMethod === "waive"
+                    ? "Saving..."
+                    : "Charging..."
+                  : chargeMethod === "cash"
+                    ? "Record cash payment"
+                    : chargeMethod === "waive"
+                      ? "Waive payment"
+                      : "Charge card"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
 
