@@ -15440,12 +15440,12 @@ function SelectField({
   options: string[] | Array<[string, string]>;
 }) {
   return (
-    <label className="grid gap-1.5">
+    <label className="grid min-w-0 gap-1.5">
       <span className="text-sm font-semibold text-black/70">{label}</span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="min-h-10 rounded-lg border border-black/10 px-3 outline-none focus:border-black/30"
+        className="min-h-10 w-full min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap rounded-lg border border-black/10 px-3 pr-10 outline-none focus:border-black/30"
       >
         {options.map((option) => {
           const item = Array.isArray(option) ? option : [option, option];
