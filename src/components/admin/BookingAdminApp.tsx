@@ -16230,26 +16230,8 @@ function EditorModal({
           date: modal.seed?.date ?? activeDate,
           start: modal.seed?.start ?? "09:00",
           end: modal.seed?.end ?? "10:00",
-          customerId: modal.seed?.customerId ?? state.customers[0]?.id ?? "",
-          playerName:
-            modal.seed?.playerName ??
-            (() => {
-              const defaultCustomer = state.customers.find(
-                (item) => item.id === (modal.seed?.customerId ?? state.customers[0]?.id ?? "")
-              );
-              if (!defaultCustomer) return "";
-              const defaultPlayerNames = Array.from(
-                new Set(
-                  [
-                    defaultCustomer.player.trim(),
-                    ...defaultCustomer.familyMembers
-                      .map((member) => `${member.firstName} ${member.lastName}`.trim())
-                      .filter(Boolean),
-                  ].filter(Boolean)
-                )
-              );
-              return defaultPlayerNames[0] ?? "";
-            })(),
+          customerId: modal.seed?.customerId ?? "",
+          playerName: modal.seed?.playerName ?? "",
           serviceId: modal.seed?.serviceId ?? state.services[0]?.id ?? "",
           serviceName: state.services[0]?.name ?? "",
           calendarColor: state.services[0]?.calendarColor ?? DEFAULT_SERVICE_CALENDAR_COLOR,
@@ -16319,21 +16301,25 @@ function EditorModal({
   const bookingDraft = modal.type === "booking" ? (draft as Booking) : null;
   const selectedBookingCustomer =
     bookingDraft ? state.customers.find((item) => item.id === bookingDraft.customerId) ?? null : null;
-  const bookingCustomerOptions = state.customers.map(
-    (item): [string, string] => [item.id, item.name.trim() || item.player.trim() || "Customer"]
-  );
-  const bookingPlayerOptions = selectedBookingCustomer
-    ? Array.from(
-        new Set(
-          [
-            selectedBookingCustomer.player.trim(),
-            ...selectedBookingCustomer.familyMembers
-              .map((member) => `${member.firstName} ${member.lastName}`.trim())
-              .filter(Boolean),
-          ].filter(Boolean)
-        )
-      ).map((name): [string, string] => [name, name])
-    : [];
+  const bookingCustomerOptions: Array<[string, string]> = [
+    ["", "Select customer"],
+    ...state.customers.map((item): [string, string] => [item.id, item.name.trim() || item.player.trim() || "Customer"]),
+  ];
+  const bookingPlayerOptions: Array<[string, string]> = selectedBookingCustomer
+    ? [
+        ["", "Select player"] as [string, string],
+        ...Array.from(
+          new Set(
+            [
+              selectedBookingCustomer.player.trim(),
+              ...selectedBookingCustomer.familyMembers
+                .map((member) => `${member.firstName} ${member.lastName}`.trim())
+                .filter(Boolean),
+            ].filter(Boolean)
+          )
+        ).map((name): [string, string] => [name, name]),
+      ]
+    : [["", "Select player"]];
   const resolveBookingModalServiceKind = (category?: ServiceSection | null): BookingModalServiceKind => {
     switch (category) {
       case "lessons":
@@ -16641,22 +16627,9 @@ function EditorModal({
                 label="Customer"
                 value={(draft as Booking).customerId}
                 onChange={(value) => {
-                  const nextCustomer = state.customers.find((item) => item.id === value) ?? null;
-                  const nextPlayerNames = nextCustomer
-                    ? Array.from(
-                        new Set(
-                          [
-                            nextCustomer.player.trim(),
-                            ...nextCustomer.familyMembers
-                              .map((member) => `${member.firstName} ${member.lastName}`.trim())
-                              .filter(Boolean),
-                          ].filter(Boolean)
-                        )
-                      )
-                    : [];
                   patchBooking({
                     customerId: value,
-                    playerName: nextPlayerNames[0] ?? "",
+                    playerName: "",
                   });
                 }}
                 options={bookingCustomerOptions}
@@ -16665,7 +16638,7 @@ function EditorModal({
                 label="Player"
                 value={(draft as Booking).playerName ?? ""}
                 onChange={(value) => patchBooking({ playerName: value })}
-                options={bookingPlayerOptions.length ? bookingPlayerOptions : [["", "No players available"]]}
+                options={bookingPlayerOptions}
               />
               {bookingServiceKind === "unavailable" ? (
                 <div className="grid gap-2">
