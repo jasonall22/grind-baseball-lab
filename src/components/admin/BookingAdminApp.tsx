@@ -16573,14 +16573,15 @@ function EditorModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
-      <div className="max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-auto rounded-lg bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-black/10 px-5 py-4">
+    <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/40 p-2 sm:items-center sm:p-4">
+      <div className="flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col overflow-hidden rounded-lg bg-white shadow-2xl sm:max-h-[calc(100vh-2rem)]">
+        <div className="flex shrink-0 items-center justify-between border-b border-black/10 px-4 py-4 sm:px-5">
           <h2 className="text-lg font-semibold capitalize">{title}</h2>
           <RowAction icon="x" label="Close" onClick={onClose} />
         </div>
 
-        <div className="grid gap-4 p-5 sm:grid-cols-2">
+        <div className="min-h-0 overflow-y-auto">
+          <div className="grid gap-4 p-4 sm:grid-cols-2 sm:p-5">
           {modal.type === "service" ? (
             <>
               <div className="sm:col-span-2">
@@ -16910,9 +16911,10 @@ function EditorModal({
               <TextField label="Stock" type="number" value={(draft as Product).stock} onChange={(value) => patch({ stock: Number(value) })} />
             </>
           ) : null}
+          </div>
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-t border-black/10 px-5 py-4">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-black/10 bg-white px-4 py-4 sm:px-5">
           <div className="flex items-center gap-2">
             {modal.type === "booking" && modal.id && (draft as Booking).status !== "Cancelled" ? (
               <>
