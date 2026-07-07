@@ -16656,15 +16656,6 @@ function EditorModal({
                 />
               )}
               <SelectField label="Resource" value={(draft as Booking).resource} onChange={(value) => patchBooking({ resource: value })} options={state.resources} />
-              <SelectField
-                label="Payment"
-                value={String((draft as Booking).paid)}
-                onChange={(value) => patchBooking({ paid: value === "true" })}
-                options={[
-                  ["true", "Paid"],
-                  ["false", "Unpaid"],
-                ]}
-              />
               <div className="sm:col-span-2 rounded-xl border border-black/10 bg-black/[0.02] px-4 py-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
