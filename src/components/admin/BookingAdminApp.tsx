@@ -7550,12 +7550,17 @@ function CustomersView({
                       <Link
                         href={`/admin/customers/${customer.id}`}
                         title={`${bookingCount} bookings`}
-                        className="inline-flex items-center gap-3 text-left font-semibold hover:underline"
+                        className="inline-flex items-center gap-3 text-left hover:underline"
                       >
                         <span className="grid h-8 w-8 place-items-center rounded-full bg-black/20 text-white">
                           <Icon name="user" className="h-5 w-5" />
                         </span>
-                        {customer.name || customer.player || "Customer"}
+                        <span className="grid gap-0.5">
+                          <span className="font-semibold">{customer.name || customer.player || "Customer"}</span>
+                          {customer.player && customer.player !== customer.name ? (
+                            <span className="text-[12px] font-medium text-black/55">Player: {customer.player}</span>
+                          ) : null}
+                        </span>
                       </Link>
                     </td>
                     <td className="px-4 py-3">{dateLabel(customer.createdAt)}</td>
@@ -8320,6 +8325,18 @@ function CustomerDetailView({
   const birthDate = customerBirthDate(customer);
   const age = calculateAge(customer.birthYear, customer.birthMonth, customer.birthDay);
   const familyMembers = customer.familyMembers;
+  const primaryPlayerLabel =
+    customer.player.trim() && customer.player.trim() !== customer.name.trim() ? customer.player.trim() : "";
+  const relatedKidNames = Array.from(
+    new Set(
+      [
+        primaryPlayerLabel,
+        ...familyMembers
+          .map((member) => `${member.firstName} ${member.lastName}`.trim())
+          .filter(Boolean),
+      ].filter(Boolean)
+    )
+  );
   const memberships = customer.memberships.filter(Boolean);
   const currentCustomer = customer;
   const hasEmergencyContact =
@@ -9013,6 +9030,24 @@ function CustomerDetailView({
               </div>
             </div>
 
+            {relatedKidNames.length ? (
+              <div className="grid gap-1.5">
+                <span className="text-[13px] font-medium text-black/85">
+                  {relatedKidNames.length === 1 ? "Player" : "Players"}
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {relatedKidNames.map((kidName) => (
+                    <span
+                      key={kidName}
+                      className="inline-flex items-center rounded-full bg-black/[0.06] px-3 py-1 text-[12px] font-semibold text-black/75"
+                    >
+                      {kidName}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
             <label className="grid gap-1.5">
               <div className="flex items-center justify-between">
                 <span className="text-[13px] font-medium text-black/85">Date of Birth</span>
@@ -9703,6 +9738,12 @@ function CustomerDetailView({
                 <Icon name="calendar" className="h-3.5 w-3.5" />
                 {joinedLabel ? `Joined ${joinedLabel}` : "Recently joined"}
               </span>
+              {primaryPlayerLabel ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <Icon name="user" className="h-3.5 w-3.5" />
+                  Player: {primaryPlayerLabel}
+                </span>
+              ) : null}
             </div>
           </div>
         </div>
