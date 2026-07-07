@@ -144,6 +144,7 @@ type Booking = {
   start: string;
   end: string;
   customerId: string;
+  playerName?: string;
   serviceId: string;
   serviceName?: string;
   calendarColor?: string;
@@ -359,6 +360,7 @@ type BookingBookingRow = {
   start_time: string;
   end_time: string;
   customer_id: string | null;
+  player_name: string | null;
   service_id: string | null;
   resource_id: string | null;
   status: Booking["status"];
@@ -2165,6 +2167,7 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
       start_time: item.start,
       end_time: item.end,
       customer_id: item.customerId || null,
+      player_name: item.playerName || null,
       service_id: item.serviceId || null,
       resource_id: resourceId,
       status: item.status,
@@ -3764,6 +3767,7 @@ export default function BookingAdminApp({
           start: normalizeTime(booking.start_time),
           end: normalizeTime(booking.end_time),
           customerId: booking.customer_id ?? "",
+          playerName: booking.player_name ?? "",
           serviceId: booking.service_id ?? "",
           serviceName: booking.service_id ? serviceMetaById.get(booking.service_id)?.name ?? "" : "",
           calendarColor: booking.service_id
@@ -6935,7 +6939,7 @@ function CalendarView({
                                 ) : null}
                               </div>
                               <div className={`truncate font-semibold leading-[1.05] ${isCompactBooking ? "mt-0.5 text-[11px]" : "mt-1 text-[12px]"}`}>
-                                {customer?.player || customer?.name || "Customer"}
+                                {booking.playerName || customer?.player || customer?.name || "Customer"}
                               </div>
                               <div
                                 className={`line-clamp-2 font-medium leading-[1.05] ${tone.subClass} ${
@@ -7077,7 +7081,7 @@ function CalendarView({
                               ) : null}
                             </div>
                             <div className={`truncate font-semibold leading-[1.05] ${isCompactBooking ? "mt-0.5 text-[13px]" : "mt-1 text-[15px]"}`}>
-                              {customer?.player || customer?.name || "Customer"}
+                              {booking.playerName || customer?.player || customer?.name || "Customer"}
                             </div>
                             <div className={`truncate font-medium leading-[1.05] ${tone.subClass} ${isCompactBooking ? "mt-0.5 text-[10px]" : "mt-0.5 text-[11px]"}`}>
                               {service?.name || booking.serviceName || "Service"}
@@ -7163,7 +7167,7 @@ function CalendarView({
                               ) : null}
                             </div>
                             <div className="mt-1 text-[18px] font-semibold leading-tight">
-                              {customer?.player || customer?.name || "Customer"}
+                              {booking.playerName || customer?.player || customer?.name || "Customer"}
                             </div>
                             <div className={`mt-1 text-[13px] ${tone.subClass}`}>{service?.name || booking.serviceName || "Service"}</div>
                           </button>
@@ -7233,7 +7237,7 @@ function CalendarView({
                               ) : null}
                             </div>
                             <div className="mt-1 truncate text-[14px] font-semibold">
-                              {customer?.player || customer?.name || "Customer"}
+                              {booking.playerName || customer?.player || customer?.name || "Customer"}
                             </div>
                             <div className={`mt-1 text-[12px] ${tone.subClass}`}>
                               {(service?.name || booking.serviceName || "Service")} \u00b7 {booking.resource}
@@ -16227,6 +16231,25 @@ function EditorModal({
           start: modal.seed?.start ?? "09:00",
           end: modal.seed?.end ?? "10:00",
           customerId: modal.seed?.customerId ?? state.customers[0]?.id ?? "",
+          playerName:
+            modal.seed?.playerName ??
+            (() => {
+              const defaultCustomer = state.customers.find(
+                (item) => item.id === (modal.seed?.customerId ?? state.customers[0]?.id ?? "")
+              );
+              if (!defaultCustomer) return "";
+              const defaultPlayerNames = Array.from(
+                new Set(
+                  [
+                    defaultCustomer.player.trim(),
+                    ...defaultCustomer.familyMembers
+                      .map((member) => `${member.firstName} ${member.lastName}`.trim())
+                      .filter(Boolean),
+                  ].filter(Boolean)
+                )
+              );
+              return defaultPlayerNames[0] ?? "";
+            })(),
           serviceId: modal.seed?.serviceId ?? state.services[0]?.id ?? "",
           serviceName: state.services[0]?.name ?? "",
           calendarColor: state.services[0]?.calendarColor ?? DEFAULT_SERVICE_CALENDAR_COLOR,
@@ -16294,6 +16317,23 @@ function EditorModal({
   const customerDraft = draft as Customer;
   const customerName = modal.type === "customer" ? splitName(customerDraft.name) : { first: "", last: "" };
   const bookingDraft = modal.type === "booking" ? (draft as Booking) : null;
+  const selectedBookingCustomer =
+    bookingDraft ? state.customers.find((item) => item.id === bookingDraft.customerId) ?? null : null;
+  const bookingCustomerOptions = state.customers.map(
+    (item): [string, string] => [item.id, item.name.trim() || item.player.trim() || "Customer"]
+  );
+  const bookingPlayerOptions = selectedBookingCustomer
+    ? Array.from(
+        new Set(
+          [
+            selectedBookingCustomer.player.trim(),
+            ...selectedBookingCustomer.familyMembers
+              .map((member) => `${member.firstName} ${member.lastName}`.trim())
+              .filter(Boolean),
+          ].filter(Boolean)
+        )
+      ).map((name): [string, string] => [name, name])
+    : [];
   const resolveBookingModalServiceKind = (category?: ServiceSection | null): BookingModalServiceKind => {
     switch (category) {
       case "lessons":
@@ -16600,8 +16640,32 @@ function EditorModal({
               <SelectField
                 label="Customer"
                 value={(draft as Booking).customerId}
-                onChange={(value) => patchBooking({ customerId: value })}
-                options={state.customers.map((item): [string, string] => [item.id, `${item.player} (${item.name})`])}
+                onChange={(value) => {
+                  const nextCustomer = state.customers.find((item) => item.id === value) ?? null;
+                  const nextPlayerNames = nextCustomer
+                    ? Array.from(
+                        new Set(
+                          [
+                            nextCustomer.player.trim(),
+                            ...nextCustomer.familyMembers
+                              .map((member) => `${member.firstName} ${member.lastName}`.trim())
+                              .filter(Boolean),
+                          ].filter(Boolean)
+                        )
+                      )
+                    : [];
+                  patchBooking({
+                    customerId: value,
+                    playerName: nextPlayerNames[0] ?? "",
+                  });
+                }}
+                options={bookingCustomerOptions}
+              />
+              <SelectField
+                label="Player"
+                value={(draft as Booking).playerName ?? ""}
+                onChange={(value) => patchBooking({ playerName: value })}
+                options={bookingPlayerOptions.length ? bookingPlayerOptions : [["", "No players available"]]}
               />
               {bookingServiceKind === "unavailable" ? (
                 <div className="grid gap-2">
@@ -17032,7 +17096,7 @@ function exportReport(state: AppState, showToast: (message: string) => void) {
         booking.date,
         booking.start,
         customer?.name ?? "",
-        customer?.player ?? "",
+        booking.playerName || customer?.player || "",
         service?.name ?? "",
         booking.resource,
         booking.status,
