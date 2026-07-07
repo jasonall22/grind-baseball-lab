@@ -94,14 +94,14 @@ function getItemBookingUrl(item: PricingItem) {
   return item.cta_href?.trim() || DEFAULT_ITEM_BOOKING_URLS[item.name.trim()] || "";
 }
 
-function getWrappedBookingHref(bookingUrl: string) {
+function getDirectBookingHref(bookingUrl: string) {
   if (!bookingUrl) return "";
 
   try {
     const url = new URL(bookingUrl);
 
     if (url.hostname === SWIFT_BOOKING_HOST) {
-      return `/book?url=${encodeURIComponent(url.toString())}`;
+      return url.toString();
     }
   } catch {
     return bookingUrl;
@@ -176,7 +176,7 @@ export default function PricingSection() {
     return fmtUpdated(newest ?? null);
   }, [settings.updated_at, items]);
 
-  const settingsBookingHref = getWrappedBookingHref(settings.booking_url);
+  const settingsBookingHref = getDirectBookingHref(settings.booking_url);
   const settingsOpensInNewTab = opensInNewTab(settingsBookingHref);
 
   return (
@@ -208,7 +208,7 @@ export default function PricingSection() {
               {/* Rows */}
               <div className="divide-y divide-black/10">
                 {visibleItems.map((it) => {
-                  const bookingHref = getWrappedBookingHref(getItemBookingUrl(it));
+                  const bookingHref = getDirectBookingHref(getItemBookingUrl(it));
                   const openInNewTab = opensInNewTab(bookingHref);
 
                   return (
@@ -267,7 +267,7 @@ export default function PricingSection() {
               <div className="border-t border-black/10 bg-white px-5 py-7 sm:px-8">
                 <div className="flex flex-col items-center justify-center gap-3 text-center">
                   <div className="text-sm text-black/60">
-                    Click "{settings.button_text}" to book through Swift without leaving the site.
+                    Click "{settings.button_text}" to book directly through Swift.
                   </div>
 
                   <a
