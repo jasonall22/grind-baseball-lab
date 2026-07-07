@@ -15460,6 +15460,99 @@ function SelectField({
   );
 }
 
+function ConstrainedSelectField({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: string[] | Array<[string, string]>;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const normalizedOptions = useMemo(
+    () => options.map((option) => (Array.isArray(option) ? option : [option, option])),
+    [options]
+  );
+  const selectedLabel =
+    normalizedOptions.find((option) => option[0] === value)?.[1] ?? normalizedOptions[0]?.[1] ?? "";
+
+  useEffect(() => {
+    if (!open) return;
+
+    function handlePointerDown(event: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [open]);
+
+  return (
+    <label className="grid min-w-0 gap-1.5">
+      <span className="text-sm font-semibold text-black/70">{label}</span>
+      <div ref={rootRef} className="relative min-w-0">
+        <button
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          aria-expanded={open}
+          className="flex min-h-10 w-full min-w-0 max-w-full items-center rounded-lg border border-black/10 px-3 pr-10 text-left outline-none transition focus:border-black/30"
+        >
+          <span className="block min-w-0 flex-1 truncate">{selectedLabel}</span>
+          <Icon
+            name="chevron"
+            className={[
+              "pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-black/45 transition",
+              open ? "rotate-90" : "",
+            ].join(" ")}
+          />
+        </button>
+
+        {open ? (
+          <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-[95] w-full min-w-0 max-w-full overflow-hidden rounded-lg border border-black/10 bg-white shadow-[0_18px_40px_rgba(0,0,0,0.18)]">
+            <div className="max-h-56 overflow-y-auto py-1">
+              {normalizedOptions.map((option) => {
+                const active = option[0] === value;
+                return (
+                  <button
+                    key={option[0]}
+                    type="button"
+                    onClick={() => {
+                      onChange(option[0]);
+                      setOpen(false);
+                    }}
+                    className={[
+                      "flex w-full min-w-0 items-center px-3 py-2 text-left text-sm transition",
+                      active ? "bg-black text-white" : "text-black hover:bg-black/[0.04]",
+                    ].join(" ")}
+                  >
+                    <span className="block min-w-0 flex-1 truncate">{option[1]}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </label>
+  );
+}
+
 function CustomerSection({
   title,
   open,
@@ -16477,7 +16570,7 @@ function EditorModal({
                   </div>
                 </div>
               ) : (
-                <SelectField
+                <ConstrainedSelectField
                   label="Service"
                   value={(draft as Booking).serviceId}
                   onChange={(value) => patchBooking({ serviceId: value })}
