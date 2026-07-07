@@ -16232,9 +16232,9 @@ function EditorModal({
           end: modal.seed?.end ?? "10:00",
           customerId: modal.seed?.customerId ?? "",
           playerName: modal.seed?.playerName ?? "",
-          serviceId: modal.seed?.serviceId ?? state.services[0]?.id ?? "",
-          serviceName: state.services[0]?.name ?? "",
-          calendarColor: state.services[0]?.calendarColor ?? DEFAULT_SERVICE_CALENDAR_COLOR,
+          serviceId: modal.seed?.serviceId ?? "",
+          serviceName: "",
+          calendarColor: DEFAULT_SERVICE_CALENDAR_COLOR,
           resource: modal.seed?.resource ?? state.resources[0] ?? "",
           status: modal.seed?.status ?? ("Confirmed" as const),
           paid: modal.seed?.paid ?? false,
@@ -16342,7 +16342,7 @@ function EditorModal({
       : null;
   const selectedBookingService =
     bookingDraft ? state.services.find((item) => item.id === bookingDraft.serviceId) ?? null : null;
-  const effectiveBookingService = selectedBookingService ?? matchedBookingService;
+  const effectiveBookingService = bookingDraft?.serviceId ? selectedBookingService ?? matchedBookingService : null;
   const [bookingServiceKind, setBookingServiceKind] = useState<BookingModalServiceKind>(() => {
     if (!bookingDraft) return "rentals";
     if (!bookingDraft.serviceId && bookingDraft.serviceName === "Unavailable") return "unavailable";
@@ -16358,9 +16358,12 @@ function EditorModal({
   const bookingServiceOptions =
     bookingServiceKind === "unavailable"
       ? []
-      : state.services
-          .filter((item) => item.category === bookingServiceKind)
-          .map((item): [string, string] => [item.id, item.name]);
+      : [
+          ["", "Select service"] as [string, string],
+          ...state.services
+            .filter((item) => item.category === bookingServiceKind)
+            .map((item): [string, string] => [item.id, item.name]),
+        ];
   const canSave =
     modal.type !== "customer" ||
     Boolean(customerName.first.trim() && customerName.last.trim() && customerDraft.email.trim());
@@ -16493,16 +16496,19 @@ function EditorModal({
         schedules: state.schedules,
       }
     );
-    const resolvedService =
-      (didChangeService && next.serviceId
+    const resolvedService = didChangeService
+      ? next.serviceId
         ? state.services.find((item) => item.id === next.serviceId) ?? null
-        : null) ?? nextService;
+        : null
+      : normalizedBooking.serviceId
+        ? state.services.find((item) => item.id === normalizedBooking.serviceId) ?? nextService
+        : null;
 
     setDraft({
       ...normalizedBooking,
-      serviceId: resolvedService?.id ?? normalizedBooking.serviceId,
-      serviceName: resolvedService?.name ?? normalizedBooking.serviceName,
-      calendarColor: resolvedService?.calendarColor ?? normalizedBooking.calendarColor,
+      serviceId: resolvedService?.id ?? "",
+      serviceName: resolvedService?.name ?? "",
+      calendarColor: resolvedService?.calendarColor ?? DEFAULT_SERVICE_CALENDAR_COLOR,
     } as typeof draft);
   }
 
@@ -16521,19 +16527,13 @@ function EditorModal({
       return;
     }
 
-    const nextService = state.services.find((item) => item.category === kind) ?? null;
-
-    if (!nextService) {
-      setDraft({
-        ...(draft as Booking),
-        serviceId: "",
-        serviceName: "",
-        calendarColor: DEFAULT_SERVICE_CALENDAR_COLOR,
-      } as typeof draft);
-      return;
-    }
-
-    patchBooking({ serviceId: nextService.id });
+    setDraft({
+      ...(draft as Booking),
+      serviceId: "",
+      serviceName: "",
+      calendarColor: DEFAULT_SERVICE_CALENDAR_COLOR,
+      paid: false,
+    } as typeof draft);
   }
 
   function cancelBooking() {
