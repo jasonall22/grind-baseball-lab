@@ -16,6 +16,9 @@ import { hasSupabaseEnv, supabase } from "@/lib/supabaseClient";
 const stripePublishableKey = (process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || "").trim();
 const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : null;
 
+type MembershipBillingPeriod = "Weekly" | "Monthly" | "Yearly";
+type MembershipCreditScope = "all_services" | "selected_services";
+
 type Service = {
   id: string;
   name: string;
@@ -31,6 +34,13 @@ type Service = {
   mediaUrl?: string;
   calendarColor: string;
   scheduleId?: string | null;
+  membershipBillingPeriod?: MembershipBillingPeriod;
+  membershipMemberLimit?: number | null;
+  membershipCreditsPerDay?: number;
+  membershipCreditScope?: MembershipCreditScope;
+  membershipEligibleServiceIds?: string[];
+  stripeProductId?: string | null;
+  stripePriceId?: string | null;
 };
 
 type ScheduleSlot = {
@@ -240,6 +250,20 @@ type RentalDraft = {
   calendarColor: string;
 };
 
+type MembershipDraft = {
+  name: string;
+  description: string;
+  price: string;
+  billingPeriod: MembershipBillingPeriod;
+  memberLimit: string;
+  creditsPerDay: string;
+  creditScope: MembershipCreditScope;
+  eligibleServiceIds: string[];
+  private: boolean;
+  stripeProductId: string;
+  stripePriceId: string;
+};
+
 type FacilitySettings = AppState["facility"];
 
 type BookingPolicies = AppState["policies"];
@@ -301,6 +325,13 @@ type BookingServiceRow = {
   sort_order: number;
   calendar_color: string | null;
   schedule_id: string | null;
+  membership_billing_period: MembershipBillingPeriod | null;
+  membership_member_limit: number | null;
+  membership_credits_per_day: number | null;
+  membership_credit_scope: MembershipCreditScope | null;
+  membership_eligible_service_ids: string[] | null;
+  stripe_product_id: string | null;
+  stripe_price_id: string | null;
 };
 
 type BookingScheduleRow = {
@@ -1586,6 +1617,7 @@ function isLightCalendarColor(value: string) {
 }
 
 function normalizeService(service: Service): Service {
+  const membershipCredits = Number(service.membershipCreditsPerDay ?? 0);
   return {
     ...service,
     instructors: Array.isArray(service.instructors)
@@ -1593,6 +1625,15 @@ function normalizeService(service: Service): Service {
       : [],
     calendarColor: normalizeCalendarColor(service.calendarColor),
     scheduleId: service.scheduleId ?? null,
+    membershipBillingPeriod: service.membershipBillingPeriod ?? "Monthly",
+    membershipMemberLimit: service.membershipMemberLimit ?? null,
+    membershipCreditsPerDay: Number.isFinite(membershipCredits) ? Math.max(0, membershipCredits) : 0,
+    membershipCreditScope: service.membershipCreditScope ?? "selected_services",
+    membershipEligibleServiceIds: Array.isArray(service.membershipEligibleServiceIds)
+      ? service.membershipEligibleServiceIds.filter(Boolean)
+      : [],
+    stripeProductId: service.stripeProductId ?? null,
+    stripePriceId: service.stripePriceId ?? null,
   };
 }
 
@@ -2127,6 +2168,13 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
       status: item.status,
       calendar_color: normalizeCalendarColor(item.calendarColor),
       schedule_id: item.scheduleId ?? null,
+      membership_billing_period: item.membershipBillingPeriod ?? "Monthly",
+      membership_member_limit: item.membershipMemberLimit ?? null,
+      membership_credits_per_day: item.membershipCreditsPerDay ?? 0,
+      membership_credit_scope: item.membershipCreditScope ?? "selected_services",
+      membership_eligible_service_ids: item.membershipEligibleServiceIds ?? [],
+      stripe_product_id: item.stripeProductId ?? null,
+      stripe_price_id: item.stripePriceId ?? null,
     });
     if (error) throw error;
   }
@@ -3195,6 +3243,22 @@ function createRentalDraftFromService(service: Service, defaultScheduleId: strin
   };
 }
 
+function createMembershipDraftFromService(service?: Service | null): MembershipDraft {
+  return {
+    name: service?.name ?? "",
+    description: service?.description ?? "",
+    price: service ? String(service.price || "") : "",
+    billingPeriod: service?.membershipBillingPeriod ?? "Monthly",
+    memberLimit: service?.membershipMemberLimit != null ? String(service.membershipMemberLimit) : "",
+    creditsPerDay: service?.membershipCreditsPerDay != null ? String(service.membershipCreditsPerDay) : "1",
+    creditScope: service?.membershipCreditScope ?? "selected_services",
+    eligibleServiceIds: service?.membershipEligibleServiceIds ?? [],
+    private: service?.status === "Off",
+    stripeProductId: service?.stripeProductId ?? "",
+    stripePriceId: service?.stripePriceId ?? "",
+  };
+}
+
 function getRentalDeleteGuard(service: Service, state: AppState) {
   const serviceLabel = getServiceSectionSingular(service.category ?? inferServiceCategory(service.name)).toLowerCase();
   const hasBookings = state.bookings.some(
@@ -3731,6 +3795,15 @@ export default function BookingAdminApp({
           status: service.status,
           calendarColor: normalizeCalendarColor(service.calendar_color),
           scheduleId: service.schedule_id,
+          membershipBillingPeriod: service.membership_billing_period ?? "Monthly",
+          membershipMemberLimit: service.membership_member_limit ?? null,
+          membershipCreditsPerDay: Number(service.membership_credits_per_day ?? 0),
+          membershipCreditScope: service.membership_credit_scope ?? "selected_services",
+          membershipEligibleServiceIds: Array.isArray(service.membership_eligible_service_ids)
+            ? service.membership_eligible_service_ids
+            : [],
+          stripeProductId: service.stripe_product_id ?? null,
+          stripePriceId: service.stripe_price_id ?? null,
         })),
         customers: customerRows.map((customer) => ({
           id: customer.id,
@@ -4367,6 +4440,79 @@ export default function BookingAdminApp({
     }
   }
 
+  async function saveMembershipDraft(membershipDraft: MembershipDraft, existingService?: Service | null) {
+    const cleanedName = membershipDraft.name.trim();
+    if (!cleanedName) {
+      showToast("Membership name is required.");
+      return;
+    }
+
+    const parsedPrice = Number(membershipDraft.price || 0);
+    const parsedCredits = Number(membershipDraft.creditsPerDay || 0);
+    const parsedMemberLimit = membershipDraft.memberLimit.trim() ? Number(membershipDraft.memberLimit) : null;
+
+    if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+      showToast("Enter a valid membership price.");
+      return;
+    }
+    if (!Number.isFinite(parsedCredits) || parsedCredits < 0) {
+      showToast("Enter a valid daily credit amount.");
+      return;
+    }
+    if (parsedMemberLimit !== null && (!Number.isFinite(parsedMemberLimit) || parsedMemberLimit < 0)) {
+      showToast("Enter a valid member limit.");
+      return;
+    }
+
+    const serviceBasePath = getServiceSectionBasePath("memberships");
+    const item = normalizeService({
+      id: existingService?.id ?? makeId("svc"),
+      name: cleanedName,
+      duration: existingService?.duration ?? 30,
+      price: parsedPrice,
+      resource: "",
+      rooms: [],
+      instructors: [],
+      category: "memberships",
+      status: membershipDraft.private ? "Off" : "Active",
+      previewText: "",
+      description: membershipDraft.description.trim(),
+      mediaUrl: "",
+      calendarColor: existingService?.calendarColor ?? DEFAULT_SERVICE_CALENDAR_COLOR,
+      scheduleId: null,
+      membershipBillingPeriod: membershipDraft.billingPeriod,
+      membershipMemberLimit: parsedMemberLimit,
+      membershipCreditsPerDay: Math.floor(parsedCredits),
+      membershipCreditScope: membershipDraft.creditScope,
+      membershipEligibleServiceIds:
+        membershipDraft.creditScope === "all_services" ? [] : membershipDraft.eligibleServiceIds,
+      stripeProductId: membershipDraft.stripeProductId.trim() || null,
+      stripePriceId: membershipDraft.stripePriceId.trim() || null,
+    });
+
+    const next = { ...state, services: upsert(state.services, item) };
+    const successMessage = existingService ? "Membership updated." : "Membership saved.";
+
+    if (dataSource === "local") {
+      saveLocal(next, successMessage);
+      router.push(serviceBasePath);
+      return;
+    }
+
+    setState(next);
+
+    try {
+      await upsertModalChange({ type: "service", item }, resourceIdsByName);
+      showToast(successMessage);
+      router.push(serviceBasePath);
+    } catch (error) {
+      console.error(error);
+      const fallbackMessage = "That change could not be saved.";
+      const errorMessage = getErrorMessage(error, fallbackMessage);
+      showToast(errorMessage === fallbackMessage ? fallbackMessage : `${fallbackMessage} ${errorMessage}`);
+    }
+  }
+
   async function duplicateRental(service: Service) {
     const serviceCategory = service.category ?? inferServiceCategory(service.name);
     const serviceLabel = getServiceSectionSingular(serviceCategory);
@@ -4690,37 +4836,56 @@ export default function BookingAdminApp({
           ) : null}
           {view === "services" ? (
             isServiceAddPage || isServiceEditPage ? (
-              <RentalEditorView
-                key={selectedService?.id ?? "new-service"}
-                mode={isServiceEditPage ? "edit" : "add"}
-                facilityName={state.facility.name}
-                resources={state.resources}
-                schedules={state.schedules.length ? state.schedules : defaultState.schedules}
-                onCancel={() => router.push(getServiceSectionBasePath(serviceSection))}
-                activeSection={serviceSection}
-                onSectionChange={(section) => {
-                  setServiceSection(section);
-                  router.push(getServiceSectionBasePath(section));
-                }}
-                service={selectedService}
-                staff={state.staff}
-                deleteGuardMessage={selectedService ? getRentalDeleteGuard(selectedService, state) : null}
-                onCopyBookingLink={() => void copyRentalBookingLink()}
-                onDuplicate={() => {
-                  if (selectedService) {
-                    void duplicateRental(selectedService);
-                  }
-                }}
-                onDelete={() => {
-                  if (selectedService) {
-                    void deleteRental(selectedService);
-                  }
-                }}
-                onSave={(rentalDraft) => void saveRentalDraft(rentalDraft, selectedService)}
-              />
+              serviceSection === "memberships" ? (
+                <MembershipEditorView
+                  key={selectedService?.id ?? "new-membership"}
+                  mode={isServiceEditPage ? "edit" : "add"}
+                  service={selectedService}
+                  services={state.services}
+                  customers={state.customers}
+                  deleteGuardMessage={selectedService ? getRentalDeleteGuard(selectedService, state) : null}
+                  onCancel={() => router.push(getServiceSectionBasePath("memberships"))}
+                  onDelete={() => {
+                    if (selectedService) {
+                      void deleteRental(selectedService);
+                    }
+                  }}
+                  onSave={(membershipDraft) => void saveMembershipDraft(membershipDraft, selectedService)}
+                />
+              ) : (
+                <RentalEditorView
+                  key={selectedService?.id ?? "new-service"}
+                  mode={isServiceEditPage ? "edit" : "add"}
+                  facilityName={state.facility.name}
+                  resources={state.resources}
+                  schedules={state.schedules.length ? state.schedules : defaultState.schedules}
+                  onCancel={() => router.push(getServiceSectionBasePath(serviceSection))}
+                  activeSection={serviceSection}
+                  onSectionChange={(section) => {
+                    setServiceSection(section);
+                    router.push(getServiceSectionBasePath(section));
+                  }}
+                  service={selectedService}
+                  staff={state.staff}
+                  deleteGuardMessage={selectedService ? getRentalDeleteGuard(selectedService, state) : null}
+                  onCopyBookingLink={() => void copyRentalBookingLink()}
+                  onDuplicate={() => {
+                    if (selectedService) {
+                      void duplicateRental(selectedService);
+                    }
+                  }}
+                  onDelete={() => {
+                    if (selectedService) {
+                      void deleteRental(selectedService);
+                    }
+                  }}
+                  onSave={(rentalDraft) => void saveRentalDraft(rentalDraft, selectedService)}
+                />
+              )
             ) : (
               <ServicesView
                 services={state.services}
+                customers={state.customers}
                 activeSection={serviceSection}
                 onSectionChange={setServiceSection}
                 onReorder={(visibleServiceIds, serviceId, direction) =>
@@ -5433,6 +5598,7 @@ function ServicesView({
   activeSection,
   onSectionChange,
   services,
+  customers,
   onReorder,
   onNew,
   onEdit,
@@ -5440,6 +5606,7 @@ function ServicesView({
   activeSection: ServiceSection;
   onSectionChange: (section: ServiceSection) => void;
   services: Service[];
+  customers: Customer[];
   onReorder: (visibleServiceIds: string[], serviceId: string, direction: "up" | "down") => void;
   onNew: () => void;
   onEdit: (id: string) => void;
@@ -5458,17 +5625,24 @@ function ServicesView({
     return sectionServices.filter((service) => {
       const rooms = (service.rooms?.length ? service.rooms : [service.resource]).map((item) => item.trim().toLowerCase());
       const instructors = (service.instructors ?? []).map((item) => item.trim().toLowerCase());
+      const membershipMembers = customers
+        .filter((customer) =>
+          customer.memberships.some((membership) => membership.trim().toLowerCase() === service.name.trim().toLowerCase())
+        )
+        .map((customer) => customer.name.trim().toLowerCase());
       return (
         service.name.toLowerCase().includes(normalizedSearch) ||
         rooms.some((room) => room.includes(normalizedSearch)) ||
-        instructors.some((instructor) => instructor.includes(normalizedSearch))
+        instructors.some((instructor) => instructor.includes(normalizedSearch)) ||
+        membershipMembers.some((member) => member.includes(normalizedSearch))
       );
     });
-  }, [activeSection, search, services]);
+  }, [activeSection, customers, search, services]);
 
   const visibleServiceIds = useMemo(() => filteredServices.map((service) => service.id), [filteredServices]);
   const currentCopy = serviceSectionMeta[activeSection];
   const isLessonsSection = activeSection === "lessons";
+  const isMembershipsSection = activeSection === "memberships";
 
   return (
     <section className="min-h-screen px-[18px] py-6 xl:px-6 xl:py-8">
@@ -5548,6 +5722,15 @@ function ServicesView({
               <div className="hidden xl:block">Instructors</div>
               <div />
             </div>
+          ) : isMembershipsSection ? (
+            <div className="grid grid-cols-[minmax(0,1.2fr)_90px_78px_84px_40px] gap-2 bg-[#f5f6f8] px-4 py-3 text-[14px] font-semibold text-black md:grid-cols-[minmax(180px,1.45fr)_120px_120px_120px_48px] md:gap-3 md:py-3 xl:grid-cols-[minmax(0,1.65fr)_170px_140px_140px_240px_72px] xl:gap-3 xl:px-5 xl:py-3">
+              <div>Name</div>
+              <div>Visibility</div>
+              <div>Price</div>
+              <div>Billing</div>
+              <div className="hidden xl:block">Members</div>
+              <div />
+            </div>
           ) : (
             <div className="grid grid-cols-[minmax(0,1.2fr)_86px_88px_40px] gap-2 bg-[#f5f6f8] px-4 py-3 text-[14px] font-semibold text-black md:grid-cols-[minmax(150px,1.35fr)_120px_minmax(140px,1fr)_48px] md:gap-3 md:py-3 xl:grid-cols-[minmax(0,1.6fr)_170px_220px_72px] xl:gap-3 xl:px-5 xl:py-3">
               <div>Name</div>
@@ -5565,6 +5748,14 @@ function ServicesView({
               const compactInstructorNames = instructorNames.join(", ");
               const visibleInstructorNames = instructorNames.slice(0, 4);
               const remainingInstructorCount = Math.max(0, instructorNames.length - visibleInstructorNames.length);
+              const membershipMembers = customers.filter((customer) =>
+                customer.memberships.some((membership) => membership.trim().toLowerCase() === service.name.trim().toLowerCase())
+              );
+              const membershipNames = membershipMembers.map((customer) => customer.name);
+              const compactMembershipNames = membershipNames.join(", ");
+              const visibleMembershipNames = membershipNames.slice(0, 3);
+              const remainingMembershipCount = Math.max(0, membershipNames.length - visibleMembershipNames.length);
+              const membershipBillingLabel = service.price > 0 ? "Monthly" : "Included";
 
               return (
                 <div
@@ -5572,6 +5763,8 @@ function ServicesView({
                   className={
                     isLessonsSection
                       ? "grid grid-cols-[minmax(0,1.5fr)_96px_84px_84px_40px] items-start gap-2 border-t border-black/10 px-4 py-3 md:grid-cols-[minmax(180px,1.5fr)_130px_120px_140px_48px] md:gap-3 md:py-4 xl:grid-cols-[minmax(0,1.65fr)_170px_120px_120px_250px_72px] xl:gap-3 xl:px-5 xl:py-4"
+                      : isMembershipsSection
+                        ? "grid grid-cols-[minmax(0,1.2fr)_90px_78px_84px_40px] items-start gap-2 border-t border-black/10 px-4 py-3 md:grid-cols-[minmax(180px,1.45fr)_120px_120px_120px_48px] md:gap-3 md:py-4 xl:grid-cols-[minmax(0,1.65fr)_170px_140px_140px_240px_72px] xl:gap-3 xl:px-5 xl:py-4"
                       : "grid grid-cols-[minmax(0,1.2fr)_86px_88px_40px] items-start gap-2 border-t border-black/10 px-4 py-3 md:grid-cols-[minmax(150px,1.35fr)_120px_minmax(140px,1fr)_48px] md:gap-3 md:py-4 xl:grid-cols-[minmax(0,1.6fr)_170px_220px_72px] xl:gap-3 xl:px-5 xl:py-4"
                   }
                 >
@@ -5583,6 +5776,13 @@ function ServicesView({
                     <span className="block break-words">{service.name}</span>
                     {isLessonsSection && compactInstructorNames ? (
                       <span className="mt-1 block text-[12px] font-normal leading-4 text-black/55 xl:hidden">{compactInstructorNames}</span>
+                    ) : null}
+                    {isMembershipsSection ? (
+                      <span className="mt-1 block text-[12px] font-normal leading-4 text-black/55 xl:hidden">
+                        {membershipNames.length
+                          ? `${membershipNames.length} member${membershipNames.length === 1 ? "" : "s"}`
+                          : "No members yet"}
+                      </span>
                     ) : null}
                   </button>
 
@@ -5627,6 +5827,39 @@ function ServicesView({
                           </div>
                         ) : (
                           <span className="block break-words text-[13px] text-black/45">No instructors</span>
+                        )}
+                      </div>
+                    </>
+                  ) : isMembershipsSection ? (
+                    <>
+                      <div className="min-w-0 pt-1 text-[13px] font-medium text-black md:text-[14px] xl:text-[15px]">
+                        {formatServicePrice(service.price)}
+                      </div>
+                      <div className="min-w-0 pt-1 text-[13px] font-medium text-black md:text-[14px] xl:text-[15px]">
+                        {membershipBillingLabel}
+                      </div>
+                      <div className="hidden min-w-0 pt-1 xl:block">
+                        {membershipNames.length ? (
+                          <div className="flex flex-wrap items-center gap-1">
+                            {visibleMembershipNames.map((name) => (
+                              <span
+                                key={name}
+                                className="inline-flex max-w-full items-center gap-1 rounded-full bg-[#f1efef] px-2 py-1 text-[11px] font-medium leading-none text-black"
+                              >
+                                <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#d9d9d9] text-[#777]">
+                                  <Icon name="user" className="h-[10px] w-[10px]" />
+                                </span>
+                                <span className="truncate whitespace-nowrap">{name}</span>
+                              </span>
+                            ))}
+                            {remainingMembershipCount > 0 ? (
+                              <span className="inline-flex items-center rounded-full bg-[#f1efef] px-2 py-1 text-[11px] font-medium leading-none text-black/80">
+                                +{remainingMembershipCount} more
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <span className="block break-words text-[13px] text-black/45">No members yet</span>
                         )}
                       </div>
                     </>
@@ -5688,6 +5921,310 @@ function ServicesView({
         </div>
       </div>
     </section>
+  );
+}
+
+function MembershipEditorView({
+  mode,
+  service,
+  services,
+  customers,
+  onCancel,
+  onSave,
+  onDelete,
+  deleteGuardMessage,
+}: {
+  mode: "add" | "edit";
+  service?: Service | null;
+  services: Service[];
+  customers: Customer[];
+  onCancel: () => void;
+  onSave: (draft: MembershipDraft) => void;
+  onDelete: () => void;
+  deleteGuardMessage: string | null;
+}) {
+  const [draft, setDraft] = useState<MembershipDraft>(() => createMembershipDraftFromService(service));
+  const eligibleServices = useMemo(
+    () =>
+      services
+        .filter((item) => item.category !== "memberships" && item.category !== "packages")
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [services]
+  );
+  const memberCount = useMemo(() => {
+    if (!service) return 0;
+    const target = service.name.trim().toLowerCase();
+    return customers.filter((customer) =>
+      (customer.memberships ?? []).some((membership) => membership.trim().toLowerCase() === target)
+    ).length;
+  }, [customers, service]);
+
+  const update = <Key extends keyof MembershipDraft>(key: Key, value: MembershipDraft[Key]) => {
+    setDraft((current) => ({ ...current, [key]: value }));
+  };
+
+  const toggleEligibleService = (serviceId: string) => {
+    setDraft((current) => {
+      const selected = current.eligibleServiceIds.includes(serviceId);
+      return {
+        ...current,
+        eligibleServiceIds: selected
+          ? current.eligibleServiceIds.filter((id) => id !== serviceId)
+          : [...current.eligibleServiceIds, serviceId],
+      };
+    });
+  };
+
+  const title = mode === "edit" && service ? service.name : "Add Membership";
+
+  return (
+    <div className="min-h-screen bg-white px-6 py-8 text-black md:px-10">
+      <div className="mb-5">
+        <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-black/70">
+          <button type="button" className="hover:underline" onClick={onCancel}>
+            Memberships
+          </button>
+          <span>/</span>
+          <span>{mode === "edit" ? service?.name ?? "Membership" : "Add Membership"}</span>
+        </div>
+        <h1 className="text-3xl font-semibold">{title}</h1>
+      </div>
+
+      <section className="overflow-hidden rounded-lg border border-black/15 bg-white shadow-sm">
+        <div className="border-b border-t-4 border-[#31589b] px-5 py-4">
+          <h2 className="text-2xl font-medium">Membership Details</h2>
+        </div>
+
+        <div className="grid gap-8 border-b border-black/10 px-5 py-6 md:grid-cols-[240px_minmax(0,1fr)]">
+          <div>
+            <h3 className="text-lg font-semibold">Basics</h3>
+            <p className="mt-1 text-sm leading-6 text-black/65">
+              Set the membership name, description, and booking-page visibility.
+            </p>
+          </div>
+          <div className="grid gap-5">
+            <label className="grid gap-2 text-sm font-semibold">
+              Name
+              <input
+                className="h-12 rounded border border-black/20 px-4 text-base font-normal outline-none focus:border-black"
+                value={draft.name}
+                onChange={(event) => update("name", event.target.value)}
+              />
+            </label>
+            <label className="grid gap-2 text-sm font-semibold">
+              <span>
+                Description{" "}
+                <span className="rounded-full bg-black/10 px-2 py-0.5 text-xs font-medium text-black/60">
+                  Optional
+                </span>
+              </span>
+              <textarea
+                className="min-h-28 rounded border border-black/20 px-4 py-3 text-base font-normal outline-none focus:border-black"
+                value={draft.description}
+                onChange={(event) => update("description", event.target.value)}
+              />
+            </label>
+            <label className="flex items-center gap-3 text-sm font-semibold">
+              <input
+                type="checkbox"
+                checked={draft.private}
+                onChange={(event) => update("private", event.target.checked)}
+              />
+              Hide this membership from the public booking page
+            </label>
+          </div>
+        </div>
+
+        <div className="grid gap-8 border-b border-black/10 px-5 py-6 md:grid-cols-[240px_minmax(0,1fr)]">
+          <div>
+            <h3 className="text-lg font-semibold">Billing</h3>
+            <p className="mt-1 text-sm leading-6 text-black/65">
+              Charge customers automatically on a recurring schedule using their saved card.
+            </p>
+          </div>
+          <div className="grid gap-5 md:grid-cols-3">
+            <label className="grid gap-2 text-sm font-semibold">
+              Price
+              <div className="flex h-12 items-center rounded border border-black/20 px-3 focus-within:border-black">
+                <span className="text-black/45">$</span>
+                <input
+                  className="w-full px-2 text-base font-normal outline-none"
+                  inputMode="decimal"
+                  value={draft.price}
+                  onChange={(event) => update("price", event.target.value)}
+                />
+              </div>
+            </label>
+            <label className="grid gap-2 text-sm font-semibold">
+              Billing period
+              <select
+                className="h-12 rounded border border-black/20 px-4 text-base font-normal outline-none focus:border-black"
+                value={draft.billingPeriod}
+                onChange={(event) => update("billingPeriod", event.target.value as MembershipBillingPeriod)}
+              >
+                <option>Weekly</option>
+                <option>Monthly</option>
+                <option>Yearly</option>
+              </select>
+            </label>
+            <label className="grid gap-2 text-sm font-semibold">
+              <span>
+                Member limit{" "}
+                <span className="rounded-full bg-black/10 px-2 py-0.5 text-xs font-medium text-black/60">
+                  Optional
+                </span>
+              </span>
+              <input
+                className="h-12 rounded border border-black/20 px-4 text-base font-normal outline-none focus:border-black"
+                inputMode="numeric"
+                value={draft.memberLimit}
+                onChange={(event) => update("memberLimit", event.target.value)}
+                placeholder="No limit"
+              />
+            </label>
+            {mode === "edit" ? (
+              <div className="rounded-lg bg-black/[0.03] px-4 py-3 text-sm text-black/65 md:col-span-3">
+                <span className="font-semibold text-black">{memberCount}</span> active member
+                {memberCount === 1 ? "" : "s"} currently assigned to this membership.
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="grid gap-8 border-b border-black/10 px-5 py-6 md:grid-cols-[240px_minmax(0,1fr)]">
+          <div>
+            <h3 className="text-lg font-semibold">Credits</h3>
+            <p className="mt-1 text-sm leading-6 text-black/65">
+              Give members booking credits they can spend instead of payment.
+            </p>
+          </div>
+          <div className="grid gap-5">
+            <label className="grid max-w-xs gap-2 text-sm font-semibold">
+              Credits per day
+              <input
+                className="h-12 rounded border border-black/20 px-4 text-base font-normal outline-none focus:border-black"
+                inputMode="numeric"
+                value={draft.creditsPerDay}
+                onChange={(event) => update("creditsPerDay", event.target.value)}
+              />
+            </label>
+            <div className="grid gap-3 text-sm font-semibold">
+              Eligible services
+              <div className="flex flex-wrap gap-2">
+                {[
+                  ["selected_services", "Selected services"],
+                  ["all_services", "All services"],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={`rounded border px-4 py-2 text-sm font-semibold ${
+                      draft.creditScope === value
+                        ? "border-black bg-black text-white"
+                        : "border-black/15 bg-white text-black"
+                    }`}
+                    onClick={() => update("creditScope", value as MembershipCreditScope)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {draft.creditScope === "selected_services" ? (
+              <div className="grid gap-2 rounded-lg border border-black/10 p-3">
+                {eligibleServices.length ? (
+                  eligibleServices.map((eligibleService) => (
+                    <label
+                      key={eligibleService.id}
+                      className="flex items-center justify-between gap-4 rounded-md px-3 py-2 hover:bg-black/[0.03]"
+                    >
+                      <span>
+                        <span className="block text-sm font-semibold">{eligibleService.name}</span>
+                        <span className="text-xs font-normal text-black/55">
+                          {getServiceSectionLabel(eligibleService.category)} / {eligibleService.duration} mins / $
+                          {eligibleService.price}
+                        </span>
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={draft.eligibleServiceIds.includes(eligibleService.id)}
+                        onChange={() => toggleEligibleService(eligibleService.id)}
+                      />
+                    </label>
+                  ))
+                ) : (
+                  <div className="px-3 py-4 text-sm text-black/50">No bookable services have been created yet.</div>
+                )}
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="grid gap-8 px-5 py-6 md:grid-cols-[240px_minmax(0,1fr)]">
+          <div>
+            <h3 className="text-lg font-semibold">Stripe</h3>
+            <p className="mt-1 text-sm leading-6 text-black/65">
+              Optional Stripe IDs used when subscription auto-charge is connected.
+            </p>
+          </div>
+          <div className="grid gap-5 md:grid-cols-2">
+            <label className="grid gap-2 text-sm font-semibold">
+              <span>
+                Stripe product ID{" "}
+                <span className="rounded-full bg-black/10 px-2 py-0.5 text-xs font-medium text-black/60">
+                  Optional
+                </span>
+              </span>
+              <input
+                className="h-12 rounded border border-black/20 px-4 text-base font-normal outline-none focus:border-black"
+                value={draft.stripeProductId}
+                onChange={(event) => update("stripeProductId", event.target.value)}
+                placeholder="prod_..."
+              />
+            </label>
+            <label className="grid gap-2 text-sm font-semibold">
+              <span>
+                Stripe price ID{" "}
+                <span className="rounded-full bg-black/10 px-2 py-0.5 text-xs font-medium text-black/60">
+                  Optional
+                </span>
+              </span>
+              <input
+                className="h-12 rounded border border-black/20 px-4 text-base font-normal outline-none focus:border-black"
+                value={draft.stripePriceId}
+                onChange={(event) => update("stripePriceId", event.target.value)}
+                placeholder="price_..."
+              />
+            </label>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between border-t border-black/10 bg-black/[0.03] px-5 py-4">
+          {mode === "edit" ? (
+            <button
+              type="button"
+              className="rounded border border-black/15 px-4 py-2 text-sm font-semibold text-black/50 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={Boolean(deleteGuardMessage)}
+              title={deleteGuardMessage ?? undefined}
+              onClick={onDelete}
+            >
+              Delete
+            </button>
+          ) : (
+            <span />
+          )}
+          <div className="flex items-center gap-3">
+            <button type="button" className="rounded border border-black/15 px-4 py-2 text-sm font-semibold" onClick={onCancel}>
+              Cancel
+            </button>
+            <button type="button" className="rounded bg-black px-5 py-2 text-sm font-semibold text-white shadow" onClick={() => onSave(draft)}>
+              Save
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }
 
