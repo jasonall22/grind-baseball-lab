@@ -385,6 +385,50 @@ type BookingCustomerRow = {
   created_at: string;
 };
 
+type CustomerMembershipStatus = "Active" | "Paused" | "Past Due" | "Cancelled" | "Expired";
+
+type BookingCustomerMembershipRow = {
+  id: string;
+  customer_id: string;
+  membership_service_id: string | null;
+  status: string | null;
+  billing_period: string | null;
+  price_cents: number | null;
+  credits_per_day: number | null;
+  credit_scope: string | null;
+  eligible_service_ids: string[] | null;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  stripe_subscription_id: string | null;
+  stripe_price_id: string | null;
+  auto_renew: boolean | null;
+  started_at: string | null;
+  cancelled_at: string | null;
+  created_at: string;
+  updated_at: string | null;
+};
+
+type CustomerMembershipRecord = {
+  id: string;
+  customerId: string;
+  membershipServiceId: string;
+  status: CustomerMembershipStatus;
+  billingPeriod: MembershipBillingPeriod;
+  priceCents: number;
+  creditsPerDay: number;
+  creditScope: MembershipCreditScope;
+  eligibleServiceIds: string[];
+  currentPeriodStart: string;
+  currentPeriodEnd: string;
+  stripeSubscriptionId: string;
+  stripePriceId: string;
+  autoRenew: boolean;
+  startedAt: string;
+  cancelledAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 type BookingBookingRow = {
   id: string;
   booking_date: string;
@@ -2295,6 +2339,65 @@ function moneyPrecise(value: number, currency = "USD") {
   });
 }
 
+function normalizeMembershipBillingPeriod(value: unknown): MembershipBillingPeriod {
+  return value === "Weekly" || value === "Yearly" ? value : "Monthly";
+}
+
+function normalizeMembershipCreditScope(value: unknown): MembershipCreditScope {
+  return value === "all_services" ? "all_services" : "selected_services";
+}
+
+function normalizeCustomerMembershipStatus(value: unknown): CustomerMembershipStatus {
+  if (value === "Paused" || value === "Past Due" || value === "Cancelled" || value === "Expired") return value;
+  return "Active";
+}
+
+function addMembershipPeriod(dateValue: string, period: MembershipBillingPeriod) {
+  const date = parseLocalDate(dateValue);
+  if (period === "Weekly") date.setDate(date.getDate() + 7);
+  else if (period === "Yearly") date.setFullYear(date.getFullYear() + 1);
+  else date.setMonth(date.getMonth() + 1);
+  return isoDate(date);
+}
+
+function formatMembershipDate(value?: string | null) {
+  if (!value) return "Not set";
+  return parseLocalDate(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function isActiveCustomerMembership(record: CustomerMembershipRecord) {
+  return record.status === "Active" || record.status === "Paused" || record.status === "Past Due";
+}
+
+function normalizeCustomerMembershipRow(row: BookingCustomerMembershipRow): CustomerMembershipRecord {
+  return {
+    id: row.id,
+    customerId: row.customer_id,
+    membershipServiceId: row.membership_service_id ?? "",
+    status: normalizeCustomerMembershipStatus(row.status),
+    billingPeriod: normalizeMembershipBillingPeriod(row.billing_period),
+    priceCents: Number(row.price_cents ?? 0),
+    creditsPerDay: Number(row.credits_per_day ?? 0),
+    creditScope: normalizeMembershipCreditScope(row.credit_scope),
+    eligibleServiceIds: Array.isArray(row.eligible_service_ids) ? row.eligible_service_ids.filter(Boolean) : [],
+    currentPeriodStart: row.current_period_start ?? "",
+    currentPeriodEnd: row.current_period_end ?? "",
+    stripeSubscriptionId: row.stripe_subscription_id ?? "",
+    stripePriceId: row.stripe_price_id ?? "",
+    autoRenew: row.auto_renew ?? true,
+    startedAt: row.started_at ?? row.created_at,
+    cancelledAt: row.cancelled_at ?? "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at ?? row.created_at,
+  };
+}
+
+function membershipCreditScopeLabel(record: CustomerMembershipRecord, servicesById: Map<string, Service>) {
+  if (record.creditScope === "all_services") return "All services";
+  const names = record.eligibleServiceIds.map((id) => servicesById.get(id)?.name).filter(Boolean);
+  return names.length ? names.join(", ") : "No eligible services selected";
+}
+
 function formatCardBrand(brand?: string | null) {
   if (!brand) return "card";
 
@@ -3259,7 +3362,38 @@ function createMembershipDraftFromService(service?: Service | null): MembershipD
   };
 }
 
-function getRentalDeleteGuard(service: Service, state: AppState) {
+function buildMembershipMembersByServiceId(
+  customers: Customer[],
+  customerMembershipsByCustomerId: Record<string, CustomerMembershipRecord[]>
+) {
+  const customerNameById = new Map(
+    customers.map((customer) => [customer.id, customer.name.trim() || customer.email.trim() || "Customer"])
+  );
+  const membersByServiceId = new Map<string, string[]>();
+
+  Object.entries(customerMembershipsByCustomerId).forEach(([customerId, memberships]) => {
+    const customerName = customerNameById.get(customerId);
+    if (!customerName) return;
+
+    memberships.forEach((membership) => {
+      if (!membership.membershipServiceId || !isActiveCustomerMembership(membership)) return;
+
+      const existing = membersByServiceId.get(membership.membershipServiceId) ?? [];
+      if (!existing.includes(customerName)) {
+        existing.push(customerName);
+      }
+      membersByServiceId.set(membership.membershipServiceId, existing);
+    });
+  });
+
+  return membersByServiceId;
+}
+
+function getRentalDeleteGuard(
+  service: Service,
+  state: AppState,
+  customerMembershipsByCustomerId: Record<string, CustomerMembershipRecord[]>
+) {
   const serviceLabel = getServiceSectionSingular(service.category ?? inferServiceCategory(service.name)).toLowerCase();
   const hasBookings = state.bookings.some(
     (booking) => booking.serviceId === service.id && booking.status !== "Cancelled"
@@ -3268,11 +3402,12 @@ function getRentalDeleteGuard(service: Service, state: AppState) {
     return `This ${serviceLabel} can't be deleted because it's tied to existing bookings.`;
   }
 
-  const normalizedName = service.name.trim().toLowerCase();
-  const hasAvailableCredits = state.customers.some((customer) =>
-    customer.memberships.some((membership) => membership.trim().toLowerCase() === normalizedName)
+  const hasAssignedMembers = Object.values(customerMembershipsByCustomerId).some((memberships) =>
+    memberships.some(
+      (membership) => membership.membershipServiceId === service.id && isActiveCustomerMembership(membership)
+    )
   );
-  if (hasAvailableCredits) {
+  if (hasAssignedMembers) {
     return `This ${serviceLabel} can't be deleted because it's tied to available credits.`;
   }
 
@@ -3425,6 +3560,7 @@ export default function BookingAdminApp({
   const [dataSource, setDataSource] = useState<"local" | "supabase">("local");
   const [isRemoteLoading, setIsRemoteLoading] = useState(hasSupabaseEnv);
   const [resourceIdsByName, setResourceIdsByName] = useState<Record<string, string>>({});
+  const [customerMembershipsByCustomerId, setCustomerMembershipsByCustomerId] = useState<Record<string, CustomerMembershipRecord[]>>({});
   const [backToAppHref, setBackToAppHref] = useState(bookingAdminRouteByView.home);
   const [showCustomerImport, setShowCustomerImport] = useState(false);
   const [bookingConflictDialog, setBookingConflictDialog] = useState<string | null>(null);
@@ -3559,6 +3695,7 @@ export default function BookingAdminApp({
         resourcesResult,
         servicesResult,
         customersResult,
+        customerMembershipsResult,
         bookingsResult,
         availabilityResult,
         schedulesResult,
@@ -3573,6 +3710,7 @@ export default function BookingAdminApp({
         supabase.from("booking_resources").select("*").order("sort_order"),
         supabase.from("booking_services").select("*").order("sort_order"),
         supabase.from("booking_customers").select("*").order("created_at"),
+        supabase.from("booking_customer_memberships").select("*").order("created_at"),
         supabase.from("booking_bookings").select("*").order("booking_date").order("start_time"),
         supabase.from("booking_availability").select("*").order("weekday"),
         supabase.from("booking_schedules").select("*").eq("is_active", true).order("created_at"),
@@ -3589,6 +3727,7 @@ export default function BookingAdminApp({
         resourcesResult.error,
         servicesResult.error,
         customersResult.error,
+        customerMembershipsResult.error,
         bookingsResult.error,
         availabilityResult.error,
         schedulesResult.error,
@@ -3606,6 +3745,7 @@ export default function BookingAdminApp({
       const resourceRows = (resourcesResult.data ?? []) as BookingResourceRow[];
       const serviceRows = (servicesResult.data ?? []) as BookingServiceRow[];
       const customerRows = (customersResult.data ?? []) as BookingCustomerRow[];
+      const customerMembershipRows = (customerMembershipsResult.data ?? []) as BookingCustomerMembershipRow[];
       const bookingRows = (bookingsResult.data ?? []) as BookingBookingRow[];
       const availabilityRows = (availabilityResult.data ?? []) as BookingAvailabilityRow[];
       const scheduleRows = (schedulesResult.data ?? []) as BookingScheduleRow[];
@@ -3634,6 +3774,19 @@ export default function BookingAdminApp({
           },
         ])
       );
+      const customerMembershipsById = customerMembershipRows.reduce<Record<string, CustomerMembershipRecord[]>>((acc, row) => {
+        const normalized = normalizeCustomerMembershipRow(row);
+        if (!normalized.customerId) {
+          return acc;
+        }
+
+        if (!acc[normalized.customerId]) {
+          acc[normalized.customerId] = [];
+        }
+
+        acc[normalized.customerId].push(normalized);
+        return acc;
+      }, {});
       const availabilityOrder = new Map(defaultState.availability.map(([day], index) => [day, index]));
       const roomNamesByScheduleId = new Map<string, string[]>();
 
@@ -3876,10 +4029,12 @@ export default function BookingAdminApp({
           stock: product.stock,
         })),
       });
+      setCustomerMembershipsByCustomerId(customerMembershipsById);
       setDataSource("supabase");
     } catch (error) {
       console.error(error);
       setDataSource("local");
+      setCustomerMembershipsByCustomerId({});
       showToast("Could not load Supabase data. Using local draft data.");
     } finally {
       setIsRemoteLoading(false);
@@ -4545,7 +4700,7 @@ export default function BookingAdminApp({
   }
 
   async function deleteRental(service: Service) {
-    const guardMessage = getRentalDeleteGuard(service, state);
+    const guardMessage = getRentalDeleteGuard(service, state, customerMembershipsByCustomerId);
     if (guardMessage) {
       showToast(guardMessage);
       return;
@@ -4705,6 +4860,10 @@ export default function BookingAdminApp({
     () => new Map(state.customers.map((customer) => [customer.id, customer])),
     [state.customers]
   );
+  const membershipMembersByServiceId = useMemo(
+    () => buildMembershipMembersByServiceId(state.customers, customerMembershipsByCustomerId),
+    [customerMembershipsByCustomerId, state.customers]
+  );
   const selectedCustomer =
     selectedCustomerId ? state.customers.find((customer) => customer.id === selectedCustomerId) ?? null : null;
   const selectedService =
@@ -4842,8 +5001,12 @@ export default function BookingAdminApp({
                   mode={isServiceEditPage ? "edit" : "add"}
                   service={selectedService}
                   services={state.services}
-                  customers={state.customers}
-                  deleteGuardMessage={selectedService ? getRentalDeleteGuard(selectedService, state) : null}
+                  membershipMembersByServiceId={membershipMembersByServiceId}
+                  deleteGuardMessage={
+                    selectedService
+                      ? getRentalDeleteGuard(selectedService, state, customerMembershipsByCustomerId)
+                      : null
+                  }
                   onCancel={() => router.push(getServiceSectionBasePath("memberships"))}
                   onDelete={() => {
                     if (selectedService) {
@@ -4867,7 +5030,11 @@ export default function BookingAdminApp({
                   }}
                   service={selectedService}
                   staff={state.staff}
-                  deleteGuardMessage={selectedService ? getRentalDeleteGuard(selectedService, state) : null}
+                  deleteGuardMessage={
+                    selectedService
+                      ? getRentalDeleteGuard(selectedService, state, customerMembershipsByCustomerId)
+                      : null
+                  }
                   onCopyBookingLink={() => void copyRentalBookingLink()}
                   onDuplicate={() => {
                     if (selectedService) {
@@ -4885,7 +5052,7 @@ export default function BookingAdminApp({
             ) : (
               <ServicesView
                 services={state.services}
-                customers={state.customers}
+                membershipMembersByServiceId={membershipMembersByServiceId}
                 activeSection={serviceSection}
                 onSectionChange={setServiceSection}
                 onReorder={(visibleServiceIds, serviceId, direction) =>
@@ -4937,6 +5104,7 @@ export default function BookingAdminApp({
                 bookings={state.bookings}
                 servicesById={servicesById}
                 taxesAndFees={state.taxesAndFees}
+                customerMemberships={selectedCustomer ? customerMembershipsByCustomerId[selectedCustomer.id] ?? [] : []}
                 onSaveCustomer={(item, options) =>
                   saveCustomerDetail(item, options?.message ?? "Customer updated.", {
                     silent: options?.silent,
@@ -5598,7 +5766,7 @@ function ServicesView({
   activeSection,
   onSectionChange,
   services,
-  customers,
+  membershipMembersByServiceId,
   onReorder,
   onNew,
   onEdit,
@@ -5606,7 +5774,7 @@ function ServicesView({
   activeSection: ServiceSection;
   onSectionChange: (section: ServiceSection) => void;
   services: Service[];
-  customers: Customer[];
+  membershipMembersByServiceId: Map<string, string[]>;
   onReorder: (visibleServiceIds: string[], serviceId: string, direction: "up" | "down") => void;
   onNew: () => void;
   onEdit: (id: string) => void;
@@ -5625,11 +5793,9 @@ function ServicesView({
     return sectionServices.filter((service) => {
       const rooms = (service.rooms?.length ? service.rooms : [service.resource]).map((item) => item.trim().toLowerCase());
       const instructors = (service.instructors ?? []).map((item) => item.trim().toLowerCase());
-      const membershipMembers = customers
-        .filter((customer) =>
-          customer.memberships.some((membership) => membership.trim().toLowerCase() === service.name.trim().toLowerCase())
-        )
-        .map((customer) => customer.name.trim().toLowerCase());
+      const membershipMembers = (membershipMembersByServiceId.get(service.id) ?? []).map((customerName) =>
+        customerName.trim().toLowerCase()
+      );
       return (
         service.name.toLowerCase().includes(normalizedSearch) ||
         rooms.some((room) => room.includes(normalizedSearch)) ||
@@ -5637,7 +5803,7 @@ function ServicesView({
         membershipMembers.some((member) => member.includes(normalizedSearch))
       );
     });
-  }, [activeSection, customers, search, services]);
+  }, [activeSection, membershipMembersByServiceId, search, services]);
 
   const visibleServiceIds = useMemo(() => filteredServices.map((service) => service.id), [filteredServices]);
   const currentCopy = serviceSectionMeta[activeSection];
@@ -5748,10 +5914,7 @@ function ServicesView({
               const compactInstructorNames = instructorNames.join(", ");
               const visibleInstructorNames = instructorNames.slice(0, 4);
               const remainingInstructorCount = Math.max(0, instructorNames.length - visibleInstructorNames.length);
-              const membershipMembers = customers.filter((customer) =>
-                customer.memberships.some((membership) => membership.trim().toLowerCase() === service.name.trim().toLowerCase())
-              );
-              const membershipNames = membershipMembers.map((customer) => customer.name);
+              const membershipNames = membershipMembersByServiceId.get(service.id) ?? [];
               const compactMembershipNames = membershipNames.join(", ");
               const visibleMembershipNames = membershipNames.slice(0, 3);
               const remainingMembershipCount = Math.max(0, membershipNames.length - visibleMembershipNames.length);
@@ -5928,7 +6091,7 @@ function MembershipEditorView({
   mode,
   service,
   services,
-  customers,
+  membershipMembersByServiceId,
   onCancel,
   onSave,
   onDelete,
@@ -5937,7 +6100,7 @@ function MembershipEditorView({
   mode: "add" | "edit";
   service?: Service | null;
   services: Service[];
-  customers: Customer[];
+  membershipMembersByServiceId: Map<string, string[]>;
   onCancel: () => void;
   onSave: (draft: MembershipDraft) => void;
   onDelete: () => void;
@@ -5953,11 +6116,8 @@ function MembershipEditorView({
   );
   const memberCount = useMemo(() => {
     if (!service) return 0;
-    const target = service.name.trim().toLowerCase();
-    return customers.filter((customer) =>
-      (customer.memberships ?? []).some((membership) => membership.trim().toLowerCase() === target)
-    ).length;
-  }, [customers, service]);
+    return (membershipMembersByServiceId.get(service.id) ?? []).length;
+  }, [membershipMembersByServiceId, service]);
 
   const update = <Key extends keyof MembershipDraft>(key: Key, value: MembershipDraft[Key]) => {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -8730,6 +8890,7 @@ function CustomerDetailView({
   bookings,
   servicesById,
   taxesAndFees,
+  customerMemberships,
   onSaveCustomer,
   showToast,
 }: {
@@ -8737,6 +8898,7 @@ function CustomerDetailView({
   bookings: Booking[];
   servicesById: Map<string, Service>;
   taxesAndFees: AppState["taxesAndFees"];
+  customerMemberships: CustomerMembershipRecord[];
   onSaveCustomer: (item: Customer, options?: { message?: string; silent?: boolean }) => Promise<boolean>;
   showToast: (message: string) => void;
 }) {
@@ -8878,7 +9040,8 @@ function CustomerDetailView({
       ].filter(Boolean)
     )
   );
-  const memberships = customer.memberships.filter(Boolean);
+  const legacyMemberships = customer.memberships.filter(Boolean);
+  const memberships = customerMemberships;
   const currentCustomer = customer;
   const hasEmergencyContact =
     !emergencyDeleted &&
@@ -8895,6 +9058,38 @@ function CustomerDetailView({
     const servicePrice = servicesById.get(booking.serviceId)?.price ?? 0;
     return total + (booking.paid ? servicePrice : 0);
   }, 0);
+  const membershipCards = memberships
+    .map((membership) => ({
+      ...membership,
+      service: servicesById.get(membership.membershipServiceId),
+    }))
+    .sort((left, right) => {
+      const leftActive = isActiveCustomerMembership(left);
+      const rightActive = isActiveCustomerMembership(right);
+      if (leftActive !== rightActive) return leftActive ? -1 : 1;
+      return `${right.currentPeriodStart} ${right.createdAt}`.localeCompare(`${left.currentPeriodStart} ${left.createdAt}`);
+    });
+  const creditMemberships = membershipCards.filter(
+    (membership) => isActiveCustomerMembership(membership) && membership.creditsPerDay > 0
+  );
+  const totalDailyCredits = creditMemberships.reduce((total, membership) => total + membership.creditsPerDay, 0);
+
+  function membershipStatusClasses(status: CustomerMembershipStatus) {
+    switch (status) {
+      case "Active":
+        return "bg-emerald-50 text-emerald-700";
+      case "Paused":
+        return "bg-amber-50 text-amber-700";
+      case "Past Due":
+        return "bg-orange-50 text-orange-700";
+      case "Cancelled":
+        return "bg-rose-50 text-rose-700";
+      case "Expired":
+        return "bg-slate-100 text-slate-600";
+      default:
+        return "bg-black/[0.05] text-black/60";
+    }
+  }
   const pendingCount = customerBookings.filter((item) => !item.paid && item.status !== "Cancelled").length;
   const topPackages = Array.from(
     customerBookings.reduce((map, booking) => {
@@ -10157,12 +10352,73 @@ function CustomerDetailView({
   function renderMembershipTab() {
     return (
       <DetailPanel title="Memberships">
-        {memberships.length ? (
+        {membershipCards.length ? (
+          <div className="grid gap-4 p-4 xl:grid-cols-2">
+            {membershipCards.map((membership) => {
+              const membershipName = membership.service?.name || "Membership";
+              const periodLabel =
+                membership.currentPeriodStart && membership.currentPeriodEnd
+                  ? `${formatMembershipDate(membership.currentPeriodStart)} - ${formatMembershipDate(membership.currentPeriodEnd)}`
+                  : "Billing cycle not set";
+
+              return (
+                <div key={membership.id} className="rounded-2xl border border-black/10 bg-white p-4 shadow-[0_1px_0_rgba(0,0,0,0.03)]">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-[16px] font-semibold text-black">{membershipName}</div>
+                      <div className="mt-1 text-[13px] text-black/55">
+                        {membership.billingPeriod} membership
+                        {membership.autoRenew ? " · Auto renews" : " · Manual renewal"}
+                      </div>
+                    </div>
+                    <span
+                      className={`rounded-full px-3 py-1 text-[12px] font-semibold ${membershipStatusClasses(membership.status)}`}
+                    >
+                      {membership.status}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl border border-black/8 bg-black/[0.02] px-3 py-3">
+                      <div className="text-[12px] uppercase tracking-[0.08em] text-black/40">Price</div>
+                      <div className="mt-1 text-[15px] font-semibold text-black">{money(membership.priceCents / 100)}</div>
+                    </div>
+                    <div className="rounded-xl border border-black/8 bg-black/[0.02] px-3 py-3">
+                      <div className="text-[12px] uppercase tracking-[0.08em] text-black/40">Credits per day</div>
+                      <div className="mt-1 text-[15px] font-semibold text-black">{membership.creditsPerDay}</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 space-y-2 text-[13px] text-black/65">
+                    <div className="flex items-start justify-between gap-4">
+                      <span className="text-black/45">Credit scope</span>
+                      <span className="max-w-[70%] text-right text-black">{membershipCreditScopeLabel(membership, servicesById)}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-4">
+                      <span className="text-black/45">Current period</span>
+                      <span className="max-w-[70%] text-right text-black">{periodLabel}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-4">
+                      <span className="text-black/45">Started</span>
+                      <span className="text-right text-black">{formatMembershipDate(membership.startedAt || membership.createdAt)}</span>
+                    </div>
+                    {membership.cancelledAt ? (
+                      <div className="flex items-start justify-between gap-4">
+                        <span className="text-black/45">Cancelled</span>
+                        <span className="text-right text-black">{formatMembershipDate(membership.cancelledAt)}</span>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : legacyMemberships.length ? (
           <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
-            {memberships.map((membership) => (
+            {legacyMemberships.map((membership) => (
               <div key={membership} className="rounded-xl border border-black/10 bg-black/[0.02] p-4">
                 <div className="text-[15px] font-medium text-black">{membership}</div>
-                <div className="mt-1 text-[13px] text-black/55">Active membership</div>
+                <div className="mt-1 text-[13px] text-black/55">Legacy membership record</div>
               </div>
             ))}
           </div>
@@ -10233,7 +10489,50 @@ function CustomerDetailView({
   function renderCreditsTab() {
     return (
       <DetailPanel title="Credits">
-        <div className="p-6 text-sm text-black/45">Credits and wallet balance will appear here.</div>
+        {creditMemberships.length ? (
+          <div className="space-y-4 p-4">
+            <div className="rounded-2xl border border-black/10 bg-black/[0.02] px-4 py-4">
+              <div className="text-[12px] uppercase tracking-[0.08em] text-black/40">Daily credits available</div>
+              <div className="mt-2 text-[28px] font-semibold text-black">{totalDailyCredits}</div>
+              <div className="mt-1 text-[13px] text-black/55">
+                Across {creditMemberships.length} active membership{creditMemberships.length === 1 ? "" : "s"}.
+              </div>
+            </div>
+
+            <div className="grid gap-3 xl:grid-cols-2">
+              {creditMemberships.map((membership) => (
+                <div key={membership.id} className="rounded-2xl border border-black/10 bg-white px-4 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-[15px] font-semibold text-black">{membership.service?.name || "Membership"}</div>
+                      <div className="mt-1 text-[13px] text-black/55">
+                        {membership.creditsPerDay} credit{membership.creditsPerDay === 1 ? "" : "s"} per day
+                      </div>
+                    </div>
+                    <span
+                      className={`rounded-full px-3 py-1 text-[12px] font-semibold ${membershipStatusClasses(membership.status)}`}
+                    >
+                      {membership.status}
+                    </span>
+                  </div>
+                  <div className="mt-3 text-[13px] text-black/65">
+                    Eligible services: <span className="text-black">{membershipCreditScopeLabel(membership, servicesById)}</span>
+                  </div>
+                  <div className="mt-1 text-[13px] text-black/65">
+                    Current period:{" "}
+                    <span className="text-black">
+                      {membership.currentPeriodStart && membership.currentPeriodEnd
+                        ? `${formatMembershipDate(membership.currentPeriodStart)} - ${formatMembershipDate(membership.currentPeriodEnd)}`
+                        : "Not set"}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="p-6 text-sm text-black/45">No active membership credits available for this customer.</div>
+        )}
       </DetailPanel>
     );
   }
