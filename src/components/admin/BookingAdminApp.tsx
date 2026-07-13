@@ -161,6 +161,8 @@ type Booking = {
   resource: string;
   status: "Confirmed" | "Pending" | "Cancelled";
   paid: boolean;
+  paidByMembershipCredit?: boolean;
+  membershipCreditMembershipId?: string;
 };
 
 type Campaign = {
@@ -427,6 +429,34 @@ type CustomerMembershipRecord = {
   cancelledAt: string;
   createdAt: string;
   updatedAt: string;
+};
+
+type MembershipCreditLedgerReason = "booking" | "manual_adjustment" | "refund" | "expiration";
+
+type BookingMembershipCreditLedgerRow = {
+  id: string;
+  customer_membership_id: string | null;
+  customer_id: string | null;
+  booking_id: string | null;
+  service_id: string | null;
+  credit_date: string | null;
+  amount: number | null;
+  reason: string | null;
+  note: string | null;
+  created_at: string | null;
+};
+
+type MembershipCreditLedgerEntry = {
+  id: string;
+  customerMembershipId: string;
+  customerId: string;
+  bookingId: string;
+  serviceId: string;
+  creditDate: string;
+  amount: number;
+  reason: MembershipCreditLedgerReason;
+  note: string;
+  createdAt: string;
 };
 
 type BookingBookingRow = {
@@ -2226,6 +2256,7 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
   if (change.type === "booking") {
     const item = change.item;
     const resourceId = resourceIdsByName[item.resource] || null;
+    let creditMembership: CustomerMembershipRecord | null = null;
 
     if (resourceId && item.status !== "Cancelled") {
       const existingBookings = await supabase
@@ -2253,6 +2284,43 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
       }
     }
 
+    if (item.membershipCreditMembershipId && item.status !== "Cancelled") {
+      if (!item.customerId) throw new Error("Choose a customer before using a membership credit.");
+      if (!item.serviceId) throw new Error("Choose a service before using a membership credit.");
+
+      const membershipResult = await supabase
+        .from("booking_customer_memberships")
+        .select("*")
+        .eq("id", item.membershipCreditMembershipId)
+        .maybeSingle();
+
+      if (membershipResult.error) throw membershipResult.error;
+      if (!membershipResult.data) throw new Error("That membership credit is no longer available.");
+
+      creditMembership = normalizeCustomerMembershipRow(membershipResult.data as BookingCustomerMembershipRow);
+      if (creditMembership.customerId !== item.customerId) {
+        throw new Error("That membership does not belong to this customer.");
+      }
+      if (!membershipCanUseCredit(creditMembership, item.serviceId, item.date)) {
+        throw new Error("That membership cannot be used for this service.");
+      }
+
+      const ledgerResult = await supabase
+        .from("booking_membership_credit_ledger")
+        .select("*")
+        .eq("customer_membership_id", item.membershipCreditMembershipId)
+        .eq("credit_date", item.date);
+
+      if (ledgerResult.error) throw ledgerResult.error;
+
+      const ledgerEntries = ((ledgerResult.data ?? []) as BookingMembershipCreditLedgerRow[]).map(
+        normalizeMembershipCreditLedgerRow
+      );
+      if (membershipCreditRemaining(creditMembership, item.date, ledgerEntries, item.id) < 1) {
+        throw new Error("That membership has no credits remaining for this day.");
+      }
+    }
+
     const { error } = await supabase.from("booking_bookings").upsert({
       id: item.id,
       booking_date: item.date,
@@ -2263,9 +2331,32 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
       service_id: item.serviceId || null,
       resource_id: resourceId,
       status: item.status,
-      paid: item.paid,
+      paid: item.paid || Boolean(creditMembership),
     });
     if (error) throw error;
+
+    const deleteLedgerResult = await supabase
+      .from("booking_membership_credit_ledger")
+      .delete()
+      .eq("booking_id", item.id)
+      .eq("reason", "booking");
+
+    if (deleteLedgerResult.error) throw deleteLedgerResult.error;
+
+    if (creditMembership && item.status !== "Cancelled") {
+      const insertLedgerResult = await supabase.from("booking_membership_credit_ledger").insert({
+        customer_membership_id: creditMembership.id,
+        customer_id: item.customerId || null,
+        booking_id: item.id,
+        service_id: item.serviceId || null,
+        credit_date: item.date,
+        amount: -1,
+        reason: "booking",
+        note: item.serviceName || "Membership credit booking",
+      });
+
+      if (insertLedgerResult.error) throw insertLedgerResult.error;
+    }
   }
 
   if (change.type === "customer") {
@@ -2390,6 +2481,90 @@ function normalizeCustomerMembershipRow(row: BookingCustomerMembershipRow): Cust
     createdAt: row.created_at,
     updatedAt: row.updated_at ?? row.created_at,
   };
+}
+
+function normalizeMembershipCreditLedgerReason(value?: string | null): MembershipCreditLedgerReason {
+  if (value === "manual_adjustment" || value === "refund" || value === "expiration") return value;
+  return "booking";
+}
+
+function normalizeMembershipCreditLedgerRow(row: BookingMembershipCreditLedgerRow): MembershipCreditLedgerEntry {
+  return {
+    id: row.id,
+    customerMembershipId: row.customer_membership_id ?? "",
+    customerId: row.customer_id ?? "",
+    bookingId: row.booking_id ?? "",
+    serviceId: row.service_id ?? "",
+    creditDate: row.credit_date ?? isoDate(new Date()),
+    amount: Number(row.amount ?? 0),
+    reason: normalizeMembershipCreditLedgerReason(row.reason),
+    note: row.note ?? "",
+    createdAt: row.created_at ?? "",
+  };
+}
+
+function isMembershipCreditSpend(entry: MembershipCreditLedgerEntry) {
+  return entry.reason === "booking" && entry.amount < 0;
+}
+
+function membershipCanUseCredit(record: CustomerMembershipRecord, serviceId: string, bookingDate: string) {
+  if (!isActiveCustomerMembership(record)) return false;
+  if (!record.creditsPerDay || record.creditsPerDay < 1) return false;
+  if (record.currentPeriodStart && bookingDate < record.currentPeriodStart) return false;
+  if (record.currentPeriodEnd && bookingDate > record.currentPeriodEnd) return false;
+  if (record.creditScope === "selected_services" && !record.eligibleServiceIds.includes(serviceId)) return false;
+  return Boolean(serviceId);
+}
+
+function membershipCreditUsedToday(
+  recordId: string,
+  creditDate: string,
+  ledger: MembershipCreditLedgerEntry[],
+  excludedBookingId = "",
+) {
+  return ledger
+    .filter(
+      (entry) =>
+        entry.customerMembershipId === recordId &&
+        entry.creditDate === creditDate &&
+        isMembershipCreditSpend(entry) &&
+        entry.bookingId !== excludedBookingId,
+    )
+    .reduce((total, entry) => total + Math.abs(entry.amount), 0);
+}
+
+function membershipCreditRemaining(
+  record: CustomerMembershipRecord,
+  creditDate: string,
+  ledger: MembershipCreditLedgerEntry[],
+  excludedBookingId = "",
+) {
+  return Math.max(0, record.creditsPerDay - membershipCreditUsedToday(record.id, creditDate, ledger, excludedBookingId));
+}
+
+function bookingCreditLedgerEntry(ledger: MembershipCreditLedgerEntry[], bookingId: string) {
+  return ledger.find((entry) => entry.bookingId === bookingId && isMembershipCreditSpend(entry));
+}
+
+function updatedMembershipCreditLedgerForBooking(current: MembershipCreditLedgerEntry[], booking: Booking) {
+  const withoutBooking = current.filter((entry) => entry.bookingId !== booking.id || entry.reason !== "booking");
+  if (!booking.membershipCreditMembershipId || booking.status === "Cancelled") return withoutBooking;
+
+  return [
+    ...withoutBooking,
+    {
+      id: makeId("credit"),
+      customerMembershipId: booking.membershipCreditMembershipId,
+      customerId: booking.customerId,
+      bookingId: booking.id,
+      serviceId: booking.serviceId,
+      creditDate: booking.date,
+      amount: -1,
+      reason: "booking" as const,
+      note: booking.serviceName || "Membership credit booking",
+      createdAt: new Date().toISOString(),
+    },
+  ];
 }
 
 function membershipCreditScopeLabel(record: CustomerMembershipRecord, servicesById: Map<string, Service>) {
@@ -2833,6 +3008,14 @@ function bookingStatusBadge(booking: Booking) {
 
 function bookingPaymentIndicator(booking: Booking) {
   if (booking.status === "Cancelled") return null;
+
+  if (booking.paidByMembershipCredit) {
+    return {
+      label: "Credit",
+      icon: "check" as const,
+      className: "bg-[#7c3aed] text-white ring-1 ring-black/10",
+    };
+  }
 
   if (booking.paid) {
     return {
@@ -3561,6 +3744,7 @@ export default function BookingAdminApp({
   const [isRemoteLoading, setIsRemoteLoading] = useState(hasSupabaseEnv);
   const [resourceIdsByName, setResourceIdsByName] = useState<Record<string, string>>({});
   const [customerMembershipsByCustomerId, setCustomerMembershipsByCustomerId] = useState<Record<string, CustomerMembershipRecord[]>>({});
+  const [membershipCreditLedger, setMembershipCreditLedger] = useState<MembershipCreditLedgerEntry[]>([]);
   const [backToAppHref, setBackToAppHref] = useState(bookingAdminRouteByView.home);
   const [showCustomerImport, setShowCustomerImport] = useState(false);
   const [bookingConflictDialog, setBookingConflictDialog] = useState<string | null>(null);
@@ -3696,6 +3880,7 @@ export default function BookingAdminApp({
         servicesResult,
         customersResult,
         customerMembershipsResult,
+        membershipCreditLedgerResult,
         bookingsResult,
         availabilityResult,
         schedulesResult,
@@ -3711,6 +3896,7 @@ export default function BookingAdminApp({
         supabase.from("booking_services").select("*").order("sort_order"),
         supabase.from("booking_customers").select("*").order("created_at"),
         supabase.from("booking_customer_memberships").select("*").order("created_at"),
+        supabase.from("booking_membership_credit_ledger").select("*").order("created_at"),
         supabase.from("booking_bookings").select("*").order("booking_date").order("start_time"),
         supabase.from("booking_availability").select("*").order("weekday"),
         supabase.from("booking_schedules").select("*").eq("is_active", true).order("created_at"),
@@ -3728,6 +3914,7 @@ export default function BookingAdminApp({
         servicesResult.error,
         customersResult.error,
         customerMembershipsResult.error,
+        membershipCreditLedgerResult.error,
         bookingsResult.error,
         availabilityResult.error,
         schedulesResult.error,
@@ -3746,6 +3933,7 @@ export default function BookingAdminApp({
       const serviceRows = (servicesResult.data ?? []) as BookingServiceRow[];
       const customerRows = (customersResult.data ?? []) as BookingCustomerRow[];
       const customerMembershipRows = (customerMembershipsResult.data ?? []) as BookingCustomerMembershipRow[];
+      const membershipCreditLedgerRows = (membershipCreditLedgerResult.data ?? []) as BookingMembershipCreditLedgerRow[];
       const bookingRows = (bookingsResult.data ?? []) as BookingBookingRow[];
       const availabilityRows = (availabilityResult.data ?? []) as BookingAvailabilityRow[];
       const scheduleRows = (schedulesResult.data ?? []) as BookingScheduleRow[];
@@ -3787,6 +3975,7 @@ export default function BookingAdminApp({
         acc[normalized.customerId].push(normalized);
         return acc;
       }, {});
+      const membershipCreditLedgerEntries = membershipCreditLedgerRows.map(normalizeMembershipCreditLedgerRow);
       const availabilityOrder = new Map(defaultState.availability.map(([day], index) => [day, index]));
       const roomNamesByScheduleId = new Map<string, string[]>();
 
@@ -3987,22 +4176,28 @@ export default function BookingAdminApp({
           notes: customer.notes ?? "",
           createdAt: customer.created_at,
         })),
-        bookings: bookingRows.map((booking) => ({
-          id: booking.id,
-          date: booking.booking_date,
-          start: normalizeTime(booking.start_time),
-          end: normalizeTime(booking.end_time),
-          customerId: booking.customer_id ?? "",
-          playerName: booking.player_name ?? "",
-          serviceId: booking.service_id ?? "",
-          serviceName: booking.service_id ? serviceMetaById.get(booking.service_id)?.name ?? "" : "",
-          calendarColor: booking.service_id
-            ? serviceMetaById.get(booking.service_id)?.calendarColor ?? DEFAULT_SERVICE_CALENDAR_COLOR
-            : DEFAULT_SERVICE_CALENDAR_COLOR,
-          resource: booking.resource_id ? namesById.get(booking.resource_id) ?? "" : "",
-          status: booking.status,
-          paid: booking.paid,
-        })),
+        bookings: bookingRows.map((booking) => {
+          const creditEntry = bookingCreditLedgerEntry(membershipCreditLedgerEntries, booking.id);
+
+          return {
+            id: booking.id,
+            date: booking.booking_date,
+            start: normalizeTime(booking.start_time),
+            end: normalizeTime(booking.end_time),
+            customerId: booking.customer_id ?? "",
+            playerName: booking.player_name ?? "",
+            serviceId: booking.service_id ?? "",
+            serviceName: booking.service_id ? serviceMetaById.get(booking.service_id)?.name ?? "" : "",
+            calendarColor: booking.service_id
+              ? serviceMetaById.get(booking.service_id)?.calendarColor ?? DEFAULT_SERVICE_CALENDAR_COLOR
+              : DEFAULT_SERVICE_CALENDAR_COLOR,
+            resource: booking.resource_id ? namesById.get(booking.resource_id) ?? "" : "",
+            status: booking.status,
+            paid: Boolean(booking.paid || creditEntry),
+            paidByMembershipCredit: Boolean(creditEntry),
+            membershipCreditMembershipId: creditEntry?.customerMembershipId ?? "",
+          };
+        }),
         availability: availabilityRows.length
           ? availabilityRows
               .map((row): [string, boolean, string, string] => [
@@ -4030,11 +4225,13 @@ export default function BookingAdminApp({
         })),
       });
       setCustomerMembershipsByCustomerId(customerMembershipsById);
+      setMembershipCreditLedger(membershipCreditLedgerEntries);
       setDataSource("supabase");
     } catch (error) {
       console.error(error);
       setDataSource("local");
       setCustomerMembershipsByCustomerId({});
+      setMembershipCreditLedger([]);
       showToast("Could not load Supabase data. Using local draft data.");
     } finally {
       setIsRemoteLoading(false);
@@ -4489,6 +4686,9 @@ export default function BookingAdminApp({
 
   async function saveModalChange(next: AppState, message: string, change: ModalSaveChange) {
     if (dataSource === "local") {
+      if (change.type === "booking") {
+        setMembershipCreditLedger((current) => updatedMembershipCreditLedgerForBooking(current, change.item));
+      }
       saveLocal(next, message);
       setModal(null);
       return;
@@ -4499,6 +4699,9 @@ export default function BookingAdminApp({
 
     try {
       await upsertModalChange(change, resourceIdsByName);
+      if (change.type === "booking") {
+        setMembershipCreditLedger((current) => updatedMembershipCreditLedgerForBooking(current, change.item));
+      }
       setModal(null);
       showToast(message);
     } catch (error) {
@@ -5536,6 +5739,8 @@ export default function BookingAdminApp({
           modal={modal}
           state={state}
           activeDate={activeDate}
+          customerMembershipsByCustomerId={customerMembershipsByCustomerId}
+          membershipCreditLedger={membershipCreditLedger}
           showToast={showToast}
           showBookingConflictDialog={showBookingConflictDialog}
           onClose={() => setModal(null)}
@@ -17278,6 +17483,8 @@ function EditorModal({
   modal,
   state,
   activeDate,
+  customerMembershipsByCustomerId,
+  membershipCreditLedger,
   showToast,
   showBookingConflictDialog,
   onClose,
@@ -17287,6 +17494,8 @@ function EditorModal({
   modal: NonNullable<ModalState>;
   state: AppState;
   activeDate: string;
+  customerMembershipsByCustomerId: Record<string, CustomerMembershipRecord[]>;
+  membershipCreditLedger: MembershipCreditLedgerEntry[];
   showToast: (message: string) => void;
   showBookingConflictDialog: (message?: string) => void;
   onClose: () => void;
@@ -17323,6 +17532,8 @@ function EditorModal({
           resource: modal.seed?.resource ?? state.resources[0] ?? "",
           status: modal.seed?.status ?? ("Confirmed" as const),
           paid: modal.seed?.paid ?? false,
+          paidByMembershipCredit: modal.seed?.paidByMembershipCredit ?? false,
+          membershipCreditMembershipId: modal.seed?.membershipCreditMembershipId ?? "",
         }
       : null;
 
@@ -17449,6 +17660,32 @@ function EditorModal({
             .filter((item) => item.category === bookingServiceKind)
             .map((item): [string, string] => [item.id, item.name]),
         ];
+  const activeBookingDraft = modal.type === "booking" ? (draft as Booking) : null;
+  const activeBookingServiceId = activeBookingDraft?.serviceId ?? "";
+  const activeBookingDate = activeBookingDraft?.date ?? activeDate;
+  const eligibleCreditOptions =
+    activeBookingDraft?.customerId && activeBookingServiceId && bookingServiceKind !== "unavailable"
+      ? (customerMembershipsByCustomerId[activeBookingDraft.customerId] ?? [])
+          .filter((record) => membershipCanUseCredit(record, activeBookingServiceId, activeBookingDate))
+          .map((record) => {
+            const remaining = membershipCreditRemaining(
+              record,
+              activeBookingDate,
+              membershipCreditLedger,
+              activeBookingDraft.id,
+            );
+
+            return {
+              record,
+              remaining,
+              membershipService: state.services.find((service) => service.id === record.membershipServiceId),
+            };
+          })
+          .filter(
+            ({ record, remaining }) =>
+              remaining > 0 || activeBookingDraft.membershipCreditMembershipId === record.id,
+          )
+      : [];
   const canSave =
     modal.type !== "customer" ||
     Boolean(customerName.first.trim() && customerName.last.trim() && customerDraft.email.trim());
@@ -17521,6 +17758,8 @@ function EditorModal({
     const current = draft as Booking;
     const merged = { ...current, ...next };
     const didChangeService = Object.prototype.hasOwnProperty.call(next, "serviceId");
+    const didChangeCustomer = Object.prototype.hasOwnProperty.call(next, "customerId");
+    const didChangeDate = Object.prototype.hasOwnProperty.call(next, "date");
     const didChangeStart = Object.prototype.hasOwnProperty.call(next, "start");
     const didChangeEnd = Object.prototype.hasOwnProperty.call(next, "end");
     const selectedServiceFromChange =
@@ -17534,6 +17773,18 @@ function EditorModal({
 
     const durationSource = selectedServiceFromChange ?? selectedServiceFromDraft;
     let normalizedBooking: Booking = { ...merged };
+    if (
+      (didChangeCustomer || didChangeService || didChangeDate) &&
+      !Object.prototype.hasOwnProperty.call(next, "membershipCreditMembershipId")
+    ) {
+      normalizedBooking = {
+        ...normalizedBooking,
+        membershipCreditMembershipId: "",
+        paidByMembershipCredit: false,
+        paid: current.paidByMembershipCredit ? false : normalizedBooking.paid,
+      };
+    }
+
     const isUnavailableMode =
       bookingServiceKind === "unavailable" ||
       (!normalizedBooking.serviceId && normalizedBooking.serviceName === "Unavailable");
@@ -17608,6 +17859,8 @@ function EditorModal({
         serviceName: "Unavailable",
         calendarColor: "#6b7280",
         paid: false,
+        paidByMembershipCredit: false,
+        membershipCreditMembershipId: "",
       });
       return;
     }
@@ -17618,6 +17871,8 @@ function EditorModal({
       serviceName: "",
       calendarColor: DEFAULT_SERVICE_CALENDAR_COLOR,
       paid: false,
+      paidByMembershipCredit: false,
+      membershipCreditMembershipId: "",
     } as typeof draft);
   }
 
@@ -17742,6 +17997,30 @@ function EditorModal({
                 />
               )}
               <SelectField label="Resource" value={(draft as Booking).resource} onChange={(value) => patchBooking({ resource: value })} options={state.resources} />
+              {activeBookingDraft?.customerId && activeBookingDraft.serviceId && eligibleCreditOptions.length ? (
+                <label className="space-y-2 sm:col-span-2">
+                  <span className="text-sm font-medium text-black/70">Membership Credit</span>
+                  <select
+                    value={activeBookingDraft.membershipCreditMembershipId ?? ""}
+                    onChange={(event) => {
+                      const membershipId = event.target.value;
+                      patchBooking({
+                        membershipCreditMembershipId: membershipId,
+                        paidByMembershipCredit: Boolean(membershipId),
+                        paid: membershipId ? true : Boolean(activeBookingDraft.paid && !activeBookingDraft.paidByMembershipCredit),
+                      });
+                    }}
+                    className="h-12 w-full rounded-md border border-black/10 bg-white px-4 text-base outline-none focus:border-black/35"
+                  >
+                    <option value="">Do not use membership credit</option>
+                    {eligibleCreditOptions.map(({ record, remaining, membershipService }) => (
+                      <option key={record.id} value={record.id}>
+                        {membershipService?.name || "Membership"} - {remaining} credit{remaining === 1 ? "" : "s"} left today
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
               <div className="sm:col-span-2 rounded-xl border border-black/10 bg-black/[0.02] px-4 py-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -17752,6 +18031,11 @@ function EditorModal({
                     <div className="mt-1 text-sm text-black/55">
                       {bookingDraft ? `${bookingDurationMinutes(bookingDraft)} minutes - ${bookingDraft.resource || "No room selected"}` : ""}
                     </div>
+                    {bookingDraft?.paidByMembershipCredit ? (
+                      <div className="mt-2 inline-flex rounded-full bg-[#ede9fe] px-2.5 py-1 text-xs font-semibold text-[#5b21b6]">
+                        Paid with membership credit
+                      </div>
+                    ) : null}
                   </div>
                   <div className="text-right">
                     <div className="text-sm font-semibold text-black/55">Price</div>
