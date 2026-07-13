@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -4546,6 +4546,146 @@ export default function BookingAdminApp({
     }
   }
 
+  async function assignMembershipToCustomer(customerId: string, membershipServiceId: string) {
+    const service = state.services.find((item) => item.id === membershipServiceId);
+    if (!service || (service.category ?? inferServiceCategory(service.name)) !== "memberships") {
+      showToast("Choose a valid membership.");
+      return false;
+    }
+
+    const hasActiveMembership = (customerMembershipsByCustomerId[customerId] ?? []).some(
+      (membership) => membership.membershipServiceId === membershipServiceId && isActiveCustomerMembership(membership)
+    );
+    if (hasActiveMembership) {
+      showToast("This membership is already active for this customer.");
+      return false;
+    }
+
+    const now = new Date().toISOString();
+    const billingPeriod = service.membershipBillingPeriod ?? "Monthly";
+    const priceCents = Math.round(Number(service.price || 0) * 100);
+    const creditsPerDay = Math.max(0, Math.floor(Number(service.membershipCreditsPerDay ?? 0)));
+    const eligibleServiceIds = Array.isArray(service.membershipEligibleServiceIds)
+      ? service.membershipEligibleServiceIds.filter(Boolean)
+      : [];
+    const currentPeriodEnd = addMembershipPeriod(now, billingPeriod);
+
+    if (dataSource === "local") {
+      const localMembership: CustomerMembershipRecord = {
+        id: makeId("cmem"),
+        customerId,
+        membershipServiceId: service.id,
+        status: "Active",
+        billingPeriod,
+        priceCents,
+        creditsPerDay,
+        creditScope: service.membershipCreditScope ?? "selected_services",
+        eligibleServiceIds,
+        currentPeriodStart: now,
+        currentPeriodEnd,
+        stripeSubscriptionId: "",
+        stripePriceId: service.stripePriceId ?? "",
+        autoRenew: true,
+        startedAt: now,
+        cancelledAt: "",
+        createdAt: now,
+        updatedAt: now,
+      };
+      setCustomerMembershipsByCustomerId((previous) => ({
+        ...previous,
+        [customerId]: [...(previous[customerId] ?? []), localMembership].sort((left, right) =>
+          right.createdAt.localeCompare(left.createdAt)
+        ),
+      }));
+      showToast(`${service.name} assigned.`);
+      return true;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from("booking_customer_memberships")
+        .insert({
+          customer_id: customerId,
+          membership_service_id: service.id,
+          status: "Active",
+          billing_period: billingPeriod,
+          price_cents: priceCents,
+          credits_per_day: creditsPerDay,
+          credit_scope: service.membershipCreditScope ?? "selected_services",
+          eligible_service_ids: eligibleServiceIds,
+          current_period_start: now,
+          current_period_end: currentPeriodEnd,
+          stripe_subscription_id: null,
+          stripe_price_id: service.stripePriceId ?? null,
+          auto_renew: true,
+          started_at: now,
+          cancelled_at: null,
+        })
+        .select("*")
+        .single();
+
+      if (error) throw error;
+
+      const normalized = normalizeCustomerMembershipRow(data as BookingCustomerMembershipRow);
+      setCustomerMembershipsByCustomerId((previous) => ({
+        ...previous,
+        [customerId]: [...(previous[customerId] ?? []), normalized].sort((left, right) =>
+          right.createdAt.localeCompare(left.createdAt)
+        ),
+      }));
+      showToast(`${service.name} assigned.`);
+      return true;
+    } catch (error) {
+      console.error(error);
+      const message = getErrorMessage(error, "Membership could not be assigned.");
+      showToast(message.includes("duplicate") || message.includes("unique") ? "This membership is already active for this customer." : message);
+      return false;
+    }
+  }
+
+  async function cancelCustomerMembership(customerId: string, membershipRecordId: string) {
+    const now = new Date().toISOString();
+
+    if (dataSource === "local") {
+      setCustomerMembershipsByCustomerId((previous) => ({
+        ...previous,
+        [customerId]: (previous[customerId] ?? []).map((membership) =>
+          membership.id === membershipRecordId
+            ? { ...membership, status: "Cancelled", autoRenew: false, cancelledAt: now, updatedAt: now }
+            : membership
+        ),
+      }));
+      showToast("Membership cancelled.");
+      return true;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from("booking_customer_memberships")
+        .update({ status: "Cancelled", auto_renew: false, cancelled_at: now })
+        .eq("id", membershipRecordId)
+        .eq("customer_id", customerId)
+        .select("*")
+        .single();
+
+      if (error) throw error;
+
+      const normalized = normalizeCustomerMembershipRow(data as BookingCustomerMembershipRow);
+      setCustomerMembershipsByCustomerId((previous) => ({
+        ...previous,
+        [customerId]: (previous[customerId] ?? []).map((membership) =>
+          membership.id === normalized.id ? normalized : membership
+        ),
+      }));
+      showToast("Membership cancelled.");
+      return true;
+    } catch (error) {
+      console.error(error);
+      showToast(getErrorMessage(error, "Membership could not be cancelled."));
+      return false;
+    }
+  }
+
   async function saveRentalDraft(rentalDraft: RentalDraft, existingService?: Service | null) {
     const firstDefaultPrice = rentalDraft.defaultPricing[0];
     const scheduleId = rentalDraft.serviceScheduleEnabled ? rentalDraft.scheduleId || null : null;
@@ -5105,11 +5245,16 @@ export default function BookingAdminApp({
                 servicesById={servicesById}
                 taxesAndFees={state.taxesAndFees}
                 customerMemberships={selectedCustomer ? customerMembershipsByCustomerId[selectedCustomer.id] ?? [] : []}
+                membershipServices={state.services.filter(
+                  (service) => (service.category ?? inferServiceCategory(service.name)) === "memberships"
+                )}
                 onSaveCustomer={(item, options) =>
                   saveCustomerDetail(item, options?.message ?? "Customer updated.", {
                     silent: options?.silent,
                   })
                 }
+                onAssignMembership={assignMembershipToCustomer}
+                onCancelMembership={cancelCustomerMembership}
                 showToast={showToast}
               />
             ) : (
@@ -8891,7 +9036,10 @@ function CustomerDetailView({
   servicesById,
   taxesAndFees,
   customerMemberships,
+  membershipServices,
   onSaveCustomer,
+  onAssignMembership,
+  onCancelMembership,
   showToast,
 }: {
   customer: Customer | null;
@@ -8899,7 +9047,10 @@ function CustomerDetailView({
   servicesById: Map<string, Service>;
   taxesAndFees: AppState["taxesAndFees"];
   customerMemberships: CustomerMembershipRecord[];
+  membershipServices: Service[];
   onSaveCustomer: (item: Customer, options?: { message?: string; silent?: boolean }) => Promise<boolean>;
+  onAssignMembership: (customerId: string, membershipServiceId: string) => Promise<boolean>;
+  onCancelMembership: (customerId: string, membershipRecordId: string) => Promise<boolean>;
   showToast: (message: string) => void;
 }) {
   const tabLabels = ["Profile", "Billing", "Memberships", "Packages", "Activity", "Invoices", "Credits"] as const;
@@ -8973,6 +9124,8 @@ function CustomerDetailView({
   const [chargeReturnTo, setChargeReturnTo] = useState<"calendar" | null>(null);
   const [chargeReturnDate, setChargeReturnDate] = useState("");
   const [submittingCharge, setSubmittingCharge] = useState(false);
+  const [membershipServiceDraft, setMembershipServiceDraft] = useState("");
+  const [membershipActionId, setMembershipActionId] = useState("");
 
   const customerBookings = useMemo(
     () =>
@@ -9011,7 +9164,149 @@ function CustomerDetailView({
     setChargeDiscount("");
     setChargeReturnTo(null);
     setChargeReturnDate("");
+    setMembershipServiceDraft("");
+    setMembershipActionId("");
   }, [customer?.id]);
+
+  const currentCustomerId = customer?.id ?? "";
+
+  const loadBillingData = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!currentCustomerId) return;
+
+      setBillingLoading(true);
+      if (!options?.silent) {
+        setBillingError("");
+      }
+
+      try {
+        const [cardsResponse, paymentsResponse] = await Promise.all([
+          fetch(`/api/stripe/cards?customerId=${encodeURIComponent(currentCustomerId)}`, { cache: "no-store" }),
+          fetch(`/api/stripe/payments?customerId=${encodeURIComponent(currentCustomerId)}`, { cache: "no-store" }),
+        ]);
+
+        const [cardsPayload, paymentsPayload] = await Promise.all([cardsResponse.json(), paymentsResponse.json()]);
+
+        if (!cardsResponse.ok) {
+          throw new Error(cardsPayload?.error || "Could not load saved cards.");
+        }
+
+        if (!paymentsResponse.ok) {
+          throw new Error(paymentsPayload?.error || "Could not load payments.");
+        }
+
+        setBillingCards(Array.isArray(cardsPayload.cards) ? (cardsPayload.cards as BillingCard[]) : []);
+        setDefaultPaymentMethodId(
+          typeof cardsPayload.defaultPaymentMethodId === "string" ? cardsPayload.defaultPaymentMethodId : null
+        );
+        setBillingPayments(Array.isArray(paymentsPayload.payments) ? (paymentsPayload.payments as BillingPayment[]) : []);
+        setBillingLoaded(true);
+      } catch (error) {
+        console.error(error);
+        const message = error instanceof Error ? error.message : "Could not load customer billing.";
+        setBillingError(message);
+        if (!options?.silent) {
+          showToast(message);
+        }
+      } finally {
+        setBillingLoading(false);
+      }
+    },
+    [currentCustomerId, showToast]
+  );
+
+  useEffect(() => {
+    if (activeTab === "Billing" && !billingLoaded && !billingLoading) {
+      void loadBillingData({ silent: true });
+    }
+  }, [activeTab, billingLoaded, billingLoading, loadBillingData]);
+
+  useEffect(() => {
+    if (!customer) return;
+
+    const bookingId = detailSearchParams.get("chargeBooking");
+    if (!bookingId) return;
+
+    const selectedBooking = customerBookings.find((item) => item.id === bookingId);
+    if (!selectedBooking) {
+      const params = new URLSearchParams(detailSearchParams.toString());
+      params.delete("chargeBooking");
+      params.delete("chargeAmount");
+      params.delete("chargeDescription");
+      const nextUrl = params.toString() ? `${detailPathname}?${params.toString()}` : detailPathname;
+      detailRouter.replace(nextUrl, { scroll: false });
+      return;
+    }
+
+    const selectedService = servicesById.get(selectedBooking.serviceId);
+    const requestedAmount = detailSearchParams.get("chargeAmount");
+    const requestedReturnTo = detailSearchParams.get("returnTo");
+    const requestedReturnDate = detailSearchParams.get("returnDate");
+    const resolvedAmount =
+      requestedAmount && Number.isFinite(Number(requestedAmount))
+        ? String(Number(requestedAmount))
+        : selectedService
+          ? String(selectedService.price)
+          : "";
+    const resolvedDescription =
+      detailSearchParams.get("chargeDescription") ||
+      [
+        selectedBooking.serviceName || selectedService?.name || "Booking charge",
+        selectedBooking.date,
+        `${selectedBooking.start} - ${selectedBooking.end}`,
+        selectedBooking.resource,
+      ]
+        .filter(Boolean)
+        .join(" | ");
+
+    setActiveTab("Billing");
+    setActiveBillingTab("Payments");
+    setChargeBookingId(selectedBooking.id);
+    setChargeAmount(resolvedAmount);
+    setChargeDescription(resolvedDescription);
+    setChargeReturnTo(requestedReturnTo === "calendar" ? "calendar" : null);
+    setChargeReturnDate(
+      requestedReturnDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedReturnDate)
+        ? requestedReturnDate
+        : selectedBooking.date
+    );
+    setShowPaymentMethodModal(true);
+    void loadBillingData({ silent: true });
+
+    const params = new URLSearchParams(detailSearchParams.toString());
+    params.delete("chargeBooking");
+    params.delete("chargeAmount");
+    params.delete("chargeDescription");
+    params.delete("returnTo");
+    params.delete("returnDate");
+    params.set("tab", "billing");
+    const nextUrl = params.toString() ? `${detailPathname}?${params.toString()}` : detailPathname;
+    detailRouter.replace(nextUrl, { scroll: false });
+  }, [customer, customerBookings, detailPathname, detailRouter, detailSearchParams, loadBillingData, servicesById]);
+
+  useEffect(() => {
+    const stripeState = detailSearchParams.get("stripe");
+    if (!stripeState) return;
+
+    const messages: Record<string, string> = {
+      "card-added": "Card added.",
+      "card-cancelled": "Card setup cancelled.",
+      "charge-paid": "Charge paid.",
+      "charge-cancelled": "Charge cancelled.",
+    };
+
+    const message = messages[stripeState];
+    if (message) {
+      showToast(message);
+    }
+
+    void loadBillingData({ silent: true });
+
+    const params = new URLSearchParams(detailSearchParams.toString());
+    params.delete("stripe");
+    const nextUrl = params.toString() ? `${detailPathname}?${params.toString()}` : detailPathname;
+    detailRouter.replace(nextUrl);
+  }, [detailPathname, detailRouter, detailSearchParams, loadBillingData, showToast]);
 
   if (!customer) {
     return (
@@ -9043,6 +9338,10 @@ function CustomerDetailView({
   const legacyMemberships = customer.memberships.filter(Boolean);
   const memberships = customerMemberships;
   const currentCustomer = customer;
+  const activeMembershipServiceIds = new Set(
+    memberships.filter(isActiveCustomerMembership).map((membership) => membership.membershipServiceId)
+  );
+  const availableMembershipServices = membershipServices.filter((service) => !activeMembershipServiceIds.has(service.id));
   const hasEmergencyContact =
     !emergencyDeleted &&
     Boolean(
@@ -9090,6 +9389,33 @@ function CustomerDetailView({
         return "bg-black/[0.05] text-black/60";
     }
   }
+
+  async function assignSelectedMembership() {
+    if (!membershipServiceDraft) {
+      showToast("Choose a membership to assign.");
+      return;
+    }
+
+    setMembershipActionId("assign");
+    try {
+      const saved = await onAssignMembership(currentCustomer.id, membershipServiceDraft);
+      if (saved) {
+        setMembershipServiceDraft("");
+      }
+    } finally {
+      setMembershipActionId("");
+    }
+  }
+
+  async function cancelSelectedMembership(membershipId: string) {
+    setMembershipActionId(membershipId);
+    try {
+      await onCancelMembership(currentCustomer.id, membershipId);
+    } finally {
+      setMembershipActionId("");
+    }
+  }
+
   const pendingCount = customerBookings.filter((item) => !item.paid && item.status !== "Cancelled").length;
   const topPackages = Array.from(
     customerBookings.reduce((map, booking) => {
@@ -9117,136 +9443,6 @@ function CustomerDetailView({
   const chargeDiscountAmountRaw = Number.isFinite(Number(chargeDiscount)) ? Number(chargeDiscount) : 0;
   const chargeDiscountAmount = chargeDiscountEnabled ? Math.max(0, chargeDiscountAmountRaw) : 0;
   const chargeTotal = Math.max(0, chargeSubtotal + chargeTaxAmount + chargeFeeAmount - chargeDiscountAmount);
-
-  const loadBillingData = useCallback(
-    async (options?: { silent?: boolean }) => {
-      setBillingLoading(true);
-      if (!options?.silent) {
-        setBillingError("");
-      }
-
-      try {
-        const [cardsResponse, paymentsResponse] = await Promise.all([
-          fetch(`/api/stripe/cards?customerId=${encodeURIComponent(currentCustomer.id)}`, { cache: "no-store" }),
-          fetch(`/api/stripe/payments?customerId=${encodeURIComponent(currentCustomer.id)}`, { cache: "no-store" }),
-        ]);
-
-        const [cardsPayload, paymentsPayload] = await Promise.all([cardsResponse.json(), paymentsResponse.json()]);
-
-        if (!cardsResponse.ok) {
-          throw new Error(cardsPayload?.error || "Could not load saved cards.");
-        }
-
-        if (!paymentsResponse.ok) {
-          throw new Error(paymentsPayload?.error || "Could not load payments.");
-        }
-
-        setBillingCards(Array.isArray(cardsPayload.cards) ? (cardsPayload.cards as BillingCard[]) : []);
-        setDefaultPaymentMethodId(
-          typeof cardsPayload.defaultPaymentMethodId === "string" ? cardsPayload.defaultPaymentMethodId : null
-        );
-        setBillingPayments(Array.isArray(paymentsPayload.payments) ? (paymentsPayload.payments as BillingPayment[]) : []);
-        setBillingLoaded(true);
-      } catch (error) {
-        console.error(error);
-        const message = error instanceof Error ? error.message : "Could not load customer billing.";
-        setBillingError(message);
-        if (!options?.silent) {
-          showToast(message);
-        }
-      } finally {
-        setBillingLoading(false);
-      }
-    },
-    [currentCustomer.id, showToast]
-  );
-
-  useEffect(() => {
-    if (activeTab === "Billing" && !billingLoaded && !billingLoading) {
-      void loadBillingData({ silent: true });
-    }
-  }, [activeTab, billingLoaded, billingLoading, loadBillingData]);
-
-  useEffect(() => {
-    const bookingId = detailSearchParams.get("chargeBooking");
-    if (!bookingId) return;
-
-    const selectedBooking = customerBookings.find((item) => item.id === bookingId);
-    if (!selectedBooking) {
-      const params = new URLSearchParams(detailSearchParams.toString());
-      params.delete("chargeBooking");
-      params.delete("chargeAmount");
-      params.delete("chargeDescription");
-      const nextUrl = params.toString() ? `${detailPathname}?${params.toString()}` : detailPathname;
-      detailRouter.replace(nextUrl, { scroll: false });
-      return;
-    }
-
-    const selectedService = servicesById.get(selectedBooking.serviceId);
-    const requestedAmount = detailSearchParams.get("chargeAmount");
-    const requestedReturnTo = detailSearchParams.get("returnTo");
-    const requestedReturnDate = detailSearchParams.get("returnDate");
-    const resolvedAmount =
-      requestedAmount && Number.isFinite(Number(requestedAmount))
-        ? String(Number(requestedAmount))
-        : selectedService
-          ? String(selectedService.price)
-          : "";
-    const resolvedDescription =
-      detailSearchParams.get("chargeDescription") ||
-      [
-        selectedBooking.serviceName || selectedService?.name || "Booking charge",
-        selectedBooking.date,
-        `${selectedBooking.start} - ${selectedBooking.end}`,
-        selectedBooking.resource,
-      ]
-        .filter(Boolean)
-        .join(" | ");
-
-    setActiveTab("Billing");
-    setActiveBillingTab("Payments");
-    setChargeBookingId(selectedBooking.id);
-    setChargeAmount(resolvedAmount);
-    setChargeDescription(resolvedDescription);
-    setChargeReturnTo(requestedReturnTo === "calendar" ? "calendar" : null);
-    setChargeReturnDate(requestedReturnDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedReturnDate) ? requestedReturnDate : selectedBooking.date);
-    setShowPaymentMethodModal(true);
-    void loadBillingData({ silent: true });
-
-    const params = new URLSearchParams(detailSearchParams.toString());
-    params.delete("chargeBooking");
-    params.delete("chargeAmount");
-    params.delete("chargeDescription");
-    params.delete("returnTo");
-    params.delete("returnDate");
-    params.set("tab", "billing");
-    const nextUrl = params.toString() ? `${detailPathname}?${params.toString()}` : detailPathname;
-    detailRouter.replace(nextUrl, { scroll: false });
-  }, [customerBookings, detailPathname, detailRouter, detailSearchParams, loadBillingData, servicesById]);
-
-  useEffect(() => {
-    const stripeState = detailSearchParams.get("stripe");
-    if (!stripeState) return;
-
-    const messages: Record<string, string> = {
-      "card-added": "Card added.",
-      "card-cancelled": "Card setup cancelled.",
-      "charge-paid": "Charge paid.",
-      "charge-cancelled": "Charge cancelled.",
-    };
-
-    const message = messages[stripeState];
-    if (message) {
-      showToast(message);
-    }
-
-    void loadBillingData({ silent: true });
-
-    const params = new URLSearchParams(detailSearchParams.toString());
-    params.delete("stripe");
-    const nextUrl = params.toString() ? `${detailPathname}?${params.toString()}` : detailPathname;
-    detailRouter.replace(nextUrl);
-  }, [detailPathname, detailRouter, detailSearchParams, loadBillingData, showToast]);
 
   async function saveCustomerPatch(
     patch: Partial<Customer>,
@@ -10350,8 +10546,49 @@ function CustomerDetailView({
   }
 
   function renderMembershipTab() {
+    const membershipAssignment = (
+      <div className="border-b border-black/10 p-4">
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+          <label className="min-w-0">
+            <span className="mb-1 block text-[13px] font-semibold text-black">Assign membership</span>
+            <select
+              value={membershipServiceDraft}
+              onChange={(event) => setMembershipServiceDraft(event.target.value)}
+              className="h-11 w-full rounded-lg border border-black/15 bg-white px-3 text-[14px] text-black outline-none transition focus:border-black focus:ring-2 focus:ring-black/10 disabled:cursor-not-allowed disabled:bg-black/[0.04] disabled:text-black/35"
+              disabled={!availableMembershipServices.length || Boolean(membershipActionId)}
+            >
+              <option value="">Select membership</option>
+              {availableMembershipServices.map((service) => (
+                <option key={service.id} value={service.id}>
+                  {service.name} - {money(service.price)} / {service.membershipBillingPeriod ?? "Monthly"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={() => void assignSelectedMembership()}
+            disabled={!membershipServiceDraft || Boolean(membershipActionId)}
+            className="self-end rounded-lg bg-black px-4 py-3 text-[13px] font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:bg-black/20"
+          >
+            {membershipActionId === "assign" ? "Assigning..." : "Assign membership"}
+          </button>
+        </div>
+        {!membershipServices.length ? (
+          <p className="mt-2 text-[13px] text-black/45">
+            Create memberships in Services before assigning them to customers.
+          </p>
+        ) : !availableMembershipServices.length ? (
+          <p className="mt-2 text-[13px] text-black/45">
+            All configured memberships are already active for this customer.
+          </p>
+        ) : null}
+      </div>
+    );
+
     return (
       <DetailPanel title="Memberships">
+        {membershipAssignment}
         {membershipCards.length ? (
           <div className="grid gap-4 p-4 xl:grid-cols-2">
             {membershipCards.map((membership) => {
@@ -10368,14 +10605,26 @@ function CustomerDetailView({
                       <div className="text-[16px] font-semibold text-black">{membershipName}</div>
                       <div className="mt-1 text-[13px] text-black/55">
                         {membership.billingPeriod} membership
-                        {membership.autoRenew ? " · Auto renews" : " · Manual renewal"}
+                        {membership.autoRenew ? " - Auto renews" : " - Manual renewal"}
                       </div>
                     </div>
-                    <span
-                      className={`rounded-full px-3 py-1 text-[12px] font-semibold ${membershipStatusClasses(membership.status)}`}
-                    >
-                      {membership.status}
-                    </span>
+                    <div className="flex flex-col items-end gap-2">
+                      <span
+                        className={`rounded-full px-3 py-1 text-[12px] font-semibold ${membershipStatusClasses(membership.status)}`}
+                      >
+                        {membership.status}
+                      </span>
+                      {isActiveCustomerMembership(membership) ? (
+                        <button
+                          type="button"
+                          onClick={() => void cancelSelectedMembership(membership.id)}
+                          disabled={membershipActionId === membership.id}
+                          className="rounded-lg border border-black/10 px-3 py-1.5 text-[12px] font-semibold text-black/65 hover:bg-black/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {membershipActionId === membership.id ? "Cancelling..." : "Cancel"}
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
 
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -12398,7 +12647,7 @@ function TaxesAndFeesSettingsEditor({
                         className="text-[20px] leading-none transition hover:text-black"
                         aria-label={`Delete ${item.name || "tax rate"}`}
                       >
-                        Ã¢â‚¬Â¦
+                        ...
                       </button>
                       <button
                         type="button"
@@ -12507,7 +12756,7 @@ function TaxesAndFeesSettingsEditor({
                         className="text-[20px] leading-none transition hover:text-black"
                         aria-label={`Delete ${item.name || "custom fee"}`}
                       >
-                        Ã¢â‚¬Â¦
+                        ...
                       </button>
                       <button
                         type="button"
