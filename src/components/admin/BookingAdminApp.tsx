@@ -2615,6 +2615,29 @@ function normalizedPersonName(value?: string | null) {
   return (value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+function normalizedPersonNameCandidates(...values: Array<string | null | undefined>) {
+  const candidates = new Set<string>();
+
+  values.forEach((value) => {
+    const normalized = normalizedPersonName(value);
+    if (!normalized) return;
+
+    candidates.add(normalized);
+
+    const withoutParenthetical = normalizedPersonName(normalized.replace(/\([^)]*\)/g, " "));
+    if (withoutParenthetical) candidates.add(withoutParenthetical);
+
+    const parentheticalPattern = /\(([^)]+)\)/g;
+    let match: RegExpExecArray | null;
+    while ((match = parentheticalPattern.exec(normalized)) !== null) {
+      const candidate = normalizedPersonName(match[1]);
+      if (candidate) candidates.add(candidate);
+    }
+  });
+
+  return Array.from(candidates);
+}
+
 function familyMemberDisplayName(member: FamilyMember) {
   return `${member.firstName} ${member.lastName}`.trim();
 }
@@ -2624,21 +2647,21 @@ function membershipRecordsForBookingCustomer(
   customers: Customer[],
   customerId?: string | null,
   playerName?: string | null,
+  customerName?: string | null,
 ) {
   const customerIds = new Set<string>();
   if (customerId) customerIds.add(customerId);
 
-  const normalizedPlayerName = normalizedPersonName(playerName);
-  if (normalizedPlayerName) {
+  const personCandidates = normalizedPersonNameCandidates(playerName, customerName);
+  if (personCandidates.length) {
     customers.forEach((customer) => {
-      const customerNames = [customer.name, customer.player]
-        .map(normalizedPersonName)
-        .filter(Boolean);
-      const familyMemberNames = customer.familyMembers
-        .map((member) => normalizedPersonName(familyMemberDisplayName(member)))
-        .filter(Boolean);
+      const customerCandidates = normalizedPersonNameCandidates(
+        customer.name,
+        customer.player,
+        ...customer.familyMembers.map(familyMemberDisplayName)
+      );
 
-      if (customerNames.includes(normalizedPlayerName) || familyMemberNames.includes(normalizedPlayerName)) {
+      if (personCandidates.some((candidate) => customerCandidates.includes(candidate))) {
         customerIds.add(customer.id);
       }
     });
@@ -11880,15 +11903,22 @@ function CalendarChargeModal({
   const chargeTotal = Math.max(0, chargeSubtotal + chargeTaxAmount + chargeFeeAmount - chargeDiscountAmount);
   const defaultCard = billingCards.find((card) => card.id === defaultPaymentMethodId) ?? null;
   const membershipCreditOptions = useMemo(() => {
-    if (!booking.customerId || !booking.serviceId || booking.status === "Cancelled") {
+    if (
+      (!booking.customerId && !booking.playerName) ||
+      !booking.serviceId ||
+      booking.status === "Cancelled"
+    ) {
       return [];
     }
+
+    const bookingCustomer = customers.find((customer) => customer.id === booking.customerId) ?? null;
 
     return membershipRecordsForBookingCustomer(
       customerMembershipsByCustomerId,
       customers,
       booking.customerId,
-      booking.playerName
+      booking.playerName,
+      bookingCustomer?.name
     )
       .map((record) => {
         const membershipService = services.find((item) => item.id === record.membershipServiceId) ?? null;
@@ -17942,6 +17972,9 @@ function EditorModal({
   const activeBookingDraft = modal.type === "booking" ? (draft as Booking) : null;
   const activeBookingServiceId = activeBookingDraft?.serviceId ?? "";
   const activeBookingDate = activeBookingDraft?.date ?? activeDate;
+  const activeBookingCustomer = activeBookingDraft?.customerId
+    ? state.customers.find((customer) => customer.id === activeBookingDraft.customerId) ?? null
+    : null;
   const eligibleCreditOptions =
     (activeBookingDraft?.customerId || activeBookingDraft?.playerName) &&
     activeBookingServiceId &&
@@ -17951,6 +17984,7 @@ function EditorModal({
           state.customers,
           activeBookingDraft.customerId,
           activeBookingDraft.playerName,
+          activeBookingCustomer?.name,
         )
           .map((record) => {
             const membershipService =
@@ -18291,7 +18325,9 @@ function EditorModal({
                 />
               )}
               <SelectField label="Resource" value={(draft as Booking).resource} onChange={(value) => patchBooking({ resource: value })} options={state.resources} />
-              {activeBookingDraft?.customerId && activeBookingDraft.serviceId && eligibleCreditOptions.length ? (
+              {(activeBookingDraft?.customerId || activeBookingDraft?.playerName) &&
+              activeBookingDraft.serviceId &&
+              eligibleCreditOptions.length ? (
                 <label className="space-y-2 sm:col-span-2">
                   <span className="text-sm font-medium text-black/70">Membership Credit</span>
                   <select
