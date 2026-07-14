@@ -2611,6 +2611,46 @@ function membershipCreditRemaining(
   );
 }
 
+function normalizedPersonName(value?: string | null) {
+  return (value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function familyMemberDisplayName(member: FamilyMember) {
+  return `${member.firstName} ${member.lastName}`.trim();
+}
+
+function membershipRecordsForBookingCustomer(
+  customerMembershipsByCustomerId: Record<string, CustomerMembershipRecord[]>,
+  customers: Customer[],
+  customerId?: string | null,
+  playerName?: string | null,
+) {
+  const customerIds = new Set<string>();
+  if (customerId) customerIds.add(customerId);
+
+  const normalizedPlayerName = normalizedPersonName(playerName);
+  if (normalizedPlayerName) {
+    customers.forEach((customer) => {
+      const customerNames = [customer.name, customer.player]
+        .map(normalizedPersonName)
+        .filter(Boolean);
+      const familyMemberNames = customer.familyMembers
+        .map((member) => normalizedPersonName(familyMemberDisplayName(member)))
+        .filter(Boolean);
+
+      if (customerNames.includes(normalizedPlayerName) || familyMemberNames.includes(normalizedPlayerName)) {
+        customerIds.add(customer.id);
+      }
+    });
+  }
+
+  const recordsById = new Map<string, CustomerMembershipRecord>();
+  customerIds.forEach((id) => {
+    (customerMembershipsByCustomerId[id] ?? []).forEach((record) => recordsById.set(record.id, record));
+  });
+  return Array.from(recordsById.values());
+}
+
 function bookingCreditLedgerEntry(ledger: MembershipCreditLedgerEntry[], bookingId: string) {
   return ledger.find((entry) => entry.bookingId === bookingId && isMembershipCreditSpend(entry));
 }
@@ -5839,6 +5879,7 @@ export default function BookingAdminApp({
           booking={calendarChargeBooking}
           customer={calendarChargeCustomer}
           service={calendarChargeService}
+          customers={state.customers}
           taxesAndFees={state.taxesAndFees}
           customerMembershipsByCustomerId={customerMembershipsByCustomerId}
           membershipCreditLedger={membershipCreditLedger}
@@ -11773,6 +11814,7 @@ type CalendarChargeModalProps = {
   booking: Booking;
   customer: Customer;
   service: Service | null;
+  customers: Customer[];
   taxesAndFees: AppState["taxesAndFees"];
   customerMembershipsByCustomerId: Record<string, CustomerMembershipRecord[]>;
   membershipCreditLedger: MembershipCreditLedgerEntry[];
@@ -11787,6 +11829,7 @@ function CalendarChargeModal({
   booking,
   customer,
   service,
+  customers,
   taxesAndFees,
   customerMembershipsByCustomerId,
   membershipCreditLedger,
@@ -11841,7 +11884,12 @@ function CalendarChargeModal({
       return [];
     }
 
-    return (customerMembershipsByCustomerId[booking.customerId] ?? [])
+    return membershipRecordsForBookingCustomer(
+      customerMembershipsByCustomerId,
+      customers,
+      booking.customerId,
+      booking.playerName
+    )
       .map((record) => {
         const membershipService = services.find((item) => item.id === record.membershipServiceId) ?? null;
         return { record, membershipService };
@@ -11872,8 +11920,10 @@ function CalendarChargeModal({
     booking.date,
     booking.id,
     booking.membershipCreditMembershipId,
+    booking.playerName,
     booking.serviceId,
     booking.status,
+    customers,
     customerMembershipsByCustomerId,
     membershipCreditLedger,
     services,
@@ -17893,8 +17943,15 @@ function EditorModal({
   const activeBookingServiceId = activeBookingDraft?.serviceId ?? "";
   const activeBookingDate = activeBookingDraft?.date ?? activeDate;
   const eligibleCreditOptions =
-    activeBookingDraft?.customerId && activeBookingServiceId && bookingServiceKind !== "unavailable"
-      ? (customerMembershipsByCustomerId[activeBookingDraft.customerId] ?? [])
+    (activeBookingDraft?.customerId || activeBookingDraft?.playerName) &&
+    activeBookingServiceId &&
+    bookingServiceKind !== "unavailable"
+      ? membershipRecordsForBookingCustomer(
+          customerMembershipsByCustomerId,
+          state.customers,
+          activeBookingDraft.customerId,
+          activeBookingDraft.playerName,
+        )
           .map((record) => {
             const membershipService =
               state.services.find((service) => service.id === record.membershipServiceId) ?? null;
