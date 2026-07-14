@@ -2301,7 +2301,24 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
       if (creditMembership.customerId !== item.customerId) {
         throw new Error("That membership does not belong to this customer.");
       }
-      if (!membershipCanUseCredit(creditMembership, item.serviceId, item.date)) {
+
+      let creditMembershipService: MembershipCreditSettingsSource = null;
+      if (creditMembership.membershipServiceId) {
+        const membershipServiceResult = await supabase
+          .from("booking_services")
+          .select("membership_credits_per_day, membership_credit_scope, membership_eligible_service_ids")
+          .eq("id", creditMembership.membershipServiceId)
+          .maybeSingle();
+
+        if (membershipServiceResult.error) throw membershipServiceResult.error;
+        if (membershipServiceResult.data) {
+          creditMembershipService = normalizeMembershipCreditSettingsRow(
+            membershipServiceResult.data as BookingServiceRow
+          );
+        }
+      }
+
+      if (!membershipCanUseCredit(creditMembership, item.serviceId, item.date, creditMembershipService)) {
         throw new Error("That membership cannot be used for this service.");
       }
 
@@ -2316,7 +2333,7 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
       const ledgerEntries = ((ledgerResult.data ?? []) as BookingMembershipCreditLedgerRow[]).map(
         normalizeMembershipCreditLedgerRow
       );
-      if (membershipCreditRemaining(creditMembership, item.date, ledgerEntries, item.id) < 1) {
+      if (membershipCreditRemaining(creditMembership, item.date, ledgerEntries, item.id, creditMembershipService) < 1) {
         throw new Error("That membership has no credits remaining for this day.");
       }
     }
@@ -2483,6 +2500,21 @@ function normalizeCustomerMembershipRow(row: BookingCustomerMembershipRow): Cust
   };
 }
 
+type MembershipCreditSettingsSource =
+  | Pick<Service, "membershipCreditsPerDay" | "membershipCreditScope" | "membershipEligibleServiceIds">
+  | null
+  | undefined;
+
+function normalizeMembershipCreditSettingsRow(row: BookingServiceRow): MembershipCreditSettingsSource {
+  return {
+    membershipCreditsPerDay: Number(row.membership_credits_per_day ?? 0),
+    membershipCreditScope: normalizeMembershipCreditScope(row.membership_credit_scope),
+    membershipEligibleServiceIds: Array.isArray(row.membership_eligible_service_ids)
+      ? row.membership_eligible_service_ids.filter(Boolean)
+      : [],
+  };
+}
+
 function normalizeMembershipCreditLedgerReason(value?: string | null): MembershipCreditLedgerReason {
   if (value === "manual_adjustment" || value === "refund" || value === "expiration") return value;
   return "booking";
@@ -2507,15 +2539,41 @@ function isMembershipCreditSpend(entry: MembershipCreditLedgerEntry) {
   return entry.reason === "booking" && entry.amount < 0;
 }
 
-function membershipCanUseCredit(record: CustomerMembershipRecord, serviceId: string, bookingDate: string) {
+function membershipCreditSettings(record: CustomerMembershipRecord, membershipService?: MembershipCreditSettingsSource) {
+  const recordEligibleServiceIds = Array.isArray(record.eligibleServiceIds)
+    ? record.eligibleServiceIds.filter(Boolean)
+    : [];
+  const serviceEligibleServiceIds = Array.isArray(membershipService?.membershipEligibleServiceIds)
+    ? membershipService.membershipEligibleServiceIds.filter(Boolean)
+    : [];
+  const recordCreditsPerDay = Math.max(0, Math.floor(Number(record.creditsPerDay ?? 0)));
+  const serviceCreditsPerDay = Math.max(0, Math.floor(Number(membershipService?.membershipCreditsPerDay ?? 0)));
+  const usesRecordCreditConfig = recordCreditsPerDay > 0 || recordEligibleServiceIds.length > 0;
+
+  return {
+    creditsPerDay: recordCreditsPerDay > 0 ? recordCreditsPerDay : serviceCreditsPerDay,
+    creditScope: usesRecordCreditConfig
+      ? record.creditScope
+      : membershipService?.membershipCreditScope ?? record.creditScope,
+    eligibleServiceIds: recordEligibleServiceIds.length > 0 ? recordEligibleServiceIds : serviceEligibleServiceIds,
+  };
+}
+
+function membershipCanUseCredit(
+  record: CustomerMembershipRecord,
+  serviceId: string,
+  bookingDate: string,
+  membershipService?: MembershipCreditSettingsSource,
+) {
+  const settings = membershipCreditSettings(record, membershipService);
   if (!isActiveCustomerMembership(record)) return false;
-  if (!record.creditsPerDay || record.creditsPerDay < 1) return false;
+  if (!settings.creditsPerDay || settings.creditsPerDay < 1) return false;
   if (record.currentPeriodStart && bookingDate < record.currentPeriodStart) return false;
   if (record.currentPeriodEnd && bookingDate > record.currentPeriodEnd) return false;
   if (
-    record.creditScope === "selected_services" &&
-    record.eligibleServiceIds.length > 0 &&
-    !record.eligibleServiceIds.includes(serviceId)
+    settings.creditScope === "selected_services" &&
+    settings.eligibleServiceIds.length > 0 &&
+    !settings.eligibleServiceIds.includes(serviceId)
   ) {
     return false;
   }
@@ -2544,8 +2602,13 @@ function membershipCreditRemaining(
   creditDate: string,
   ledger: MembershipCreditLedgerEntry[],
   excludedBookingId = "",
+  membershipService?: MembershipCreditSettingsSource,
 ) {
-  return Math.max(0, record.creditsPerDay - membershipCreditUsedToday(record.id, creditDate, ledger, excludedBookingId));
+  const settings = membershipCreditSettings(record, membershipService);
+  return Math.max(
+    0,
+    settings.creditsPerDay - membershipCreditUsedToday(record.id, creditDate, ledger, excludedBookingId),
+  );
 }
 
 function bookingCreditLedgerEntry(ledger: MembershipCreditLedgerEntry[], bookingId: string) {
@@ -2574,8 +2637,10 @@ function updatedMembershipCreditLedgerForBooking(current: MembershipCreditLedger
 }
 
 function membershipCreditScopeLabel(record: CustomerMembershipRecord, servicesById: Map<string, Service>) {
-  if (record.creditScope === "all_services") return "All services";
-  const names = record.eligibleServiceIds.map((id) => servicesById.get(id)?.name).filter(Boolean);
+  const membershipService = servicesById.get(record.membershipServiceId) ?? null;
+  const settings = membershipCreditSettings(record, membershipService);
+  if (settings.creditScope === "all_services") return "All services";
+  const names = settings.eligibleServiceIds.map((id) => servicesById.get(id)?.name).filter(Boolean);
   return names.length ? names.join(", ") : "No eligible services selected";
 }
 
@@ -11777,13 +11842,25 @@ function CalendarChargeModal({
     }
 
     return (customerMembershipsByCustomerId[booking.customerId] ?? [])
-      .filter((record) => membershipCanUseCredit(record, booking.serviceId, booking.date))
       .map((record) => {
-        const remaining = membershipCreditRemaining(record, booking.date, membershipCreditLedger, booking.id);
+        const membershipService = services.find((item) => item.id === record.membershipServiceId) ?? null;
+        return { record, membershipService };
+      })
+      .filter(({ record, membershipService }) =>
+        membershipCanUseCredit(record, booking.serviceId, booking.date, membershipService)
+      )
+      .map(({ record, membershipService }) => {
+        const remaining = membershipCreditRemaining(
+          record,
+          booking.date,
+          membershipCreditLedger,
+          booking.id,
+          membershipService
+        );
         return {
           record,
           remaining,
-          membershipService: services.find((item) => item.id === record.membershipServiceId) ?? null,
+          membershipService,
         };
       })
       .filter(
@@ -17818,19 +17895,27 @@ function EditorModal({
   const eligibleCreditOptions =
     activeBookingDraft?.customerId && activeBookingServiceId && bookingServiceKind !== "unavailable"
       ? (customerMembershipsByCustomerId[activeBookingDraft.customerId] ?? [])
-          .filter((record) => membershipCanUseCredit(record, activeBookingServiceId, activeBookingDate))
           .map((record) => {
+            const membershipService =
+              state.services.find((service) => service.id === record.membershipServiceId) ?? null;
+            return { record, membershipService };
+          })
+          .filter(({ record, membershipService }) =>
+            membershipCanUseCredit(record, activeBookingServiceId, activeBookingDate, membershipService)
+          )
+          .map(({ record, membershipService }) => {
             const remaining = membershipCreditRemaining(
               record,
               activeBookingDate,
               membershipCreditLedger,
               activeBookingDraft.id,
+              membershipService,
             );
 
             return {
               record,
               remaining,
-              membershipService: state.services.find((service) => service.id === record.membershipServiceId),
+              membershipService,
             };
           })
           .filter(
