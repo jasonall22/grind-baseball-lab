@@ -2512,7 +2512,13 @@ function membershipCanUseCredit(record: CustomerMembershipRecord, serviceId: str
   if (!record.creditsPerDay || record.creditsPerDay < 1) return false;
   if (record.currentPeriodStart && bookingDate < record.currentPeriodStart) return false;
   if (record.currentPeriodEnd && bookingDate > record.currentPeriodEnd) return false;
-  if (record.creditScope === "selected_services" && !record.eligibleServiceIds.includes(serviceId)) return false;
+  if (
+    record.creditScope === "selected_services" &&
+    record.eligibleServiceIds.length > 0 &&
+    !record.eligibleServiceIds.includes(serviceId)
+  ) {
+    return false;
+  }
   return Boolean(serviceId);
 }
 
