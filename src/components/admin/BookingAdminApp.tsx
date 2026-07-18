@@ -2650,9 +2650,34 @@ function membershipRecordsForBookingCustomer(
   customerName?: string | null,
 ) {
   const customerIds = new Set<string>();
-  if (customerId) customerIds.add(customerId);
+  const personCandidateSet = new Set(normalizedPersonNameCandidates(playerName, customerName));
 
-  const personCandidates = normalizedPersonNameCandidates(playerName, customerName);
+  if (customerId) {
+    customerIds.add(customerId);
+
+    customers.forEach((customer) => {
+      if (customer.id === customerId) {
+        customerIds.add(customer.id);
+        normalizedPersonNameCandidates(
+          customer.name,
+          customer.player,
+          ...customer.familyMembers.map(familyMemberDisplayName)
+        ).forEach((candidate) => personCandidateSet.add(candidate));
+      }
+
+      const matchingFamilyMember = customer.familyMembers.find((member) => member.id === customerId);
+      if (matchingFamilyMember) {
+        customerIds.add(customer.id);
+        normalizedPersonNameCandidates(
+          customer.name,
+          customer.player,
+          familyMemberDisplayName(matchingFamilyMember)
+        ).forEach((candidate) => personCandidateSet.add(candidate));
+      }
+    });
+  }
+
+  const personCandidates = Array.from(personCandidateSet);
   if (personCandidates.length) {
     customers.forEach((customer) => {
       const customerCandidates = normalizedPersonNameCandidates(
