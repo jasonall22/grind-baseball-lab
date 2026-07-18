@@ -2559,25 +2559,43 @@ function membershipCreditSettings(record: CustomerMembershipRecord, membershipSe
   };
 }
 
+function normalizeServiceIdentifier(value?: string | null) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 function membershipCanUseCredit(
   record: CustomerMembershipRecord,
   serviceId: string,
   bookingDate: string,
   membershipService?: MembershipCreditSettingsSource,
+  serviceAliases: string[] = [],
 ) {
   const settings = membershipCreditSettings(record, membershipService);
   if (!isActiveCustomerMembership(record)) return false;
   if (!settings.creditsPerDay || settings.creditsPerDay < 1) return false;
   if (record.currentPeriodStart && bookingDate < record.currentPeriodStart) return false;
   if (record.currentPeriodEnd && bookingDate > record.currentPeriodEnd) return false;
+
+  const normalizedServiceCandidates = new Set<string>();
+  [serviceId, ...serviceAliases].forEach((candidate) => {
+    const normalized = normalizeServiceIdentifier(candidate);
+    if (normalized) normalizedServiceCandidates.add(normalized);
+  });
+
   if (
     settings.creditScope === "selected_services" &&
     settings.eligibleServiceIds.length > 0 &&
-    !settings.eligibleServiceIds.includes(serviceId)
+    !settings.eligibleServiceIds.some((identifier) =>
+      normalizedServiceCandidates.has(normalizeServiceIdentifier(identifier))
+    )
   ) {
     return false;
   }
-  return Boolean(serviceId);
+  return normalizedServiceCandidates.size > 0;
 }
 
 function membershipCreditUsedToday(
@@ -11929,11 +11947,33 @@ function CalendarChargeModal({
   const defaultCard = billingCards.find((card) => card.id === defaultPaymentMethodId) ?? null;
   const membershipCreditOptions = useMemo(() => {
     const bookingService =
-      service ??
       services.find((item) => item.id === booking.serviceId) ??
-      services.find((item) => item.name === booking.serviceName) ??
+      services.find(
+        (item) =>
+          normalizeServiceIdentifier(item.name) === normalizeServiceIdentifier(booking.serviceName)
+      ) ??
+      service ??
       null;
-    const bookingServiceId = booking.serviceId || bookingService?.id || "";
+    const bookingServiceName = bookingService?.name || booking.serviceName || "";
+    const bookingServiceAliases = Array.from(
+      new Set(
+        [
+          booking.serviceId,
+          booking.serviceName,
+          bookingService?.id,
+          bookingService?.name,
+          ...services
+            .filter(
+              (item) =>
+                bookingServiceName &&
+                normalizeServiceIdentifier(item.name) ===
+                  normalizeServiceIdentifier(bookingServiceName)
+            )
+            .flatMap((item) => [item.id, item.name]),
+        ].filter((value): value is string => Boolean(value))
+      )
+    );
+    const bookingServiceId = bookingService?.id || booking.serviceId || booking.serviceName || "";
     const playerCandidates = normalizedPersonNameCandidates(booking.playerName);
     const bookingCustomer =
       customers.find((customer) => customer.id === booking.customerId) ??
@@ -11971,7 +12011,13 @@ function CalendarChargeModal({
         return { record, membershipService };
       })
       .filter(({ record, membershipService }) =>
-        membershipCanUseCredit(record, bookingServiceId, booking.date, membershipService)
+        membershipCanUseCredit(
+          record,
+          bookingServiceId,
+          booking.date,
+          membershipService,
+          bookingServiceAliases
+        )
       )
       .map(({ record, membershipService }) => {
         const remaining = membershipCreditRemaining(
