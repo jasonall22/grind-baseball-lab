@@ -11903,29 +11903,50 @@ function CalendarChargeModal({
   const chargeTotal = Math.max(0, chargeSubtotal + chargeTaxAmount + chargeFeeAmount - chargeDiscountAmount);
   const defaultCard = billingCards.find((card) => card.id === defaultPaymentMethodId) ?? null;
   const membershipCreditOptions = useMemo(() => {
+    const bookingService =
+      service ??
+      services.find((item) => item.id === booking.serviceId) ??
+      services.find((item) => item.name === booking.serviceName) ??
+      null;
+    const bookingServiceId = booking.serviceId || bookingService?.id || "";
+    const playerCandidates = normalizedPersonNameCandidates(booking.playerName);
+    const bookingCustomer =
+      customers.find((customer) => customer.id === booking.customerId) ??
+      (playerCandidates.length
+        ? customers.find((customer) => {
+            const customerCandidates = normalizedPersonNameCandidates(
+              customer.name,
+              customer.player,
+              ...customer.familyMembers.map(familyMemberDisplayName)
+            );
+
+            return playerCandidates.some((candidate) => customerCandidates.includes(candidate));
+          }) ?? null
+        : null);
+    const bookingCustomerId = booking.customerId || bookingCustomer?.id || "";
+    const bookingCustomerName = bookingCustomer?.name ?? booking.playerName ?? "";
+
     if (
-      (!booking.customerId && !booking.playerName) ||
-      !booking.serviceId ||
+      (!bookingCustomerId && !booking.playerName && !bookingCustomerName) ||
+      !bookingServiceId ||
       booking.status === "Cancelled"
     ) {
       return [];
     }
 
-    const bookingCustomer = customers.find((customer) => customer.id === booking.customerId) ?? null;
-
     return membershipRecordsForBookingCustomer(
       customerMembershipsByCustomerId,
       customers,
-      booking.customerId,
+      bookingCustomerId,
       booking.playerName,
-      bookingCustomer?.name
+      bookingCustomerName
     )
       .map((record) => {
         const membershipService = services.find((item) => item.id === record.membershipServiceId) ?? null;
         return { record, membershipService };
       })
       .filter(({ record, membershipService }) =>
-        membershipCanUseCredit(record, booking.serviceId, booking.date, membershipService)
+        membershipCanUseCredit(record, bookingServiceId, booking.date, membershipService)
       )
       .map(({ record, membershipService }) => {
         const remaining = membershipCreditRemaining(
@@ -11952,10 +11973,12 @@ function CalendarChargeModal({
     booking.membershipCreditMembershipId,
     booking.playerName,
     booking.serviceId,
+    booking.serviceName,
     booking.status,
     customers,
     customerMembershipsByCustomerId,
     membershipCreditLedger,
+    service,
     services,
   ]);
   const [selectedMembershipCreditId, setSelectedMembershipCreditId] = useState("");
