@@ -8170,6 +8170,8 @@ function CalendarView({
                           const paymentIndicator = bookingPaymentIndicator(booking);
                           const durationMinutes = Math.max(30, segment.end - segment.start);
                           const isCompactBooking = durationMinutes <= 30;
+                          const bookingCustomerName =
+                            booking.playerName || customer?.player || customer?.name || "Customer";
 
                           return (
                             <button
@@ -8181,9 +8183,18 @@ function CalendarView({
                               }`}
                               style={{ top, height, ...tone.style }}
                             >
-                              <div className="flex items-start justify-between gap-1">
-                                <div className={`${isCompactBooking ? "text-[8px]" : "text-[9px]"} ${tone.timeClass} font-semibold leading-none`}>
-                                  {timeLabel(minutesToTime(segment.start))}
+                              <div className={`flex justify-between gap-1 ${isCompactBooking ? "items-center" : "items-start"}`}>
+                                <div className={isCompactBooking ? "flex min-w-0 items-baseline gap-1" : ""}>
+                                  <span
+                                    className={`${isCompactBooking ? "shrink-0 text-[8px]" : "text-[9px]"} ${tone.timeClass} font-semibold leading-none`}
+                                  >
+                                    {timeLabel(minutesToTime(segment.start))}
+                                  </span>
+                                  {isCompactBooking ? (
+                                    <span className="min-w-0 truncate text-[11px] font-semibold leading-none">
+                                      {bookingCustomerName}
+                                    </span>
+                                  ) : null}
                                 </div>
                                 {paymentIndicator ? (
                                   <span
@@ -8194,9 +8205,11 @@ function CalendarView({
                                   </span>
                                 ) : null}
                               </div>
-                              <div className={`truncate font-semibold leading-[1.05] ${isCompactBooking ? "mt-0.5 text-[11px]" : "mt-1 text-[12px]"}`}>
-                                {booking.playerName || customer?.player || customer?.name || "Customer"}
-                              </div>
+                              {!isCompactBooking ? (
+                                <div className="mt-1 truncate text-[12px] font-semibold leading-[1.05]">
+                                  {bookingCustomerName}
+                                </div>
+                              ) : null}
                               <div
                                 className={`line-clamp-2 font-medium leading-[1.05] ${tone.subClass} ${
                                   isCompactBooking ? "mt-0.5 text-[9px]" : "mt-0.5 text-[10px]"
