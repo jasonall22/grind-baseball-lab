@@ -8183,17 +8183,17 @@ function CalendarView({
                               }`}
                               style={{ top, height, ...tone.style }}
                             >
-                              <div className={`flex justify-between gap-1 ${isCompactBooking ? "items-center" : "items-start"}`}>
-                                <div className={isCompactBooking ? "flex min-w-0 items-baseline gap-1" : ""}>
+                              <div className="flex items-start justify-between gap-1">
+                                <div className="min-w-0">
                                   <span
-                                    className={`${isCompactBooking ? "shrink-0 text-[8px]" : "text-[9px]"} ${tone.timeClass} font-semibold leading-none`}
+                                    className={`block ${isCompactBooking ? "text-[8px]" : "text-[9px]"} ${tone.timeClass} font-semibold leading-none`}
                                   >
                                     {timeLabel(minutesToTime(segment.start))}
                                   </span>
                                   {isCompactBooking ? (
-                                    <span className="min-w-0 truncate text-[11px] font-semibold leading-none">
+                                    <div className="truncate text-[11px] font-semibold leading-none">
                                       {bookingCustomerName}
-                                    </span>
+                                    </div>
                                   ) : null}
                                 </div>
                                 {paymentIndicator ? (
