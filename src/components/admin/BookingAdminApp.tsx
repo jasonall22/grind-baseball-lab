@@ -8329,10 +8329,15 @@ function CalendarView({
                             }`}
                             style={{ top, height, ...tone.style }}
                           >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className={`${isCompactBooking ? "text-[9px]" : "text-[10px]"} ${tone.timeClass} font-semibold leading-none`}>
+                            <div className={isCompactBooking ? "pr-7" : "pr-16"}>
+                              <div
+                                className={`truncate ${isCompactBooking ? "text-[9px]" : "text-[10px]"} ${tone.timeClass} font-semibold leading-none`}
+                              >
                                 {timeLabel(minutesToTime(segment.start))} - {timeLabel(minutesToTime(segment.end))}
                               </div>
+                            </div>
+                            {statusBadge || paymentIndicator ? (
+                              <div className="absolute right-1 top-1 flex items-center gap-1">
                               {statusBadge ? (
                                 <span
                                   className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.06em] ${statusBadge.className}`}
@@ -8348,11 +8353,20 @@ function CalendarView({
                                   <Icon name={paymentIndicator.icon} className="h-3 w-3" />
                                 </span>
                               ) : null}
-                            </div>
-                            <div className={`truncate font-semibold leading-[1.05] ${isCompactBooking ? "mt-0.5 text-[13px]" : "mt-1 text-[15px]"}`}>
+                              </div>
+                            ) : null}
+                            <div
+                              className={`truncate font-semibold leading-none ${
+                                isCompactBooking ? "mt-1 text-[13px]" : "mt-1.5 text-[15px]"
+                              }`}
+                            >
                               {booking.playerName || customer?.player || customer?.name || "Customer"}
                             </div>
-                            <div className={`truncate font-medium leading-[1.05] ${tone.subClass} ${isCompactBooking ? "mt-0.5 text-[10px]" : "mt-0.5 text-[11px]"}`}>
+                            <div
+                              className={`truncate font-medium leading-none ${tone.subClass} ${
+                                isCompactBooking ? "mt-0.5 text-[10px]" : "mt-1 text-[11px]"
+                              }`}
+                            >
                               {service?.name || booking.serviceName || "Service"}
                             </div>
                           </button>
