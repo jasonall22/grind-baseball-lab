@@ -3132,6 +3132,10 @@ function isBookingConflictMessage(message: string) {
   return message.toLowerCase().includes("already booked");
 }
 
+function isUnavailableBooking(booking: Pick<Booking, "serviceId" | "serviceName">) {
+  return !booking.serviceId && booking.serviceName === "Unavailable";
+}
+
 function bookingTonePresentation(booking: Booking, service?: Service | null) {
   if (booking.status === "Cancelled") {
     return {
@@ -3184,6 +3188,7 @@ function bookingStatusBadge(booking: Booking) {
 }
 
 function bookingPaymentIndicator(booking: Booking) {
+  if (isUnavailableBooking(booking)) return null;
   if (booking.status === "Cancelled") return null;
 
   if (booking.paidByMembershipCredit) {
@@ -8170,8 +8175,12 @@ function CalendarView({
                           const paymentIndicator = bookingPaymentIndicator(booking);
                           const durationMinutes = Math.max(30, segment.end - segment.start);
                           const isCompactBooking = durationMinutes <= 30;
+                          const isUnavailableBlock = isUnavailableBooking(booking);
                           const bookingCustomerName =
-                            booking.playerName || customer?.player || customer?.name || "Customer";
+                            isUnavailableBlock ? "Unavailable" : booking.playerName || customer?.player || customer?.name || "Customer";
+                          const bookingServiceName = isUnavailableBlock
+                            ? booking.resource
+                            : service?.name || booking.serviceName || "Service";
 
                           return (
                             <button
@@ -8210,13 +8219,15 @@ function CalendarView({
                                   {bookingCustomerName}
                                 </div>
                               ) : null}
-                              <div
-                                className={`line-clamp-2 font-medium leading-[1.05] ${tone.subClass} ${
-                                  isCompactBooking ? "mt-0.5 text-[9px]" : "mt-0.5 text-[10px]"
-                                }`}
-                              >
-                                {service?.name || booking.serviceName || "Service"}
-                              </div>
+                              {isCompactBooking && isUnavailableBlock ? null : (
+                                <div
+                                  className={`line-clamp-2 font-medium leading-[1.05] ${tone.subClass} ${
+                                    isCompactBooking ? "mt-0.5 text-[9px]" : "mt-0.5 text-[10px]"
+                                  }`}
+                                >
+                                  {bookingServiceName}
+                                </div>
+                              )}
                             </button>
                           );
                         })}
@@ -8318,6 +8329,13 @@ function CalendarView({
                         const paymentIndicator = bookingPaymentIndicator(booking);
                         const durationMinutes = Math.max(30, segment.end - segment.start);
                         const isCompactBooking = durationMinutes <= 30;
+                        const isUnavailableBlock = isUnavailableBooking(booking);
+                        const bookingTitle = isUnavailableBlock
+                          ? "Unavailable"
+                          : booking.playerName || customer?.player || customer?.name || "Customer";
+                        const bookingSubtitle = isUnavailableBlock
+                          ? booking.resource
+                          : service?.name || booking.serviceName || "Service";
 
                         return (
                           <button
@@ -8360,15 +8378,17 @@ function CalendarView({
                                 isCompactBooking ? "mt-1 text-[13px]" : "mt-1.5 text-[15px]"
                               }`}
                             >
-                              {booking.playerName || customer?.player || customer?.name || "Customer"}
+                              {bookingTitle}
                             </div>
-                            <div
-                              className={`truncate font-medium leading-none ${tone.subClass} ${
-                                isCompactBooking ? "mt-0.5 text-[10px]" : "mt-1 text-[11px]"
-                              }`}
-                            >
-                              {service?.name || booking.serviceName || "Service"}
-                            </div>
+                            {isCompactBooking && isUnavailableBlock ? null : (
+                              <div
+                                className={`truncate font-medium leading-none ${tone.subClass} ${
+                                  isCompactBooking ? "mt-0.5 text-[10px]" : "mt-1 text-[11px]"
+                                }`}
+                              >
+                                {bookingSubtitle}
+                              </div>
+                            )}
                           </button>
                         );
                       })}
