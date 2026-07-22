@@ -1862,11 +1862,11 @@ function normalizeBookings(bookings: Booking[], services: Service[]) {
   const servicesById = new Map(normalizeServices(services).map((service) => [service.id, service]));
   return bookings.map((booking) => {
     const service = servicesById.get(booking.serviceId);
-    return {
+    return normalizeUnavailableBooking({
       ...booking,
       serviceName: service?.name ?? booking.serviceName ?? "",
       calendarColor: normalizeCalendarColor(service?.calendarColor ?? booking.calendarColor),
-    };
+    });
   });
 }
 
@@ -2254,7 +2254,7 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
   }
 
   if (change.type === "booking") {
-    const item = change.item;
+    const item = normalizeUnavailableBooking(change.item);
     const resourceId = resourceIdsByName[item.resource] || null;
     let creditMembership: CustomerMembershipRecord | null = null;
 
@@ -3132,8 +3132,26 @@ function isBookingConflictMessage(message: string) {
   return message.toLowerCase().includes("already booked");
 }
 
+const UNAVAILABLE_SERVICE_NAME = "Unavailable";
+
 function isUnavailableBooking(booking: Pick<Booking, "serviceId" | "serviceName">) {
-  return !booking.serviceId && booking.serviceName === "Unavailable";
+  return !booking.serviceId && booking.serviceName === UNAVAILABLE_SERVICE_NAME;
+}
+
+function normalizeUnavailableBooking(booking: Booking): Booking {
+  if (!isUnavailableBooking(booking)) return booking;
+
+  return {
+    ...booking,
+    customerId: "",
+    playerName: "",
+    serviceId: "",
+    serviceName: UNAVAILABLE_SERVICE_NAME,
+    calendarColor: "#6b7280",
+    paid: false,
+    paidByMembershipCredit: false,
+    membershipCreditMembershipId: "",
+  };
 }
 
 function bookingTonePresentation(booking: Booking, service?: Service | null) {
@@ -4361,7 +4379,7 @@ export default function BookingAdminApp({
         bookings: bookingRows.map((booking) => {
           const creditEntry = bookingCreditLedgerEntry(membershipCreditLedgerEntries, booking.id);
 
-          return {
+          return normalizeUnavailableBooking({
             id: booking.id,
             date: booking.booking_date,
             start: normalizeTime(booking.start_time),
@@ -4369,16 +4387,16 @@ export default function BookingAdminApp({
             customerId: booking.customer_id ?? "",
             playerName: booking.player_name ?? "",
             serviceId: booking.service_id ?? "",
-            serviceName: booking.service_id ? serviceMetaById.get(booking.service_id)?.name ?? "" : "",
+            serviceName: booking.service_id ? serviceMetaById.get(booking.service_id)?.name ?? "" : UNAVAILABLE_SERVICE_NAME,
             calendarColor: booking.service_id
               ? serviceMetaById.get(booking.service_id)?.calendarColor ?? DEFAULT_SERVICE_CALENDAR_COLOR
-              : DEFAULT_SERVICE_CALENDAR_COLOR,
+              : "#6b7280",
             resource: booking.resource_id ? namesById.get(booking.resource_id) ?? "" : "",
             status: booking.status,
             paid: Boolean(booking.paid || creditEntry),
             paidByMembershipCredit: Boolean(creditEntry),
             membershipCreditMembershipId: creditEntry?.customerMembershipId ?? "",
-          };
+          });
         }),
         availability: availabilityRows.length
           ? availabilityRows
@@ -18091,7 +18109,7 @@ function EditorModal({
   const effectiveBookingService = bookingDraft?.serviceId ? selectedBookingService ?? matchedBookingService : null;
   const [bookingServiceKind, setBookingServiceKind] = useState<BookingModalServiceKind>(() => {
     if (!bookingDraft) return "rentals";
-    if (!bookingDraft.serviceId && bookingDraft.serviceName === "Unavailable") return "unavailable";
+    if (isUnavailableBooking(bookingDraft)) return "unavailable";
     return resolveBookingModalServiceKind(selectedBookingService?.category ?? matchedBookingService?.category);
   });
   const bookingServiceItems: { key: BookingModalServiceKind; label: string; icon: IconName }[] = [
@@ -18163,7 +18181,7 @@ function EditorModal({
     if (!bookingDraft) return;
 
     const nextKind: BookingModalServiceKind =
-      !bookingDraft.serviceId && bookingDraft.serviceName === "Unavailable"
+      isUnavailableBooking(bookingDraft)
         ? "unavailable"
         : resolveBookingModalServiceKind(selectedBookingService?.category ?? matchedBookingService?.category);
 
@@ -18188,7 +18206,7 @@ function EditorModal({
       onSave({ ...state, services: upsert(state.services, item) }, "Service saved.", { type: "service", item });
     }
     if (modal.type === "booking") {
-      const item = { ...(draft as Booking), id: draft.id || makeId("bk") };
+      const item = normalizeUnavailableBooking({ ...(draft as Booking), id: draft.id || makeId("bk") });
       const scheduleConflictMessage = bookingScheduleConflictMessage(item, state.services, state.schedules);
 
       if (scheduleConflictMessage) {
@@ -18256,7 +18274,7 @@ function EditorModal({
 
     const isUnavailableMode =
       bookingServiceKind === "unavailable" ||
-      (!normalizedBooking.serviceId && normalizedBooking.serviceName === "Unavailable");
+      isUnavailableBooking(normalizedBooking);
 
     if (selectedServiceFromChange) {
       const preferredRooms =
@@ -18283,9 +18301,14 @@ function EditorModal({
     if (isUnavailableMode && !selectedServiceFromChange) {
       setDraft({
         ...normalizedBooking,
+        customerId: "",
+        playerName: "",
         serviceId: "",
-        serviceName: "Unavailable",
+        serviceName: UNAVAILABLE_SERVICE_NAME,
         calendarColor: normalizedBooking.calendarColor || "#6b7280",
+        paid: false,
+        paidByMembershipCredit: false,
+        membershipCreditMembershipId: "",
       } as typeof draft);
       return;
     }
@@ -18325,7 +18348,9 @@ function EditorModal({
     if (kind === "unavailable") {
       patchBooking({
         serviceId: "",
-        serviceName: "Unavailable",
+        serviceName: UNAVAILABLE_SERVICE_NAME,
+        customerId: "",
+        playerName: "",
         calendarColor: "#6b7280",
         paid: false,
         paidByMembershipCredit: false,
@@ -18433,23 +18458,27 @@ function EditorModal({
               <SelectField label="Status" value={(draft as Booking).status} onChange={(value) => patchBooking({ status: value as Booking["status"] })} options={["Confirmed", "Pending", "Cancelled"]} />
               <TextField label="Start" type="time" value={(draft as Booking).start} onChange={(value) => patchBooking({ start: value })} />
               <TextField label="End" type="time" value={(draft as Booking).end} onChange={(value) => patchBooking({ end: value })} />
-              <SelectField
-                label="Customer"
-                value={(draft as Booking).customerId}
-                onChange={(value) => {
-                  patchBooking({
-                    customerId: value,
-                    playerName: "",
-                  });
-                }}
-                options={bookingCustomerOptions}
-              />
-              <SelectField
-                label="Player"
-                value={(draft as Booking).playerName ?? ""}
-                onChange={(value) => patchBooking({ playerName: value })}
-                options={bookingPlayerOptions}
-              />
+              {bookingServiceKind !== "unavailable" ? (
+                <>
+                  <SelectField
+                    label="Customer"
+                    value={(draft as Booking).customerId}
+                    onChange={(value) => {
+                      patchBooking({
+                        customerId: value,
+                        playerName: "",
+                      });
+                    }}
+                    options={bookingCustomerOptions}
+                  />
+                  <SelectField
+                    label="Player"
+                    value={(draft as Booking).playerName ?? ""}
+                    onChange={(value) => patchBooking({ playerName: value })}
+                    options={bookingPlayerOptions}
+                  />
+                </>
+              ) : null}
               {bookingServiceKind === "unavailable" ? (
                 <div className="grid gap-2">
                   <div className="text-sm font-semibold text-black/70">Service</div>
