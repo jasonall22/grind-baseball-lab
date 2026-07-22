@@ -18,6 +18,7 @@ const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : 
 
 type MembershipBillingPeriod = "Weekly" | "Monthly" | "Yearly";
 type MembershipCreditScope = "all_services" | "selected_services";
+type MembershipCreditLimitPeriod = "day" | "week" | "month";
 
 type Service = {
   id: string;
@@ -37,6 +38,7 @@ type Service = {
   membershipBillingPeriod?: MembershipBillingPeriod;
   membershipMemberLimit?: number | null;
   membershipCreditsPerDay?: number;
+  membershipCreditLimitPeriod?: MembershipCreditLimitPeriod;
   membershipCreditScope?: MembershipCreditScope;
   membershipEligibleServiceIds?: string[];
   stripeProductId?: string | null;
@@ -259,6 +261,7 @@ type MembershipDraft = {
   billingPeriod: MembershipBillingPeriod;
   memberLimit: string;
   creditsPerDay: string;
+  creditLimitPeriod: MembershipCreditLimitPeriod;
   creditScope: MembershipCreditScope;
   eligibleServiceIds: string[];
   private: boolean;
@@ -330,6 +333,7 @@ type BookingServiceRow = {
   membership_billing_period: MembershipBillingPeriod | null;
   membership_member_limit: number | null;
   membership_credits_per_day: number | null;
+  membership_credit_limit_period?: MembershipCreditLimitPeriod | null;
   membership_credit_scope: MembershipCreditScope | null;
   membership_eligible_service_ids: string[] | null;
   stripe_product_id: string | null;
@@ -397,6 +401,7 @@ type BookingCustomerMembershipRow = {
   billing_period: string | null;
   price_cents: number | null;
   credits_per_day: number | null;
+  credit_limit_period?: MembershipCreditLimitPeriod | null;
   credit_scope: string | null;
   eligible_service_ids: string[] | null;
   current_period_start: string | null;
@@ -418,6 +423,7 @@ type CustomerMembershipRecord = {
   billingPeriod: MembershipBillingPeriod;
   priceCents: number;
   creditsPerDay: number;
+  creditLimitPeriod: MembershipCreditLimitPeriod;
   creditScope: MembershipCreditScope;
   eligibleServiceIds: string[];
   currentPeriodStart: string;
@@ -1702,6 +1708,7 @@ function normalizeService(service: Service): Service {
     membershipBillingPeriod: service.membershipBillingPeriod ?? "Monthly",
     membershipMemberLimit: service.membershipMemberLimit ?? null,
     membershipCreditsPerDay: Number.isFinite(membershipCredits) ? Math.max(0, membershipCredits) : 0,
+    membershipCreditLimitPeriod: normalizeMembershipCreditLimitPeriod(service.membershipCreditLimitPeriod),
     membershipCreditScope: service.membershipCreditScope ?? "selected_services",
     membershipEligibleServiceIds: Array.isArray(service.membershipEligibleServiceIds)
       ? service.membershipEligibleServiceIds.filter(Boolean)
@@ -2245,6 +2252,7 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
       membership_billing_period: item.membershipBillingPeriod ?? "Monthly",
       membership_member_limit: item.membershipMemberLimit ?? null,
       membership_credits_per_day: item.membershipCreditsPerDay ?? 0,
+      membership_credit_limit_period: normalizeMembershipCreditLimitPeriod(item.membershipCreditLimitPeriod),
       membership_credit_scope: item.membershipCreditScope ?? "selected_services",
       membership_eligible_service_ids: item.membershipEligibleServiceIds ?? [],
       stripe_product_id: item.stripeProductId ?? null,
@@ -2306,7 +2314,7 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
       if (creditMembership.membershipServiceId) {
         const membershipServiceResult = await supabase
           .from("booking_services")
-          .select("membership_credits_per_day, membership_credit_scope, membership_eligible_service_ids")
+          .select("membership_credits_per_day, membership_credit_limit_period, membership_credit_scope, membership_eligible_service_ids")
           .eq("id", creditMembership.membershipServiceId)
           .maybeSingle();
 
@@ -2322,11 +2330,14 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
         throw new Error("That membership cannot be used for this service.");
       }
 
+      const creditSettings = membershipCreditSettings(creditMembership, creditMembershipService);
+      const creditRange = membershipCreditLimitPeriodRange(item.date, creditSettings.creditLimitPeriod);
       const ledgerResult = await supabase
         .from("booking_membership_credit_ledger")
         .select("*")
         .eq("customer_membership_id", item.membershipCreditMembershipId)
-        .eq("credit_date", item.date);
+        .gte("credit_date", creditRange.start)
+        .lte("credit_date", creditRange.end);
 
       if (ledgerResult.error) throw ledgerResult.error;
 
@@ -2334,7 +2345,11 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
         normalizeMembershipCreditLedgerRow
       );
       if (membershipCreditRemaining(creditMembership, item.date, ledgerEntries, item.id, creditMembershipService) < 1) {
-        throw new Error("That membership has no credits remaining for this day.");
+        throw new Error(
+          `That membership has no credits remaining for this ${membershipCreditLimitPeriodLabel(
+            creditSettings.creditLimitPeriod
+          )}.`
+        );
       }
     }
 
@@ -2455,6 +2470,11 @@ function normalizeMembershipCreditScope(value: unknown): MembershipCreditScope {
   return value === "all_services" ? "all_services" : "selected_services";
 }
 
+function normalizeMembershipCreditLimitPeriod(value: unknown): MembershipCreditLimitPeriod {
+  if (value === "week" || value === "month") return value;
+  return "day";
+}
+
 function normalizeCustomerMembershipStatus(value: unknown): CustomerMembershipStatus {
   if (value === "Paused" || value === "Past Due" || value === "Cancelled" || value === "Expired") return value;
   return "Active";
@@ -2486,6 +2506,7 @@ function normalizeCustomerMembershipRow(row: BookingCustomerMembershipRow): Cust
     billingPeriod: normalizeMembershipBillingPeriod(row.billing_period),
     priceCents: Number(row.price_cents ?? 0),
     creditsPerDay: Number(row.credits_per_day ?? 0),
+    creditLimitPeriod: normalizeMembershipCreditLimitPeriod(row.credit_limit_period),
     creditScope: normalizeMembershipCreditScope(row.credit_scope),
     eligibleServiceIds: Array.isArray(row.eligible_service_ids) ? row.eligible_service_ids.filter(Boolean) : [],
     currentPeriodStart: row.current_period_start ?? "",
@@ -2501,13 +2522,14 @@ function normalizeCustomerMembershipRow(row: BookingCustomerMembershipRow): Cust
 }
 
 type MembershipCreditSettingsSource =
-  | Pick<Service, "membershipCreditsPerDay" | "membershipCreditScope" | "membershipEligibleServiceIds">
+  | Pick<Service, "membershipCreditsPerDay" | "membershipCreditLimitPeriod" | "membershipCreditScope" | "membershipEligibleServiceIds">
   | null
   | undefined;
 
 function normalizeMembershipCreditSettingsRow(row: BookingServiceRow): MembershipCreditSettingsSource {
   return {
     membershipCreditsPerDay: Number(row.membership_credits_per_day ?? 0),
+    membershipCreditLimitPeriod: normalizeMembershipCreditLimitPeriod(row.membership_credit_limit_period),
     membershipCreditScope: normalizeMembershipCreditScope(row.membership_credit_scope),
     membershipEligibleServiceIds: Array.isArray(row.membership_eligible_service_ids)
       ? row.membership_eligible_service_ids.filter(Boolean)
@@ -2549,9 +2571,13 @@ function membershipCreditSettings(record: CustomerMembershipRecord, membershipSe
   const recordCreditsPerDay = Math.max(0, Math.floor(Number(record.creditsPerDay ?? 0)));
   const serviceCreditsPerDay = Math.max(0, Math.floor(Number(membershipService?.membershipCreditsPerDay ?? 0)));
   const usesRecordCreditConfig = recordCreditsPerDay > 0 || recordEligibleServiceIds.length > 0;
+  const creditLimitPeriod = usesRecordCreditConfig
+    ? normalizeMembershipCreditLimitPeriod(record.creditLimitPeriod)
+    : normalizeMembershipCreditLimitPeriod(membershipService?.membershipCreditLimitPeriod ?? record.creditLimitPeriod);
 
   return {
     creditsPerDay: recordCreditsPerDay > 0 ? recordCreditsPerDay : serviceCreditsPerDay,
+    creditLimitPeriod,
     creditScope: usesRecordCreditConfig
       ? record.creditScope
       : membershipService?.membershipCreditScope ?? record.creditScope,
@@ -2598,17 +2624,72 @@ function membershipCanUseCredit(
   return normalizedServiceCandidates.size > 0;
 }
 
-function membershipCreditUsedToday(
+function membershipCreditLimitPeriodLabel(period: MembershipCreditLimitPeriod) {
+  if (period === "week") return "week";
+  if (period === "month") return "month";
+  return "day";
+}
+
+function membershipCreditLimitPeriodAdjective(period: MembershipCreditLimitPeriod) {
+  if (period === "week") return "Weekly";
+  if (period === "month") return "Monthly";
+  return "Daily";
+}
+
+function membershipCreditLimitPeriodRemainingLabel(period: MembershipCreditLimitPeriod) {
+  if (period === "week") return "this week";
+  if (period === "month") return "this month";
+  return "today";
+}
+
+function membershipCreditAllowanceLabel(credits: number, period: MembershipCreditLimitPeriod) {
+  return `${credits} credit${credits === 1 ? "" : "s"} per ${membershipCreditLimitPeriodLabel(period)}`;
+}
+
+function membershipCreditLimitPeriodRange(creditDate: string, period: MembershipCreditLimitPeriod) {
+  const start = parseLocalDate(creditDate);
+
+  if (period === "week") {
+    const day = start.getDay();
+    start.setDate(start.getDate() - day);
+    const end = parseLocalDate(isoDate(start));
+    end.setDate(end.getDate() + 6);
+    return {
+      start: isoDate(start),
+      end: isoDate(end),
+    };
+  }
+
+  if (period === "month") {
+    const end = parseLocalDate(creditDate);
+    start.setDate(1);
+    end.setMonth(start.getMonth() + 1, 0);
+    return {
+      start: isoDate(start),
+      end: isoDate(end),
+    };
+  }
+
+  return {
+    start: isoDate(start),
+    end: isoDate(start),
+  };
+}
+
+function membershipCreditUsedInPeriod(
   recordId: string,
   creditDate: string,
+  period: MembershipCreditLimitPeriod,
   ledger: MembershipCreditLedgerEntry[],
   excludedBookingId = "",
 ) {
+  const range = membershipCreditLimitPeriodRange(creditDate, period);
   return ledger
     .filter(
       (entry) =>
         entry.customerMembershipId === recordId &&
-        entry.creditDate === creditDate &&
+        entry.creditDate >= range.start &&
+        entry.creditDate <= range.end &&
         isMembershipCreditSpend(entry) &&
         entry.bookingId !== excludedBookingId,
     )
@@ -2625,7 +2706,8 @@ function membershipCreditRemaining(
   const settings = membershipCreditSettings(record, membershipService);
   return Math.max(
     0,
-    settings.creditsPerDay - membershipCreditUsedToday(record.id, creditDate, ledger, excludedBookingId),
+    settings.creditsPerDay -
+      membershipCreditUsedInPeriod(record.id, creditDate, settings.creditLimitPeriod, ledger, excludedBookingId),
   );
 }
 
@@ -3737,6 +3819,7 @@ function createMembershipDraftFromService(service?: Service | null): MembershipD
     billingPeriod: service?.membershipBillingPeriod ?? "Monthly",
     memberLimit: service?.membershipMemberLimit != null ? String(service.membershipMemberLimit) : "",
     creditsPerDay: service?.membershipCreditsPerDay != null ? String(service.membershipCreditsPerDay) : "1",
+    creditLimitPeriod: normalizeMembershipCreditLimitPeriod(service?.membershipCreditLimitPeriod),
     creditScope: service?.membershipCreditScope ?? "selected_services",
     eligibleServiceIds: service?.membershipEligibleServiceIds ?? [],
     private: service?.status === "Off",
@@ -4340,6 +4423,7 @@ export default function BookingAdminApp({
           membershipBillingPeriod: service.membership_billing_period ?? "Monthly",
           membershipMemberLimit: service.membership_member_limit ?? null,
           membershipCreditsPerDay: Number(service.membership_credits_per_day ?? 0),
+          membershipCreditLimitPeriod: normalizeMembershipCreditLimitPeriod(service.membership_credit_limit_period),
           membershipCreditScope: service.membership_credit_scope ?? "selected_services",
           membershipEligibleServiceIds: Array.isArray(service.membership_eligible_service_ids)
             ? service.membership_eligible_service_ids
@@ -4968,6 +5052,7 @@ export default function BookingAdminApp({
     const billingPeriod = service.membershipBillingPeriod ?? "Monthly";
     const priceCents = Math.round(Number(service.price || 0) * 100);
     const creditsPerDay = Math.max(0, Math.floor(Number(service.membershipCreditsPerDay ?? 0)));
+    const creditLimitPeriod = normalizeMembershipCreditLimitPeriod(service.membershipCreditLimitPeriod);
     const eligibleServiceIds = Array.isArray(service.membershipEligibleServiceIds)
       ? service.membershipEligibleServiceIds.filter(Boolean)
       : [];
@@ -4982,6 +5067,7 @@ export default function BookingAdminApp({
         billingPeriod,
         priceCents,
         creditsPerDay,
+        creditLimitPeriod,
         creditScope: service.membershipCreditScope ?? "selected_services",
         eligibleServiceIds,
         currentPeriodStart: now,
@@ -5014,6 +5100,7 @@ export default function BookingAdminApp({
           billing_period: billingPeriod,
           price_cents: priceCents,
           credits_per_day: creditsPerDay,
+          credit_limit_period: creditLimitPeriod,
           credit_scope: service.membershipCreditScope ?? "selected_services",
           eligible_service_ids: eligibleServiceIds,
           current_period_start: now,
@@ -5147,6 +5234,7 @@ export default function BookingAdminApp({
 
     const parsedPrice = Number(membershipDraft.price || 0);
     const parsedCredits = Number(membershipDraft.creditsPerDay || 0);
+    const creditLimitPeriod = normalizeMembershipCreditLimitPeriod(membershipDraft.creditLimitPeriod);
     const parsedMemberLimit = membershipDraft.memberLimit.trim() ? Number(membershipDraft.memberLimit) : null;
 
     if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
@@ -5154,7 +5242,7 @@ export default function BookingAdminApp({
       return;
     }
     if (!Number.isFinite(parsedCredits) || parsedCredits < 0) {
-      showToast("Enter a valid daily credit amount.");
+      showToast("Enter a valid credit amount.");
       return;
     }
     if (parsedMemberLimit !== null && (!Number.isFinite(parsedMemberLimit) || parsedMemberLimit < 0)) {
@@ -5181,6 +5269,7 @@ export default function BookingAdminApp({
       membershipBillingPeriod: membershipDraft.billingPeriod,
       membershipMemberLimit: parsedMemberLimit,
       membershipCreditsPerDay: Math.floor(parsedCredits),
+      membershipCreditLimitPeriod: creditLimitPeriod,
       membershipCreditScope: membershipDraft.creditScope,
       membershipEligibleServiceIds:
         membershipDraft.creditScope === "all_services" ? [] : membershipDraft.eligibleServiceIds,
@@ -6841,15 +6930,35 @@ function MembershipEditorView({
             </p>
           </div>
           <div className="grid gap-5">
-            <label className="grid max-w-xs gap-2 text-sm font-semibold">
-              Credits per day
-              <input
-                className="h-12 rounded border border-black/20 px-4 text-base font-normal outline-none focus:border-black"
-                inputMode="numeric"
-                value={draft.creditsPerDay}
-                onChange={(event) => update("creditsPerDay", event.target.value)}
-              />
-            </label>
+            <div className="grid gap-4 md:grid-cols-[minmax(0,180px)_minmax(0,220px)]">
+              <label className="grid gap-2 text-sm font-semibold">
+                # of credits
+                <input
+                  className="h-12 rounded border border-black/20 px-4 text-base font-normal outline-none focus:border-black"
+                  inputMode="numeric"
+                  value={draft.creditsPerDay}
+                  onChange={(event) => update("creditsPerDay", event.target.value)}
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-semibold">
+                Time period
+                <select
+                  className="h-12 rounded border border-black/20 px-4 text-base font-normal outline-none focus:border-black"
+                  value={draft.creditLimitPeriod}
+                  onChange={(event) =>
+                    update("creditLimitPeriod", normalizeMembershipCreditLimitPeriod(event.target.value))
+                  }
+                >
+                  <option value="day">Daily</option>
+                  <option value="week">Weekly</option>
+                  <option value="month">Monthly</option>
+                </select>
+              </label>
+            </div>
+            <p className="-mt-2 text-sm text-black/55">
+              {Number(draft.creditsPerDay || 0) || 0} credit{Number(draft.creditsPerDay || 0) === 1 ? "" : "s"} can be redeemed per{" "}
+              {membershipCreditLimitPeriodLabel(draft.creditLimitPeriod)}.
+            </p>
             <div className="grid gap-3 text-sm font-semibold">
               Eligible services
               <div className="flex flex-wrap gap-2">
@@ -9850,7 +9959,7 @@ function CustomerDetailView({
   const creditMemberships = membershipCards.filter(
     (membership) => isActiveCustomerMembership(membership) && membership.creditsPerDay > 0
   );
-  const totalDailyCredits = creditMemberships.reduce((total, membership) => total + membership.creditsPerDay, 0);
+  const totalCreditAllowance = creditMemberships.reduce((total, membership) => total + membership.creditsPerDay, 0);
 
   function membershipStatusClasses(status: CustomerMembershipStatus) {
     switch (status) {
@@ -11112,8 +11221,12 @@ function CustomerDetailView({
                       <div className="mt-1 text-[15px] font-semibold text-black">{money(membership.priceCents / 100)}</div>
                     </div>
                     <div className="rounded-xl border border-black/8 bg-black/[0.02] px-3 py-3">
-                      <div className="text-[12px] uppercase tracking-[0.08em] text-black/40">Credits per day</div>
-                      <div className="mt-1 text-[15px] font-semibold text-black">{membership.creditsPerDay}</div>
+                      <div className="text-[12px] uppercase tracking-[0.08em] text-black/40">
+                        {membershipCreditLimitPeriodAdjective(membership.creditLimitPeriod)} credits
+                      </div>
+                      <div className="mt-1 text-[15px] font-semibold text-black">
+                        {membershipCreditAllowanceLabel(membership.creditsPerDay, membership.creditLimitPeriod)}
+                      </div>
                     </div>
                   </div>
 
@@ -11220,8 +11333,8 @@ function CustomerDetailView({
         {creditMemberships.length ? (
           <div className="space-y-4 p-4">
             <div className="rounded-2xl border border-black/10 bg-black/[0.02] px-4 py-4">
-              <div className="text-[12px] uppercase tracking-[0.08em] text-black/40">Daily credits available</div>
-              <div className="mt-2 text-[28px] font-semibold text-black">{totalDailyCredits}</div>
+              <div className="text-[12px] uppercase tracking-[0.08em] text-black/40">Credit allowance</div>
+              <div className="mt-2 text-[28px] font-semibold text-black">{totalCreditAllowance}</div>
               <div className="mt-1 text-[13px] text-black/55">
                 Across {creditMemberships.length} active membership{creditMemberships.length === 1 ? "" : "s"}.
               </div>
@@ -11234,7 +11347,7 @@ function CustomerDetailView({
                     <div>
                       <div className="text-[15px] font-semibold text-black">{membership.service?.name || "Membership"}</div>
                       <div className="mt-1 text-[13px] text-black/55">
-                        {membership.creditsPerDay} credit{membership.creditsPerDay === 1 ? "" : "s"} per day
+                        {membershipCreditAllowanceLabel(membership.creditsPerDay, membership.creditLimitPeriod)}
                       </div>
                     </div>
                     <span
@@ -12092,10 +12205,12 @@ function CalendarChargeModal({
           booking.id,
           membershipService
         );
+        const creditLimitPeriod = membershipCreditSettings(record, membershipService).creditLimitPeriod;
         return {
           record,
           remaining,
           membershipService,
+          creditLimitPeriod,
         };
       })
       .filter(
@@ -12125,7 +12240,9 @@ function CalendarChargeModal({
   const membershipCreditDescription = selectedMembershipCreditOption
     ? `${selectedMembershipCreditOption.membershipService?.name ?? "Membership"} - ${
         selectedMembershipCreditOption.remaining
-      } credit${selectedMembershipCreditOption.remaining === 1 ? "" : "s"} left today.`
+      } credit${selectedMembershipCreditOption.remaining === 1 ? "" : "s"} left ${membershipCreditLimitPeriodRemainingLabel(
+        selectedMembershipCreditOption.creditLimitPeriod
+      )}.`
     : "No eligible membership credits for this booking.";
 
   const loadBillingCards = useCallback(async () => {
@@ -12401,9 +12518,10 @@ function CalendarChargeModal({
                       onChange={(event) => setSelectedMembershipCreditId(event.target.value)}
                       className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-[13px] text-black outline-none"
                     >
-                      {membershipCreditOptions.map(({ record, membershipService, remaining }) => (
+                      {membershipCreditOptions.map(({ record, membershipService, remaining, creditLimitPeriod }) => (
                         <option key={record.id} value={record.id}>
-                          {membershipService?.name ?? "Membership"} - {remaining} left today
+                          {membershipService?.name ?? "Membership"} - {remaining} left{" "}
+                          {membershipCreditLimitPeriodRemainingLabel(creditLimitPeriod)}
                         </option>
                       ))}
                     </select>
@@ -18161,11 +18279,13 @@ function EditorModal({
               activeBookingDraft.id,
               membershipService,
             );
+            const creditLimitPeriod = membershipCreditSettings(record, membershipService).creditLimitPeriod;
 
             return {
               record,
               remaining,
               membershipService,
+              creditLimitPeriod,
             };
           })
           .filter(
@@ -18513,9 +18633,10 @@ function EditorModal({
                     className="h-12 w-full rounded-md border border-black/10 bg-white px-4 text-base outline-none focus:border-black/35"
                   >
                     <option value="">Do not use membership credit</option>
-                    {eligibleCreditOptions.map(({ record, remaining, membershipService }) => (
+                    {eligibleCreditOptions.map(({ record, remaining, membershipService, creditLimitPeriod }) => (
                       <option key={record.id} value={record.id}>
-                        {membershipService?.name || "Membership"} - {remaining} credit{remaining === 1 ? "" : "s"} left today
+                        {membershipService?.name || "Membership"} - {remaining} credit{remaining === 1 ? "" : "s"} left{" "}
+                        {membershipCreditLimitPeriodRemainingLabel(creditLimitPeriod)}
                       </option>
                     ))}
                   </select>
