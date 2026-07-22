@@ -8188,7 +8188,7 @@ function CalendarView({
                                   <span
                                     className={`block ${isCompactBooking ? "text-[8px]" : "text-[9px]"} ${tone.timeClass} font-semibold leading-none`}
                                   >
-                                    {timeLabel(minutesToTime(segment.start))}
+                                    {timeLabel(minutesToTime(segment.start))} - {timeLabel(minutesToTime(segment.end))}
                                   </span>
                                   {isCompactBooking ? (
                                     <div className="truncate text-[11px] font-semibold leading-none">
