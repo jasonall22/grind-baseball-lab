@@ -5433,36 +5433,36 @@ export default function BookingAdminApp({
       <div
         className={[
           "grid min-h-screen grid-cols-1 bg-white",
-          "pb-[76px] xl:pb-0",
-          isSettingsView ? "" : "xl:grid-cols-[284px_minmax(0,1fr)]",
+          "pb-[76px] lg:pb-0",
+          isSettingsView ? "" : "lg:grid-cols-[284px_minmax(0,1fr)]",
         ].join(" ")}
       >
         {!isSettingsView ? (
-          <aside className="hidden bg-[#f5f5f5] p-3 xl:flex xl:min-h-screen xl:flex-col xl:px-6 xl:py-6">
-            <div className="-mx-6 -mt-6 mb-6 hidden items-center justify-between border-b border-white/10 bg-black px-6 py-4 shadow-[0_1px_4px_rgba(0,0,0,0.28)] xl:flex">
+          <aside className="hidden bg-[#f5f5f5] p-3 lg:flex lg:min-h-screen lg:flex-col lg:px-6 lg:py-6">
+            <div className="-mx-6 -mt-6 mb-6 hidden items-center justify-between border-b border-white/10 bg-black px-6 py-4 shadow-[0_1px_4px_rgba(0,0,0,0.28)] lg:flex">
               <AdminBrandLogo size="desktop" />
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-black/20 text-white">
                 <Icon name="user" className="h-5 w-5" />
               </div>
             </div>
 
-            <nav className="flex w-full gap-1 overflow-x-auto xl:mt-8 xl:grid xl:overflow-visible">
+            <nav className="flex w-full gap-1 overflow-x-auto lg:mt-8 lg:grid lg:overflow-visible">
               {navItems.map((item) => (
-                <div key={item.key} className="shrink-0 xl:w-full">
+                <div key={item.key} className="shrink-0 lg:w-full">
                   <Link
                     href={bookingAdminRouteByView[item.key]}
                     title={item.label}
                     className={[
-                      "flex h-10 items-center gap-3 rounded-lg px-3 text-left text-lg transition xl:w-full",
+                      "flex h-10 items-center gap-3 rounded-lg px-3 text-left text-lg transition lg:w-full",
                       activeMainView === item.key ? "bg-[#eeeeee] font-bold" : "hover:bg-black/5",
                     ].join(" ")}
                   >
                     <Icon name={item.icon} />
-                    <span className="hidden xl:inline">{item.label}</span>
+                    <span className="hidden lg:inline">{item.label}</span>
                   </Link>
 
                   {item.key === "services" && activeMainView === "services" ? (
-                    <div className="mt-1 hidden space-y-1 pl-5 pr-2 xl:block">
+                    <div className="mt-1 hidden space-y-1 pl-5 pr-2 lg:block">
                       {serviceSectionItems.map((sectionItem) => (
                         <Link
                           key={sectionItem.key}
@@ -5482,7 +5482,7 @@ export default function BookingAdminApp({
               ))}
             </nav>
 
-            <div className="mt-auto hidden space-y-1 xl:block">
+            <div className="mt-auto hidden space-y-1 lg:block">
               {[
                 ["message", "Contact Us"],
                 ["help", "Help Center"],
@@ -6072,7 +6072,7 @@ function MobileAdminHeader({ variant = "dark" }: { variant?: "dark" | "light" })
   return (
     <header
       className={[
-        "sticky top-0 z-30 flex h-[84px] items-center justify-between px-7 xl:hidden",
+        "sticky top-0 z-30 flex h-[84px] items-center justify-between px-7 lg:hidden",
         isLight
           ? "border-b border-black/10 bg-white shadow-[0_1px_4px_rgba(0,0,0,0.16)]"
           : "border-b border-white/10 bg-black shadow-[0_1px_4px_rgba(0,0,0,0.28)]",
@@ -6096,7 +6096,7 @@ function MobileBottomNav({ activeView }: { activeView: BookingAdminView }) {
   ];
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 grid h-[76px] grid-cols-5 border-t border-black/10 bg-white/95 px-1 shadow-[0_-2px_12px_rgba(0,0,0,0.08)] backdrop-blur xl:hidden">
+    <nav className="fixed inset-x-0 bottom-0 z-40 grid h-[76px] grid-cols-5 border-t border-black/10 bg-white/95 px-1 shadow-[0_-2px_12px_rgba(0,0,0,0.08)] backdrop-blur lg:hidden">
       {items.map((item) => {
         const active = activeView === item.key;
         return (
@@ -7931,15 +7931,15 @@ function CalendarView({
   }
 
   return (
-    <section className="min-h-screen px-6 py-8 xl:px-7">
-      <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex flex-wrap items-center gap-2">
+    <section className="min-h-screen px-6 py-8 lg:px-7">
+      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex shrink-0 flex-nowrap items-center gap-2">
           <CalendarToolbarButton label="Today" onClick={() => onDateChange(isoDate(new Date()))} />
           <CalendarToolbarButton label="Back" onClick={() => onDateChange(shiftDate(activeDate, calendarMode === "week" ? -7 : -1))} />
           <CalendarToolbarButton label="Next" onClick={() => onDateChange(shiftDate(activeDate, calendarMode === "week" ? 7 : 1))} />
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex min-w-0 items-center gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <input
             ref={dateInputRef}
             type="date"
@@ -7951,13 +7951,13 @@ function CalendarView({
           <button
             type="button"
             onClick={openDatePicker}
-            className="inline-flex min-h-12 items-center gap-3 rounded-lg border border-black/15 bg-[#f3f3f3] px-5 text-[16px] font-semibold text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
+            className="inline-flex min-h-10 shrink-0 items-center gap-3 whitespace-nowrap rounded-lg border border-black/15 bg-[#f3f3f3] px-4 text-[16px] font-semibold text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
           >
             <span>{formatCalendarHeading(activeDate)}</span>
             <Icon name="chevron" className="h-4 w-4 rotate-90 text-black/60" />
           </button>
 
-          <div className="hidden items-center gap-2 xl:flex">
+          <div className="hidden items-center gap-2 lg:flex">
             <CalendarSegmentButton active={resourceMode === "rooms"} onClick={() => changeMode("rooms")}>
               Rooms
             </CalendarSegmentButton>
@@ -7969,7 +7969,7 @@ function CalendarView({
             </CalendarSegmentButton>
           </div>
 
-          <div className="hidden items-center gap-2 xl:flex">
+          <div className="hidden items-center gap-2 lg:flex">
             <CalendarSegmentButton active={calendarMode === "day"} onClick={() => setCalendarMode("day")}>
               Day
             </CalendarSegmentButton>
@@ -7982,12 +7982,12 @@ function CalendarView({
             label="Filter View"
             icon="table"
             onClick={() => showToast("Filter View is next.")}
-            className="hidden xl:inline-flex"
+            className="hidden lg:inline-flex"
           />
         </div>
       </div>
 
-      <div className="mb-5 flex flex-wrap items-center gap-2 xl:hidden">
+      <div className="mb-5 flex flex-wrap items-center gap-2 lg:hidden">
         <CalendarSegmentButton active={resourceMode === "rooms"} onClick={() => changeMode("rooms")}>
           Rooms
         </CalendarSegmentButton>
@@ -8007,7 +8007,7 @@ function CalendarView({
       </div>
 
       {resourceMode === "rooms" ? (
-        <div className="mb-4 flex gap-2 overflow-x-auto pb-1 xl:hidden">
+        <div className="mb-4 flex gap-2 overflow-x-auto pb-1 lg:hidden">
           <button
             type="button"
             onClick={() => setMobileResource(allMobileResourcesValue)}
@@ -8041,7 +8041,7 @@ function CalendarView({
       {resourceMode === "rooms" ? (
         calendarMode === "day" ? (
           <>
-            <div className="space-y-3 xl:hidden">
+            <div className="space-y-3 lg:hidden">
               <div className="rounded-xl border border-black/10 bg-white p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -8227,7 +8227,7 @@ function CalendarView({
               </div>
             </div>
 
-            <div className="hidden overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm xl:block">
+            <div className="hidden overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm lg:block">
           <div
             className="grid min-w-[980px] border-b border-black/10 bg-[#f6f7f9]"
             style={{ gridTemplateColumns: `96px repeat(${resources.length}, minmax(220px, 1fr))` }}
@@ -8267,7 +8267,7 @@ function CalendarView({
                   const resourceTimeline = resourceDayView?.timeline ?? [];
 
                   return (
-                    <div key={resource} className="relative border-r border-black/10 last:border-r-0" style={{ height: columnHeight }}>
+                    <div key={resource} className="relative border-r border-black/10 bg-[#eaf6ff] last:border-r-0" style={{ height: columnHeight }}>
                       {slots.map((slot) => (
                         <div key={`${resource}-${slot}`} className="border-b border-black/10" style={{ height: slotHeight }} />
                       ))}
@@ -8299,13 +8299,13 @@ function CalendarView({
                               key={`${resource}-available-${index}`}
                               type="button"
                               onClick={() => createBookingFromSlot(resource, segment.start, segment.end)}
-                              className="absolute left-[3px] right-[3px] overflow-hidden rounded-md border border-[#caefdd] bg-[#f3fcf7] px-3 py-2 text-left text-[#166443] shadow-sm transition hover:bg-[#e9faef]"
+                              aria-label={`Book ${resource} from ${timeLabel(minutesToTime(segment.start))} to ${timeLabel(minutesToTime(segment.end))}`}
+                              className="absolute left-0 right-0 overflow-hidden border border-transparent bg-transparent text-left transition hover:bg-[#d9efff]/70"
                               style={{ top, height }}
                             >
-                              <div className="text-[10px] font-semibold leading-none text-[#15835d]/75">
-                                {timeLabel(minutesToTime(segment.start))} - {timeLabel(minutesToTime(segment.end))}
-                              </div>
-                              <div className="mt-1 text-[15px] font-semibold leading-none">Available</div>
+                              <span className="sr-only">
+                                Available {timeLabel(minutesToTime(segment.start))} - {timeLabel(minutesToTime(segment.end))}
+                              </span>
                             </button>
                           );
                         }
@@ -8367,7 +8367,7 @@ function CalendarView({
           </>
         ) : (
           <>
-            <div className="space-y-3 xl:hidden">
+            <div className="space-y-3 lg:hidden">
               {mobileWeekBookings.map(({ date, items }) => (
                 <div key={date} className="rounded-xl border border-black/10 bg-white p-4 shadow-sm">
                   {(() => {
@@ -8455,7 +8455,7 @@ function CalendarView({
               ))}
             </div>
 
-            <div className="hidden rounded-xl border border-black/10 bg-white shadow-sm xl:block">
+            <div className="hidden rounded-xl border border-black/10 bg-white shadow-sm lg:block">
             <div className="grid gap-0 border-b border-black/10 bg-[#f6f7f9] md:grid-cols-7">
               {week.map((date) => (
                 <div key={date} className="border-r border-black/10 px-4 py-4 text-center last:border-r-0">
@@ -8535,7 +8535,7 @@ function CalendarView({
       <button
         type="button"
         onClick={() => onNew()}
-        className="fixed bottom-[90px] right-5 z-20 inline-flex min-h-14 items-center gap-3 rounded-full bg-[#1f1a1a] px-6 text-[15px] font-semibold text-white shadow-[0_10px_24px_rgba(0,0,0,0.24)] xl:bottom-6"
+        className="fixed bottom-[90px] right-5 z-20 inline-flex min-h-14 items-center gap-3 rounded-full bg-[#1f1a1a] px-6 text-[15px] font-semibold text-white shadow-[0_10px_24px_rgba(0,0,0,0.24)] lg:bottom-6"
       >
         <Icon name="plus" className="h-5 w-5" />
         <span>New Booking</span>
@@ -8559,7 +8559,7 @@ function CalendarToolbarButton({
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex min-h-10 items-center gap-2 rounded-lg border border-black/15 bg-white px-4 text-[15px] font-medium text-black shadow-[0_1px_0_rgba(255,255,255,0.9)] hover:bg-black/[0.02] ${className}`.trim()}
+      className={`inline-flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-black/15 bg-white px-4 text-[15px] font-medium text-black shadow-[0_1px_0_rgba(255,255,255,0.9)] hover:bg-black/[0.02] ${className}`.trim()}
     >
       {icon ? <Icon name={icon} className="h-4 w-4" /> : null}
       <span>{label}</span>
@@ -8581,7 +8581,7 @@ function CalendarSegmentButton({
       type="button"
       onClick={onClick}
       className={[
-        "inline-flex min-h-10 items-center rounded-lg border px-4 text-[15px] font-medium shadow-[0_1px_0_rgba(255,255,255,0.9)]",
+        "inline-flex min-h-10 shrink-0 items-center whitespace-nowrap rounded-lg border px-4 text-[15px] font-medium shadow-[0_1px_0_rgba(255,255,255,0.9)]",
         active
           ? "border-black/15 bg-[#ececec] text-black"
           : "border-black/15 bg-white text-black/75 hover:bg-black/[0.02]",
