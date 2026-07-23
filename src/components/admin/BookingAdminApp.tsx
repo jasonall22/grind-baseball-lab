@@ -35,6 +35,8 @@ type Service = {
   mediaUrl?: string;
   calendarColor: string;
   scheduleId?: string | null;
+  collectTax?: boolean;
+  collectFee?: boolean;
   membershipBillingPeriod?: MembershipBillingPeriod;
   membershipMemberLimit?: number | null;
   membershipCreditsPerDay?: number;
@@ -330,6 +332,8 @@ type BookingServiceRow = {
   sort_order: number;
   calendar_color: string | null;
   schedule_id: string | null;
+  collect_tax?: boolean | null;
+  collect_fee?: boolean | null;
   membership_billing_period: MembershipBillingPeriod | null;
   membership_member_limit: number | null;
   membership_credits_per_day: number | null;
@@ -1710,6 +1714,8 @@ function normalizeService(service: Service): Service {
       : [],
     calendarColor: normalizeCalendarColor(service.calendarColor),
     scheduleId: service.scheduleId ?? null,
+    collectTax: Boolean(service.collectTax),
+    collectFee: Boolean(service.collectFee),
     membershipBillingPeriod: service.membershipBillingPeriod ?? "Monthly",
     membershipMemberLimit: service.membershipMemberLimit ?? null,
     membershipCreditsPerDay: Number.isFinite(membershipCredits) ? Math.max(0, membershipCredits) : 0,
@@ -2254,6 +2260,8 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
       status: item.status,
       calendar_color: normalizeCalendarColor(item.calendarColor),
       schedule_id: item.scheduleId ?? null,
+      collect_tax: Boolean(item.collectTax),
+      collect_fee: Boolean(item.collectFee),
       membership_billing_period: item.membershipBillingPeriod ?? "Monthly",
       membership_member_limit: item.membershipMemberLimit ?? null,
       membership_credits_per_day: item.membershipCreditsPerDay ?? 0,
@@ -3803,8 +3811,8 @@ function createRentalDraftFromService(service: Service, defaultScheduleId: strin
     instructors: service.instructors ?? [],
     reserveOnPurchase: "any",
     reserveEquipment: false,
-    collectTax: false,
-    collectFee: false,
+    collectTax: Boolean(service.collectTax),
+    collectFee: Boolean(service.collectFee),
     slotRestrictionSummary: "No slot restrictions",
     serviceScheduleEnabled: Boolean(service.scheduleId),
     scheduleId: service.scheduleId ?? defaultScheduleId,
@@ -4424,6 +4432,8 @@ export default function BookingAdminApp({
           status: service.status,
           calendarColor: normalizeCalendarColor(service.calendar_color),
           scheduleId: service.schedule_id,
+          collectTax: Boolean(service.collect_tax),
+          collectFee: Boolean(service.collect_fee),
           membershipBillingPeriod: service.membership_billing_period ?? "Monthly",
           membershipMemberLimit: service.membership_member_limit ?? null,
           membershipCreditsPerDay: Number(service.membership_credits_per_day ?? 0),
@@ -5269,6 +5279,8 @@ export default function BookingAdminApp({
       mediaUrl: rentalDraft.mediaUrl,
       calendarColor: normalizeCalendarColor(rentalDraft.calendarColor),
       scheduleId,
+      collectTax: rentalDraft.collectTax,
+      collectFee: rentalDraft.collectFee,
     };
     const next = {
       ...state,
@@ -5338,6 +5350,8 @@ export default function BookingAdminApp({
       mediaUrl: "",
       calendarColor: existingService?.calendarColor ?? DEFAULT_SERVICE_CALENDAR_COLOR,
       scheduleId: null,
+      collectTax: false,
+      collectFee: false,
       membershipBillingPeriod: membershipDraft.billingPeriod,
       membershipMemberLimit: parsedMemberLimit,
       membershipCreditsPerDay: Math.floor(parsedCredits),
@@ -7632,10 +7646,10 @@ function RentalEditorView({
                 </AdvancedSettingsRow>
 
                 <AdvancedSettingsRow
-                  title="Custom Fees"
-                  description="Choose the custom fee that applies to this service."
+                  title="Card Service Fee"
+                  description="Apply the configured service fee when this service is paid by credit card."
                 >
-                  <InlineToggleChoice checked={draft.collectFee} onChange={(checked) => patch({ collectFee: checked })} label="Collect fee" />
+                  <InlineToggleChoice checked={draft.collectFee} onChange={(checked) => patch({ collectFee: checked })} label="Charge card service fee" />
                 </AdvancedSettingsRow>
 
                 <AdvancedSettingsRow
@@ -10425,6 +10439,18 @@ function CustomerDetailView({
   const walletBalance = 0;
   const availableTaxRates = taxesAndFees.taxRates;
   const availableCustomFees = taxesAndFees.customFees;
+  const selectedChargeBooking = chargeBookingId
+    ? customerBookings.find((booking) => booking.id === chargeBookingId) ?? null
+    : null;
+  const selectedChargeService = selectedChargeBooking
+    ? servicesById.get(selectedChargeBooking.serviceId) ??
+      Array.from(servicesById.values()).find(
+        (service) =>
+          selectedChargeBooking.serviceName &&
+          normalizeServiceIdentifier(service.name) === normalizeServiceIdentifier(selectedChargeBooking.serviceName)
+      ) ??
+      null
+    : null;
   const selectedChargeTaxRate = availableTaxRates.find((item) => item.id === chargeTaxRateId) ?? null;
   const selectedChargeFee = availableCustomFees.find((item) => item.id === chargeFeeId) ?? null;
   const chargeSubtotal = Number.isFinite(Number(chargeAmount)) ? Number(chargeAmount) : 0;
@@ -10820,6 +10846,21 @@ function CustomerDetailView({
     setShowPaymentMethodModal(true);
   }
 
+  function applyServiceChargeAdjustments(method: "card" | "cash" | "waive") {
+    const shouldApplyTax = Boolean(selectedChargeService?.collectTax && availableTaxRates.length);
+    const shouldApplyCardFee = Boolean(method === "card" && selectedChargeService?.collectFee && availableCustomFees.length);
+
+    if (!chargeTaxRateId && availableTaxRates[0]) {
+      setChargeTaxRateId(availableTaxRates[0].id);
+    }
+    if (!chargeFeeId && availableCustomFees[0]) {
+      setChargeFeeId(availableCustomFees[0].id);
+    }
+
+    setChargeTaxEnabled(shouldApplyTax);
+    setChargeFeeEnabled(shouldApplyCardFee);
+  }
+
   function chooseChargeMethod(method: "card" | "cash" | "waive" | "scan") {
     if (method === "scan") {
       showToast("Scan card using iPhone is not connected yet. Use Card, Cash, or Waive Payment for now.");
@@ -10831,12 +10872,7 @@ function CustomerDetailView({
       return;
     }
 
-    if (!chargeTaxRateId && availableTaxRates[0]) {
-      setChargeTaxRateId(availableTaxRates[0].id);
-    }
-    if (!chargeFeeId && availableCustomFees[0]) {
-      setChargeFeeId(availableCustomFees[0].id);
-    }
+    applyServiceChargeAdjustments(method);
 
     setChargeMethod(method);
     setShowPaymentMethodModal(false);
@@ -12822,6 +12858,21 @@ function CalendarChargeModal({
     onClose();
   }
 
+  function applyServiceChargeAdjustments(method: "card" | "cash" | "waive") {
+    const shouldApplyTax = Boolean(service?.collectTax && availableTaxRates.length);
+    const shouldApplyCardFee = Boolean(method === "card" && service?.collectFee && availableCustomFees.length);
+
+    if (!chargeTaxRateId && availableTaxRates[0]) {
+      setChargeTaxRateId(availableTaxRates[0].id);
+    }
+    if (!chargeFeeId && availableCustomFees[0]) {
+      setChargeFeeId(availableCustomFees[0].id);
+    }
+
+    setChargeTaxEnabled(shouldApplyTax);
+    setChargeFeeEnabled(shouldApplyCardFee);
+  }
+
   function chooseChargeMethod(method: "card" | "cash" | "waive" | "scan") {
     if (method === "scan") {
       showToast("Scan card using iPhone is not connected yet. Use Card, Cash, or Waive Payment for now.");
@@ -12839,12 +12890,7 @@ function CalendarChargeModal({
       }
     }
 
-    if (!chargeTaxRateId && availableTaxRates[0]) {
-      setChargeTaxRateId(availableTaxRates[0].id);
-    }
-    if (!chargeFeeId && availableCustomFees[0]) {
-      setChargeFeeId(availableCustomFees[0].id);
-    }
+    applyServiceChargeAdjustments(method);
 
     setChargeMethod(method);
     setShowPaymentMethodModal(false);
