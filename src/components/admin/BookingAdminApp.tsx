@@ -4536,6 +4536,57 @@ export default function BookingAdminApp({
     showToast(message);
   }
 
+  async function moveCalendarBooking(bookingId: string, patch: Pick<Booking, "date" | "resource" | "start" | "end">) {
+    const currentBooking = state.bookings.find((booking) => booking.id === bookingId);
+    if (!currentBooking) {
+      showToast("Could not find booking.");
+      return false;
+    }
+
+    const movedBooking = normalizeUnavailableBooking({
+      ...currentBooking,
+      ...patch,
+    });
+    const scheduleConflictMessage = bookingScheduleConflictMessage(movedBooking, state.services, state.schedules);
+
+    if (scheduleConflictMessage) {
+      showBookingConflictDialog(scheduleConflictMessage);
+      return false;
+    }
+
+    if (hasRoomBookingConflict(state.bookings, movedBooking)) {
+      showBookingConflictDialog("This room is already booked for that time. Please choose another time or another room.");
+      return false;
+    }
+
+    const next = { ...state, bookings: upsert(state.bookings, movedBooking) };
+
+    if (dataSource === "local") {
+      saveLocal(next, "Booking moved.");
+      return true;
+    }
+
+    const previousState = state;
+    setState(next);
+
+    try {
+      await upsertModalChange({ type: "booking", item: movedBooking }, resourceIdsByName);
+      showToast("Booking moved.");
+      return true;
+    } catch (error) {
+      console.error(error);
+      setState(previousState);
+      const fallbackMessage = "Booking could not be moved.";
+      const errorMessage = getErrorMessage(error, fallbackMessage);
+      if (isBookingConflictMessage(errorMessage)) {
+        showBookingConflictDialog(errorMessage);
+      } else {
+        showToast(errorMessage === fallbackMessage ? fallbackMessage : `${fallbackMessage} ${errorMessage}`);
+      }
+      return false;
+    }
+  }
+
   async function saveSettings(next: AppState) {
     const normalizedNext = {
       ...next,
@@ -5732,6 +5783,7 @@ export default function BookingAdminApp({
               onDateChange={setActiveDate}
               onNew={(seed) => setModal({ type: "booking", seed })}
               onEdit={(id) => setModal({ type: "booking", id })}
+              onMoveBooking={moveCalendarBooking}
               showToast={showToast}
             />
           ) : null}
@@ -7878,6 +7930,7 @@ function CalendarView({
   onDateChange,
   onNew,
   onEdit,
+  onMoveBooking,
   showToast,
 }: {
   activeDate: string;
@@ -7890,12 +7943,14 @@ function CalendarView({
   onDateChange: (date: string) => void;
   onNew: (seed?: Partial<Booking>) => void;
   onEdit: (id: string) => void;
+  onMoveBooking: (bookingId: string, patch: Pick<Booking, "date" | "resource" | "start" | "end">) => Promise<boolean>;
   showToast: (message: string) => void;
 }) {
   const allMobileResourcesValue = "__all__";
   const [resourceMode, setResourceMode] = useState<"rooms" | "staff" | "equipment">("rooms");
   const [calendarMode, setCalendarMode] = useState<"day" | "week">("day");
   const [mobileResource, setMobileResource] = useState<string>(allMobileResourcesValue);
+  const [moveBookingId, setMoveBookingId] = useState<string | null>(null);
   const dateInputRef = useRef<HTMLInputElement | null>(null);
   const mobileDayScrollRef = useRef<HTMLDivElement | null>(null);
   const desktopDayScrollRef = useRef<HTMLDivElement | null>(null);
@@ -8007,6 +8062,9 @@ function CalendarView({
     },
     [activeDate, availability, defaultSchedule, resources, scheduleByResource]
   );
+  const moveBooking = moveBookingId
+    ? activeCalendarBookings.find((booking) => booking.id === moveBookingId) ?? null
+    : null;
 
   useEffect(() => {
     if (!resources.length) {
@@ -8081,6 +8139,72 @@ function CalendarView({
       serviceName: matchedService?.name,
       calendarColor: matchedService?.calendarColor ?? DEFAULT_SERVICE_CALENDAR_COLOR,
     });
+  }
+
+  function slotStartFromClick(
+    event: React.MouseEvent<HTMLElement>,
+    segmentStart: number,
+    segmentEnd: number
+  ) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const offsetY = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
+    const minutesInSegment = Math.max(30, segmentEnd - segmentStart);
+    const clickedMinutes = segmentStart + (offsetY / Math.max(1, rect.height)) * minutesInSegment;
+    const snapped = Math.floor(clickedMinutes / 30) * 30;
+    return Math.max(segmentStart, Math.min(Math.max(segmentStart, segmentEnd - 30), snapped));
+  }
+
+  function selectBookingForMove(booking: Booking) {
+    if (moveBookingId === booking.id) {
+      setMoveBookingId(null);
+      onEdit(booking.id);
+      return;
+    }
+
+    setMoveBookingId(booking.id);
+    showToast("Booking selected. Click an open time to move it, or click it again to edit.");
+  }
+
+  async function handleOpenSlotClick(
+    event: React.MouseEvent<HTMLElement>,
+    resource: string,
+    segmentStart: number,
+    segmentEnd: number
+  ) {
+    const startMinutes = slotStartFromClick(event, segmentStart, segmentEnd);
+
+    if (!moveBookingId) {
+      createBookingFromSlot(resource, startMinutes, startMinutes + 30);
+      return;
+    }
+
+    const booking = activeCalendarBookings.find((item) => item.id === moveBookingId);
+    if (!booking) {
+      setMoveBookingId(null);
+      showToast("Could not find the selected booking.");
+      return;
+    }
+
+    const durationMinutes = bookingDurationMinutes(booking);
+    const endMinutes = Math.min(1439, startMinutes + durationMinutes);
+    const confirmed = window.confirm(
+      `Move ${booking.playerName || booking.serviceName || "this booking"} to ${resource} from ${timeLabel(
+        minutesToTime(startMinutes)
+      )} to ${timeLabel(minutesToTime(endMinutes))}?`
+    );
+
+    if (!confirmed) return;
+
+    const moved = await onMoveBooking(booking.id, {
+      date: activeDate,
+      resource,
+      start: minutesToTime(startMinutes),
+      end: minutesToTime(endMinutes),
+    });
+
+    if (moved) {
+      setMoveBookingId(null);
+    }
   }
 
   return (
@@ -8158,6 +8282,21 @@ function CalendarView({
         </CalendarSegmentButton>
         <CalendarToolbarButton label="Filter" icon="table" onClick={() => showToast("Filter View is next.")} />
       </div>
+
+      {moveBooking ? (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-black/10 bg-black px-4 py-3 text-white shadow-sm">
+          <div className="text-[14px] font-semibold">
+            Moving {moveBooking.playerName || moveBooking.serviceName || "booking"} - click an open time to place it.
+          </div>
+          <button
+            type="button"
+            onClick={() => setMoveBookingId(null)}
+            className="rounded-md border border-white/25 px-3 py-1.5 text-[12px] font-semibold text-white/90"
+          >
+            Cancel Move
+          </button>
+        </div>
+      ) : null}
 
       {resourceMode === "rooms" ? (
         <div className="mb-4 flex gap-2 overflow-x-auto pb-1 lg:hidden">
@@ -8304,7 +8443,7 @@ function CalendarView({
                               <button
                                 key={`${resource}-mobile-open-block-${index}`}
                                 type="button"
-                                onClick={() => createBookingFromSlot(resource, segment.start, segment.end)}
+                                onClick={(event) => void handleOpenSlotClick(event, resource, segment.start, segment.end)}
                                 className="absolute left-[2px] right-[2px] overflow-hidden rounded-md border border-[#caefdd] bg-[#f3fcf7] px-2 py-1 text-left text-[#166443] shadow-sm"
                                 style={{ top, height }}
                               >
@@ -8324,6 +8463,7 @@ function CalendarView({
                           const durationMinutes = Math.max(30, segment.end - segment.start);
                           const isCompactBooking = durationMinutes <= 30;
                           const isUnavailableBlock = isUnavailableBooking(booking);
+                          const isMoveSelected = moveBookingId === booking.id;
                           const bookingCustomerName =
                             isUnavailableBlock ? "Unavailable" : booking.playerName || customer?.player || customer?.name || "Customer";
                           const bookingServiceName = isUnavailableBlock
@@ -8334,10 +8474,10 @@ function CalendarView({
                             <button
                               key={booking.id}
                               type="button"
-                              onClick={() => onEdit(booking.id)}
+                              onClick={() => selectBookingForMove(booking)}
                               className={`absolute left-[2px] right-[2px] overflow-hidden rounded-md border text-left shadow-sm ${tone.borderClass} ${tone.containerClass} ${
                                 isCompactBooking ? "px-2 py-1" : "px-2 py-1.5"
-                              }`}
+                              } ${isMoveSelected ? "ring-2 ring-black ring-offset-2" : ""}`}
                               style={{ top, height, ...tone.style }}
                             >
                               <div className="flex items-start justify-between gap-1">
@@ -8457,9 +8597,11 @@ function CalendarView({
                             <button
                               key={`${resource}-available-${index}`}
                               type="button"
-                              onClick={() => createBookingFromSlot(resource, segment.start, segment.end)}
+                              onClick={(event) => void handleOpenSlotClick(event, resource, segment.start, segment.end)}
                               aria-label={`Book ${resource} from ${timeLabel(minutesToTime(segment.start))} to ${timeLabel(minutesToTime(segment.end))}`}
-                              className="absolute left-0 right-0 overflow-hidden border border-transparent bg-transparent text-left transition hover:bg-[#d9efff]/70"
+                              className={`absolute left-0 right-0 overflow-hidden border border-transparent bg-transparent text-left transition hover:bg-[#d9efff]/70 ${
+                                moveBookingId ? "cursor-copy" : ""
+                              }`}
                               style={{ top, height }}
                             >
                               <span className="sr-only">
@@ -8478,6 +8620,7 @@ function CalendarView({
                         const durationMinutes = Math.max(30, segment.end - segment.start);
                         const isCompactBooking = durationMinutes <= 30;
                         const isUnavailableBlock = isUnavailableBooking(booking);
+                        const isMoveSelected = moveBookingId === booking.id;
                         const bookingTitle = isUnavailableBlock
                           ? "Unavailable"
                           : booking.playerName || customer?.player || customer?.name || "Customer";
@@ -8489,10 +8632,10 @@ function CalendarView({
                           <button
                             key={booking.id}
                             type="button"
-                            onClick={() => onEdit(booking.id)}
+                            onClick={() => selectBookingForMove(booking)}
                             className={`absolute left-[1px] right-[1px] overflow-hidden rounded-[4px] border text-left shadow-sm ${tone.borderClass} ${tone.containerClass} ${
                               isCompactBooking ? "px-2 py-1" : "px-2.5 py-1.5"
-                            }`}
+                            } ${isMoveSelected ? "ring-2 ring-black ring-offset-2" : ""}`}
                             style={{ top, height, ...tone.style }}
                           >
                             <div className={isCompactBooking ? "pr-7" : "pr-16"}>
