@@ -10,6 +10,11 @@ type ProfileRoleRow = {
   role: Role;
 };
 
+type StaffMemberAccessRow = {
+  id: string;
+  role: string | null;
+};
+
 function isBookingAdminPath(pathname: string) {
   return (
     pathname === "/admin/bookings" ||
@@ -79,6 +84,23 @@ export default function AdminAuthGate({
       if (!error && role === "admin") {
         setStatus("allowed");
         return;
+      }
+
+      if (pathname === "/admin/availability" && session.user.email) {
+        const { data: staffMember } = await supabase
+          .from("booking_staff_members")
+          .select("id,role")
+          .eq("email", session.user.email)
+          .eq("is_active", true)
+          .maybeSingle();
+
+        if (!alive) return;
+
+        const staffAccess = staffMember as StaffMemberAccessRow | null;
+        if (staffAccess?.id) {
+          setStatus("allowed");
+          return;
+        }
       }
 
       setStatus("denied");

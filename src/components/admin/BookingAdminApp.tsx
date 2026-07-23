@@ -142,6 +142,17 @@ type StaffMember = {
   active: boolean;
 };
 
+type StaffAvailabilityEntry = {
+  id: string;
+  staffId: string;
+  staffName: string;
+  date: string;
+  start: string;
+  end: string;
+  resources: string[];
+  color: string;
+};
+
 type StaffRoleSummary = {
   role: StaffRole;
   permissions: "All" | "Limited";
@@ -495,6 +506,16 @@ type BookingAvailabilityRow = {
   end_time: string;
 };
 
+type BookingStaffAvailabilityRow = {
+  id: string;
+  staff_member_id: string | null;
+  availability_date: string;
+  start_time: string;
+  end_time: string;
+  resource_names: string[] | null;
+  color: string | null;
+};
+
 type BookingCampaignRow = {
   id: string;
   name: string;
@@ -566,6 +587,7 @@ type AppState = {
   customers: Customer[];
   bookings: Booking[];
   availability: [string, boolean, string, string][];
+  staffAvailability: StaffAvailabilityEntry[];
   schedules: ScheduleRecord[];
   campaigns: Campaign[];
   products: Product[];
@@ -1497,6 +1519,7 @@ const defaultState: AppState = {
     ["Saturday", false, "09:00", "15:00"],
     ["Sunday", false, "10:00", "14:00"],
   ],
+  staffAvailability: [],
   schedules: [
     {
       id: "schedule-working-hours",
@@ -1874,6 +1897,64 @@ function normalizeStaffMembers(value: unknown): StaffMember[] {
   if (!Array.isArray(value)) return defaultState.staff;
   const items = value.map(normalizeStaffMemberEntry).filter(Boolean) as StaffMember[];
   return items.length ? items : defaultState.staff;
+}
+
+const staffAvailabilityColors = ["#249b41", "#e46d32", "#e89bef", "#35d75b", "#1688d1", "#7c3aed"];
+
+function staffAvailabilityColor(index: number) {
+  return staffAvailabilityColors[index % staffAvailabilityColors.length];
+}
+
+function normalizeStaffAvailabilityEntry(value: unknown, staffById: Map<string, StaffMember>, fallbackIndex = 0): StaffAvailabilityEntry | null {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Partial<StaffAvailabilityEntry>;
+  const staffId = typeof item.staffId === "string" ? item.staffId : "";
+  const staffMember = staffById.get(staffId);
+  const date = typeof item.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(item.date) ? item.date : "";
+  const start = normalizeTime(item.start);
+  const end = normalizeTime(item.end);
+
+  if (!staffMember || !date || timeToMinutes(end) <= timeToMinutes(start)) return null;
+
+  return {
+    id: typeof item.id === "string" && item.id.trim() ? item.id : makeId("availability"),
+    staffId,
+    staffName: staffMember.name,
+    date,
+    start,
+    end,
+    resources: Array.isArray(item.resources) ? item.resources.filter((resource): resource is string => typeof resource === "string" && resource.trim().length > 0) : [],
+    color: normalizeCalendarColor(item.color ?? staffAvailabilityColor(fallbackIndex)),
+  };
+}
+
+function normalizeStaffAvailabilityEntries(value: unknown, staff: StaffMember[]): StaffAvailabilityEntry[] {
+  if (!Array.isArray(value)) return defaultState.staffAvailability;
+  const staffById = new Map(staff.map((member) => [member.id, member]));
+  return value
+    .map((item, index) => normalizeStaffAvailabilityEntry(item, staffById, index))
+    .filter((item): item is StaffAvailabilityEntry => Boolean(item));
+}
+
+function normalizeStaffAvailabilityRow(
+  row: BookingStaffAvailabilityRow,
+  staffById: Map<string, StaffMember>,
+  fallbackIndex = 0
+): StaffAvailabilityEntry | null {
+  if (!row.staff_member_id) return null;
+  return normalizeStaffAvailabilityEntry(
+    {
+      id: row.id,
+      staffId: row.staff_member_id,
+      date: row.availability_date,
+      start: row.start_time,
+      end: row.end_time,
+      resources: row.resource_names ?? [],
+      color: row.color ?? staffAvailabilityColor(fallbackIndex),
+    },
+    staffById,
+    fallbackIndex
+  );
 }
 
 function normalizeBookings(bookings: Booking[], services: Service[]) {
@@ -3759,6 +3840,10 @@ function loadInitialState() {
     if (!raw) return defaultState;
     const parsed = { ...defaultState, ...JSON.parse(raw) } as AppState;
     const staff = normalizeStaffMembers(parsed.staff ?? defaultState.staff);
+    const staffAvailability = normalizeStaffAvailabilityEntries(
+      parsed.staffAvailability ?? defaultState.staffAvailability,
+      staff
+    );
     const rolePermissions = normalizeRolePermissions(
       parsed.rolePermissions ?? defaultState.rolePermissions
     );
@@ -3766,6 +3851,7 @@ function loadInitialState() {
     return {
       ...parsed,
       staff,
+      staffAvailability,
       rolePermissions,
       services,
       bookings: normalizeBookings(parsed.bookings ?? defaultState.bookings, services),
@@ -4036,6 +4122,8 @@ export default function BookingAdminApp({
   const [serviceSection, setServiceSection] = useState<ServiceSection>("rentals");
   const [previewDevice, setPreviewDevice] = useState<PreviewDevice | null>(null);
   const [dataSource, setDataSource] = useState<"local" | "supabase">("local");
+  const [currentAuthEmail, setCurrentAuthEmail] = useState("");
+  const [currentProfileRole, setCurrentProfileRole] = useState<string | null>(null);
   const [isRemoteLoading, setIsRemoteLoading] = useState(hasSupabaseEnv);
   const [resourceIdsByName, setResourceIdsByName] = useState<Record<string, string>>({});
   const [customerMembershipsByCustomerId, setCustomerMembershipsByCustomerId] = useState<Record<string, CustomerMembershipRecord[]>>({});
@@ -4117,6 +4205,16 @@ export default function BookingAdminApp({
         : null,
     [calendarChargeBooking, state.services]
   );
+  const currentStaffMember = useMemo(() => {
+    const email = currentAuthEmail.trim().toLowerCase();
+    if (!email) return null;
+    return state.staff.find((staff) => staff.email.trim().toLowerCase() === email) ?? null;
+  }, [currentAuthEmail, state.staff]);
+  const canManageAnyAvailability =
+    !hasSupabaseEnv ||
+    currentProfileRole === "admin" ||
+    currentStaffMember?.role === "Owner" ||
+    currentStaffMember?.role === "Admin";
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -4127,6 +4225,43 @@ export default function BookingAdminApp({
     setBookingConflictDialog(
       message?.trim() || "This room is already booked for that time. Please choose another time or another room."
     );
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadCurrentUser() {
+      if (!hasSupabaseEnv) {
+        setCurrentProfileRole("admin");
+        return;
+      }
+
+      const { data } = await supabase.auth.getUser();
+      const user = data.user;
+      if (!alive) return;
+
+      setCurrentAuthEmail(user?.email ?? "");
+
+      if (!user?.id) {
+        setCurrentProfileRole(null);
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (!alive) return;
+      setCurrentProfileRole(typeof profile?.role === "string" ? profile.role : null);
+    }
+
+    void loadCurrentUser();
+
+    return () => {
+      alive = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -4182,6 +4317,7 @@ export default function BookingAdminApp({
         scheduleSlotsResult,
         scheduleOverridesResult,
         staffResult,
+        staffAvailabilityResult,
         rolePermissionsResult,
         campaignsResult,
         productsResult,
@@ -4198,6 +4334,7 @@ export default function BookingAdminApp({
         supabase.from("booking_schedule_slots").select("*").order("weekday").order("sort_order"),
         supabase.from("booking_schedule_overrides").select("*").order("override_date").order("sort_order"),
         supabase.from("booking_staff_members").select("*").order("is_active", { ascending: false }).order("sort_order"),
+        supabase.from("booking_staff_availability").select("*").order("availability_date").order("start_time"),
         supabase.from("booking_role_permissions").select("*").order("sort_order"),
         supabase.from("booking_campaigns").select("*").order("created_at"),
         supabase.from("booking_products").select("*").order("created_at"),
@@ -4216,6 +4353,7 @@ export default function BookingAdminApp({
         scheduleSlotsResult.error,
         scheduleOverridesResult.error,
         staffResult.error,
+        staffAvailabilityResult.error,
         rolePermissionsResult.error,
         campaignsResult.error,
         productsResult.error,
@@ -4235,6 +4373,7 @@ export default function BookingAdminApp({
       const scheduleSlotRows = (scheduleSlotsResult.data ?? []) as BookingScheduleSlotRow[];
       const scheduleOverrideRows = (scheduleOverridesResult.data ?? []) as BookingScheduleOverrideRow[];
       const staffRows = (staffResult.data ?? []) as BookingStaffRow[];
+      const staffAvailabilityRows = (staffAvailabilityResult.data ?? []) as BookingStaffAvailabilityRow[];
       const rolePermissionRows = (rolePermissionsResult.data ?? []) as BookingRolePermissionRow[];
       const campaignRows = (campaignsResult.data ?? []) as BookingCampaignRow[];
       const productRows = (productsResult.data ?? []) as BookingProductRow[];
@@ -4272,6 +4411,19 @@ export default function BookingAdminApp({
       }, {});
       const membershipCreditLedgerEntries = membershipCreditLedgerRows.map(normalizeMembershipCreditLedgerRow);
       const availabilityOrder = new Map(defaultState.availability.map(([day], index) => [day, index]));
+      const staffMembers = staffRows.length
+        ? staffRows.map((member) => ({
+            id: member.id,
+            name: member.full_name,
+            email: member.email,
+            role: normalizeStaffRole(member.role),
+            active: member.is_active,
+          }))
+        : defaultState.staff;
+      const staffById = new Map(staffMembers.map((member) => [member.id, member]));
+      const staffAvailabilityEntries = staffAvailabilityRows
+        .map((row, index) => normalizeStaffAvailabilityRow(row, staffById, index))
+        .filter((entry): entry is StaffAvailabilityEntry => Boolean(entry));
       const roomNamesByScheduleId = new Map<string, string[]>();
 
       for (const resource of resources) {
@@ -4397,15 +4549,8 @@ export default function BookingAdminApp({
           taxRates: normalizeTaxRates(settings?.tax_rates),
           customFees: normalizeCustomFees(settings?.custom_fees),
         },
-        staff: staffRows.length
-          ? staffRows.map((member) => ({
-              id: member.id,
-              name: member.full_name,
-              email: member.email,
-              role: normalizeStaffRole(member.role),
-              active: member.is_active,
-            }))
-          : defaultState.staff,
+        staff: staffMembers,
+        staffAvailability: staffAvailabilityEntries,
         rolePermissions: normalizeRolePermissions(
           rolePermissionRows.map((row) => ({
             role: normalizeStaffRole(row.role),
@@ -4798,6 +4943,108 @@ export default function BookingAdminApp({
     } catch (error) {
       console.error(error);
       showToast("Availability could not be saved.");
+    }
+  }
+
+  async function saveStaffAvailabilityEntry(entry: StaffAvailabilityEntry) {
+    const staffMember = state.staff.find((member) => member.id === entry.staffId);
+    if (!staffMember) {
+      showToast("Choose a staff member.");
+      return false;
+    }
+
+    if (!canManageAnyAvailability && entry.staffId !== currentStaffMember?.id) {
+      showToast("Staff can only change their own availability.");
+      return false;
+    }
+
+    const normalizedEntry = normalizeStaffAvailabilityEntry(
+      {
+        ...entry,
+        staffName: staffMember.name,
+        resources: entry.resources.filter((resource) => state.resources.includes(resource)),
+      },
+      new Map(state.staff.map((member) => [member.id, member])),
+      state.staffAvailability.length
+    );
+
+    if (!normalizedEntry) {
+      showToast("Choose a valid start and end time.");
+      return false;
+    }
+
+    const next = {
+      ...state,
+      staffAvailability: upsert(state.staffAvailability, normalizedEntry),
+    };
+
+    if (dataSource === "local") {
+      saveLocal(next, "Availability saved.");
+      return true;
+    }
+
+    const previousState = state;
+    setState(next);
+    stateToStorage(next);
+
+    try {
+      const { error } = await supabase.from("booking_staff_availability").upsert({
+        id: normalizedEntry.id,
+        staff_member_id: normalizedEntry.staffId,
+        availability_date: normalizedEntry.date,
+        start_time: normalizedEntry.start,
+        end_time: normalizedEntry.end,
+        resource_names: normalizedEntry.resources,
+        color: normalizedEntry.color,
+      });
+
+      if (error) throw error;
+      showToast("Availability saved.");
+      return true;
+    } catch (error) {
+      console.error(error);
+      setState(previousState);
+      showToast("Availability could not be saved.");
+      return false;
+    }
+  }
+
+  async function deleteStaffAvailabilityEntry(entryId: string) {
+    const entry = state.staffAvailability.find((item) => item.id === entryId);
+    if (!entry) {
+      showToast("Availability block was not found.");
+      return false;
+    }
+
+    if (!canManageAnyAvailability && entry.staffId !== currentStaffMember?.id) {
+      showToast("Staff can only change their own availability.");
+      return false;
+    }
+
+    const next = {
+      ...state,
+      staffAvailability: state.staffAvailability.filter((item) => item.id !== entryId),
+    };
+
+    if (dataSource === "local") {
+      saveLocal(next, "Availability deleted.");
+      return true;
+    }
+
+    const previousState = state;
+    setState(next);
+    stateToStorage(next);
+
+    try {
+      const { error } = await supabase.from("booking_staff_availability").delete().eq("id", entryId);
+      if (error) throw error;
+      showToast("Availability deleted.");
+      return true;
+    } catch (error) {
+      console.error(error);
+      setState(previousState);
+      showToast("Availability could not be deleted.");
+      return false;
     }
   }
 
@@ -5804,8 +6051,15 @@ export default function BookingAdminApp({
           {view === "availability" ? (
             <AvailabilityView
               rows={state.availability}
+              staff={state.staff}
+              resources={state.resources}
+              entries={state.staffAvailability}
+              currentStaffId={currentStaffMember?.id ?? ""}
+              canManageAny={canManageAnyAvailability}
               onChange={(rows) => setState((current) => ({ ...current, availability: rows }))}
               onSave={() => void saveAvailability(state.availability)}
+              onSaveEntry={saveStaffAvailabilityEntry}
+              onDeleteEntry={deleteStaffAvailabilityEntry}
             />
           ) : null}
           {view === "customers" ? (
@@ -9142,21 +9396,45 @@ function CalendarSegmentButton({
 
 function AvailabilityView({
   rows,
+  staff,
+  resources,
+  entries,
+  currentStaffId,
+  canManageAny,
   onChange,
   onSave,
+  onSaveEntry,
+  onDeleteEntry,
 }: {
   rows: AppState["availability"];
+  staff: StaffMember[];
+  resources: string[];
+  entries: StaffAvailabilityEntry[];
+  currentStaffId: string;
+  canManageAny: boolean;
   onChange: (rows: AppState["availability"]) => void;
   onSave: () => void;
+  onSaveEntry: (entry: StaffAvailabilityEntry) => Promise<boolean>;
+  onDeleteEntry: (entryId: string) => Promise<boolean>;
 }) {
   const [activeDate, setActiveDate] = useState(isoDate(new Date()));
   const [calendarMode, setCalendarMode] = useState<"day" | "week">("week");
   const [editorOpen, setEditorOpen] = useState(false);
+  const [draft, setDraft] = useState<StaffAvailabilityEntry | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const slotHeight = 50;
   const slots = useMemo(() => Array.from({ length: 48 }, (_, index) => minutesToTime(index * 30)), []);
   const visibleDates = useMemo(() => (calendarMode === "week" ? weekDates(activeDate) : [activeDate]), [activeDate, calendarMode]);
-  const rowByDay = useMemo(() => new Map(rows.map((row) => [row[0], row] as const)), [rows]);
+  const staffById = useMemo(() => new Map(staff.map((member) => [member.id, member])), [staff]);
+  const manageableStaff = useMemo(() => {
+    const activeStaff = staff.filter((member) => member.active);
+    if (canManageAny) return activeStaff;
+    return activeStaff.filter((member) => member.id === currentStaffId);
+  }, [canManageAny, currentStaffId, staff]);
+  const visibleEntries = useMemo(
+    () => entries.filter((entry) => canManageAny || entry.staffId === currentStaffId),
+    [canManageAny, currentStaffId, entries]
+  );
   const today = isoDate(new Date());
   const scrollStartMinutes = useMemo(() => {
     const openStarts = rows.filter(([, open]) => open).map(([, , start]) => timeToMinutes(start));
@@ -9177,11 +9455,6 @@ function AvailabilityView({
     onChange(rows.map((row, i) => (i === index ? next : row)));
   }
 
-  function availabilityRowForDate(date: string) {
-    const day = weekdayName(date);
-    return rowByDay.get(day) ?? ([day, false, "00:00", "23:59"] as [string, boolean, string, string]);
-  }
-
   function formatAvailabilityWeekHeading() {
     const dates = weekDates(activeDate);
     const first = parseLocalDate(dates[0]);
@@ -9195,27 +9468,68 @@ function AvailabilityView({
     setActiveDate((current) => shiftDate(current, days));
   }
 
+  function createAvailabilityDraft(date: string, startMinutes: number, existing?: StaffAvailabilityEntry) {
+    const staffMember = existing ? staffById.get(existing.staffId) : manageableStaff[0];
+    const fallbackStaff = staffMember ?? manageableStaff[0];
+    if (!fallbackStaff) return null;
+
+    const start = Math.max(0, Math.min(23 * 60 + 30, Math.floor(startMinutes / 30) * 30));
+    const end = Math.min(23 * 60 + 59, start + 60);
+
+    return {
+      id: existing?.id ?? makeId("availability"),
+      staffId: existing?.staffId ?? fallbackStaff.id,
+      staffName: existing?.staffName ?? fallbackStaff.name,
+      date: existing?.date ?? date,
+      start: existing?.start ?? minutesToTime(start),
+      end: existing?.end ?? minutesToTime(end),
+      resources: existing?.resources ?? resources.slice(0, Math.min(2, resources.length)),
+      color: existing?.color ?? staffAvailabilityColor(entries.length),
+    };
+  }
+
+  function openAvailabilityDraft(date: string, event?: React.MouseEvent<HTMLDivElement>) {
+    if (!manageableStaff.length) return;
+    let start = scrollStartMinutes;
+    if (event) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const offset = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
+      start = Math.floor((offset / slotHeight) * 30);
+    }
+
+    const nextDraft = createAvailabilityDraft(date, start);
+    if (nextDraft) setDraft(nextDraft);
+  }
+
+  function editAvailabilityDraft(entry: StaffAvailabilityEntry) {
+    if (!canManageAny && entry.staffId !== currentStaffId) return;
+    const nextDraft = createAvailabilityDraft(entry.date, timeToMinutes(entry.start), entry);
+    if (nextDraft) setDraft(nextDraft);
+  }
+
+  async function saveDraft() {
+    if (!draft) return;
+    const staffMember = staffById.get(draft.staffId);
+    if (!staffMember || timeToMinutes(draft.end) <= timeToMinutes(draft.start)) return;
+
+    const saved = await onSaveEntry({
+      ...draft,
+      staffName: staffMember.name,
+      resources: draft.resources.filter(Boolean),
+    });
+
+    if (saved) setDraft(null);
+  }
+
+  async function deleteDraft() {
+    if (!draft) return;
+    const deleted = await onDeleteEntry(draft.id);
+    if (deleted) setDraft(null);
+  }
+
   function renderAvailabilityBlocks(date: string) {
-    const [day, open, start, end] = availabilityRowForDate(date);
     const closedBlocks = closedBlocksForDate(rows, date);
-    const openStartMinutes = timeToMinutes(start);
-    const openEndMinutes = timeToMinutes(end);
-    const staffName =
-      day === "Monday"
-        ? "Jr. Jason Allaire"
-        : day === "Wednesday" || day === "Friday"
-          ? "Jason Allaire"
-          : day === "Thursday"
-            ? "August Backman"
-            : "The Grind";
-    const openColor =
-      day === "Monday"
-        ? "bg-[#e46d32] border-[#ad4f21]"
-        : day === "Wednesday" || day === "Friday"
-          ? "bg-[#249b41] border-[#16752d]"
-          : day === "Thursday"
-            ? "bg-[#e89bef] border-[#a95ab3]"
-            : "bg-[#35d75b] border-[#19963c]";
+    const dayEntries = visibleEntries.filter((entry) => entry.date === date);
 
     return (
       <>
@@ -9240,28 +9554,48 @@ function AvailabilityView({
           );
         })}
 
-        {open ? (
-          <div
-            className={`absolute left-[5px] right-[5px] overflow-hidden rounded-[4px] border px-2 py-1 text-white shadow-sm ${openColor}`}
-            style={{
-              top: (openStartMinutes / 30) * slotHeight + 1,
-              height: Math.max(slotHeight - 2, ((openEndMinutes - openStartMinutes) / 30) * slotHeight - 2),
-            }}
-          >
-            <div className="text-[10px] font-semibold leading-none text-white/90">
-              {timeLabel(start)} - {timeLabel(end)}
-            </div>
-            <div className="mt-1 truncate text-[15px] font-semibold leading-none">{staffName}</div>
-            <div className="mt-1 truncate text-[11px] font-medium leading-none text-white/95">Cage 1, Cage 2</div>
-            <div className="absolute bottom-2 right-2 grid h-7 w-7 place-items-center rounded-full bg-white/90 text-[11px] font-semibold text-black/70">
-              {staffName
-                .split(" ")
-                .map((part) => part[0])
-                .join("")
-                .slice(0, 2)}
-            </div>
-          </div>
-        ) : null}
+        {dayEntries.map((entry) => {
+          const top = (timeToMinutes(entry.start) / 30) * slotHeight + 1;
+          const height = Math.max(30, ((timeToMinutes(entry.end) - timeToMinutes(entry.start)) / 30) * slotHeight - 2);
+          const textColor = isLightCalendarColor(entry.color) ? "text-black" : "text-white";
+          const softText = isLightCalendarColor(entry.color) ? "text-black/70" : "text-white/90";
+          const initials = entry.staffName
+            .split(" ")
+            .filter(Boolean)
+            .map((part) => part[0])
+            .join("")
+            .slice(0, 2);
+
+          return (
+            <button
+              key={entry.id}
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                editAvailabilityDraft(entry);
+              }}
+              className={`absolute left-[5px] right-[5px] overflow-hidden rounded-[4px] border border-black/20 px-2 py-1 text-left shadow-sm ${textColor}`}
+              style={{ top, height, backgroundColor: entry.color }}
+            >
+              <div className={`truncate text-[10px] font-semibold leading-none ${softText}`}>
+                {timeLabel(entry.start)} - {timeLabel(entry.end)}
+              </div>
+              {height >= 42 ? (
+                <>
+                  <div className="mt-1 truncate text-[15px] font-semibold leading-none">{entry.staffName}</div>
+                  <div className={`mt-1 truncate text-[11px] font-medium leading-none ${softText}`}>
+                    {entry.resources.length ? entry.resources.join(", ") : "All rooms"}
+                  </div>
+                </>
+              ) : null}
+              {height >= 86 ? (
+                <div className="absolute bottom-2 right-2 grid h-7 w-7 place-items-center rounded-full bg-white/90 text-[11px] font-semibold text-black/70">
+                  {initials || "ST"}
+                </div>
+              ) : null}
+            </button>
+          );
+        })}
       </>
     );
   }
@@ -9341,8 +9675,9 @@ function AvailabilityView({
             {visibleDates.map((date) => (
               <div
                 key={`availability-column-${date}`}
+                onClick={(event) => openAvailabilityDraft(date, event)}
                 className={[
-                  "relative border-r border-black/10 last:border-r-0",
+                  "relative cursor-crosshair border-r border-black/10 last:border-r-0",
                   date === today ? "bg-[#eaf6ff]" : "bg-white",
                 ].join(" ")}
                 style={{ height: slots.length * slotHeight }}
@@ -9359,7 +9694,10 @@ function AvailabilityView({
 
       <button
         type="button"
-        onClick={() => setEditorOpen(true)}
+        onClick={() => {
+          const nextDraft = createAvailabilityDraft(activeDate, scrollStartMinutes);
+          if (nextDraft) setDraft(nextDraft);
+        }}
         className="fixed bottom-[90px] right-5 z-20 inline-flex min-h-14 items-center gap-3 rounded-full bg-[#1f1a1a] px-6 text-[15px] font-semibold text-white shadow-[0_10px_24px_rgba(0,0,0,0.24)] lg:bottom-6"
       >
         <Icon name="plus" className="h-5 w-5" />
@@ -9431,6 +9769,156 @@ function AvailabilityView({
                 <Icon name="clock" className="h-4 w-4" />
                 Save hours
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {draft ? (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/45 p-4">
+          <div className="flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-black/10 px-6 py-5">
+              <h2 className="text-[18px] font-semibold text-black">
+                {entries.some((entry) => entry.id === draft.id) ? "Edit Availability" : "Add Availability"}
+              </h2>
+              <button type="button" onClick={() => setDraft(null)} className="text-black/45" aria-label="Close availability editor">
+                <Icon name="x" className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="grid gap-5 overflow-y-auto px-6 py-5">
+              <label className="grid gap-1.5">
+                <span className="text-sm font-semibold text-black/70">Staff</span>
+                <select
+                  value={draft.staffId}
+                  disabled={!canManageAny}
+                  onChange={(event) => {
+                    const staffMember = staffById.get(event.target.value);
+                    setDraft((current) =>
+                      current && staffMember
+                        ? { ...current, staffId: staffMember.id, staffName: staffMember.name }
+                        : current
+                    );
+                  }}
+                  className="min-h-12 rounded-lg border border-black/10 bg-white px-4 text-[15px] disabled:bg-black/[0.03]"
+                >
+                  {manageableStaff.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="grid gap-4 sm:grid-cols-3">
+                <label className="grid gap-1.5">
+                  <span className="text-sm font-semibold text-black/70">Date</span>
+                  <input
+                    type="date"
+                    value={draft.date}
+                    onChange={(event) => setDraft((current) => (current ? { ...current, date: event.target.value } : current))}
+                    className="min-h-12 rounded-lg border border-black/10 px-4 text-[15px]"
+                  />
+                </label>
+                <label className="grid gap-1.5">
+                  <span className="text-sm font-semibold text-black/70">Start</span>
+                  <input
+                    type="time"
+                    value={draft.start}
+                    onChange={(event) => setDraft((current) => (current ? { ...current, start: event.target.value } : current))}
+                    className="min-h-12 rounded-lg border border-black/10 px-4 text-[15px]"
+                  />
+                </label>
+                <label className="grid gap-1.5">
+                  <span className="text-sm font-semibold text-black/70">End</span>
+                  <input
+                    type="time"
+                    value={draft.end}
+                    onChange={(event) => setDraft((current) => (current ? { ...current, end: event.target.value } : current))}
+                    className="min-h-12 rounded-lg border border-black/10 px-4 text-[15px]"
+                  />
+                </label>
+              </div>
+
+              <div className="grid gap-2">
+                <span className="text-sm font-semibold text-black/70">Rooms</span>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {resources.map((resource) => {
+                    const checked = draft.resources.includes(resource);
+                    return (
+                      <label key={resource} className="flex min-h-11 items-center gap-3 rounded-lg border border-black/10 px-3 text-sm font-medium">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(event) =>
+                            setDraft((current) =>
+                              current
+                                ? {
+                                    ...current,
+                                    resources: event.target.checked
+                                      ? Array.from(new Set([...current.resources, resource]))
+                                      : current.resources.filter((item) => item !== resource),
+                                  }
+                                : current
+                            )
+                          }
+                          className="h-4 w-4 accent-black"
+                        />
+                        <span>{resource}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <label className="grid gap-1.5">
+                <span className="text-sm font-semibold text-black/70">Color</span>
+                <div className="flex flex-wrap gap-2">
+                  {staffAvailabilityColors.map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      onClick={() => setDraft((current) => (current ? { ...current, color } : current))}
+                      className={[
+                        "h-9 w-9 rounded-full border",
+                        draft.color === color ? "border-black ring-2 ring-black/25" : "border-black/15",
+                      ].join(" ")}
+                      style={{ backgroundColor: color }}
+                      aria-label={`Use color ${color}`}
+                    />
+                  ))}
+                </div>
+              </label>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 border-t border-black/10 px-6 py-4">
+              {entries.some((entry) => entry.id === draft.id) ? (
+                <button
+                  type="button"
+                  onClick={() => void deleteDraft()}
+                  className="rounded-lg border border-red-200 px-4 py-2 text-[14px] font-semibold text-red-600"
+                >
+                  Delete
+                </button>
+              ) : (
+                <span />
+              )}
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setDraft(null)}
+                  className="rounded-lg border border-black/10 px-4 py-2 text-[14px] font-medium text-black/65"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void saveDraft()}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-black px-5 text-[14px] font-semibold text-white"
+                >
+                  Save
+                </button>
+              </div>
             </div>
           </div>
         </div>
