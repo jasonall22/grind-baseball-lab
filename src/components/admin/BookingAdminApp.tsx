@@ -1899,7 +1899,9 @@ function normalizeStaffMembers(value: unknown): StaffMember[] {
   return items.length ? items : defaultState.staff;
 }
 
-const staffAvailabilityColors = ["#249b41", "#e46d32", "#e89bef", "#35d75b", "#1688d1", "#7c3aed"];
+const staffAvailabilityColors = ["#8f8f8f"];
+const staffAvailabilityBlockColor = "#8f8f8f";
+const staffAvailabilityBlockBorderColor = "#6f8494";
 
 function staffAvailabilityColor(index: number) {
   return staffAvailabilityColors[index % staffAvailabilityColors.length];
@@ -9421,6 +9423,11 @@ function AvailabilityView({
   const [calendarMode, setCalendarMode] = useState<"day" | "week">("week");
   const [editorOpen, setEditorOpen] = useState(false);
   const [draft, setDraft] = useState<StaffAvailabilityEntry | null>(null);
+  const [dragSelection, setDragSelection] = useState<{
+    date: string;
+    start: number;
+    current: number;
+  } | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const slotHeight = 50;
   const slots = useMemo(() => Array.from({ length: 48 }, (_, index) => minutesToTime(index * 30)), []);
@@ -9468,13 +9475,21 @@ function AvailabilityView({
     setActiveDate((current) => shiftDate(current, days));
   }
 
-  function createAvailabilityDraft(date: string, startMinutes: number, existing?: StaffAvailabilityEntry) {
+  function minutesFromColumnEvent(event: React.MouseEvent<HTMLDivElement>, snap: "floor" | "round" | "ceil" = "round") {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const offset = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
+    const rawMinutes = (offset / slotHeight) * 30;
+    const snapper = snap === "floor" ? Math.floor : snap === "ceil" ? Math.ceil : Math.round;
+    return Math.max(0, Math.min(23 * 60 + 59, snapper(rawMinutes / 15) * 15));
+  }
+
+  function createAvailabilityDraft(date: string, startMinutes: number, existing?: StaffAvailabilityEntry, endMinutes?: number) {
     const staffMember = existing ? staffById.get(existing.staffId) : manageableStaff[0];
     const fallbackStaff = staffMember ?? manageableStaff[0];
     if (!fallbackStaff) return null;
 
-    const start = Math.max(0, Math.min(23 * 60 + 30, Math.floor(startMinutes / 30) * 30));
-    const end = Math.min(23 * 60 + 59, start + 60);
+    const start = Math.max(0, Math.min(23 * 60 + 45, Math.floor(startMinutes / 15) * 15));
+    const end = Math.min(23 * 60 + 59, endMinutes !== undefined ? Math.ceil(endMinutes / 15) * 15 : start + 60);
 
     return {
       id: existing?.id ?? makeId("availability"),
@@ -9484,20 +9499,37 @@ function AvailabilityView({
       start: existing?.start ?? minutesToTime(start),
       end: existing?.end ?? minutesToTime(end),
       resources: existing?.resources ?? resources.slice(0, Math.min(2, resources.length)),
-      color: existing?.color ?? staffAvailabilityColor(entries.length),
+      color: existing?.color ?? staffAvailabilityBlockColor,
     };
   }
 
-  function openAvailabilityDraft(date: string, event?: React.MouseEvent<HTMLDivElement>) {
+  function beginAvailabilityDrag(date: string, event: React.MouseEvent<HTMLDivElement>) {
+    if (event.button !== 0 || !manageableStaff.length) return;
+    const start = minutesFromColumnEvent(event, "floor");
+    setDragSelection({ date, start, current: start + 15 });
+  }
+
+  function updateAvailabilityDrag(date: string, event: React.MouseEvent<HTMLDivElement>) {
+    if (!dragSelection || dragSelection.date !== date) return;
+    const current = minutesFromColumnEvent(event, "ceil");
+    setDragSelection((selection) => (selection && selection.date === date ? { ...selection, current } : selection));
+  }
+
+  function finishAvailabilityDrag(date: string, event: React.MouseEvent<HTMLDivElement>) {
     if (!manageableStaff.length) return;
-    let start = scrollStartMinutes;
-    if (event) {
-      const rect = event.currentTarget.getBoundingClientRect();
-      const offset = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
-      start = Math.floor((offset / slotHeight) * 30);
+    if (!dragSelection || dragSelection.date !== date) {
+      const start = minutesFromColumnEvent(event, "floor");
+      const nextDraft = createAvailabilityDraft(date, start);
+      if (nextDraft) setDraft(nextDraft);
+      return;
     }
 
-    const nextDraft = createAvailabilityDraft(date, start);
+    const finalCurrent = minutesFromColumnEvent(event, "ceil");
+    const start = Math.min(dragSelection.start, finalCurrent);
+    const end = Math.max(dragSelection.start, finalCurrent);
+    const duration = end - start;
+    const nextDraft = createAvailabilityDraft(date, start, undefined, duration >= 15 ? end : start + 60);
+    setDragSelection(null);
     if (nextDraft) setDraft(nextDraft);
   }
 
@@ -9557,45 +9589,56 @@ function AvailabilityView({
         {dayEntries.map((entry) => {
           const top = (timeToMinutes(entry.start) / 30) * slotHeight + 1;
           const height = Math.max(30, ((timeToMinutes(entry.end) - timeToMinutes(entry.start)) / 30) * slotHeight - 2);
-          const textColor = isLightCalendarColor(entry.color) ? "text-black" : "text-white";
-          const softText = isLightCalendarColor(entry.color) ? "text-black/70" : "text-white/90";
-          const initials = entry.staffName
-            .split(" ")
-            .filter(Boolean)
-            .map((part) => part[0])
-            .join("")
-            .slice(0, 2);
 
           return (
             <button
               key={entry.id}
               type="button"
+              onMouseDown={(event) => event.stopPropagation()}
               onClick={(event) => {
                 event.stopPropagation();
                 editAvailabilityDraft(entry);
               }}
-              className={`absolute left-[5px] right-[5px] overflow-hidden rounded-[4px] border border-black/20 px-2 py-1 text-left shadow-sm ${textColor}`}
-              style={{ top, height, backgroundColor: entry.color }}
+              className="absolute left-[5px] right-[5px] overflow-hidden rounded-[4px] border px-2 py-1 text-left text-white"
+              style={{
+                top,
+                height,
+                backgroundColor: staffAvailabilityBlockColor,
+                borderColor: staffAvailabilityBlockBorderColor,
+              }}
             >
-              <div className={`truncate text-[10px] font-semibold leading-none ${softText}`}>
+              <div className="truncate text-[12px] font-medium leading-none text-white">
                 {timeLabel(entry.start)} - {timeLabel(entry.end)}
               </div>
-              {height >= 42 ? (
-                <>
-                  <div className="mt-1 truncate text-[15px] font-semibold leading-none">{entry.staffName}</div>
-                  <div className={`mt-1 truncate text-[11px] font-medium leading-none ${softText}`}>
-                    {entry.resources.length ? entry.resources.join(", ") : "All rooms"}
-                  </div>
-                </>
-              ) : null}
-              {height >= 86 ? (
-                <div className="absolute bottom-2 right-2 grid h-7 w-7 place-items-center rounded-full bg-white/90 text-[11px] font-semibold text-black/70">
-                  {initials || "ST"}
-                </div>
+              {height >= 68 ? (
+                <div className="mt-1 truncate text-[11px] font-medium leading-none text-white/80">{entry.staffName}</div>
               ) : null}
             </button>
           );
         })}
+
+        {dragSelection?.date === date ? (() => {
+          const start = Math.min(dragSelection.start, dragSelection.current);
+          const end = Math.max(dragSelection.start, dragSelection.current);
+          const safeEnd = end - start >= 15 ? end : start + 15;
+          const top = (start / 30) * slotHeight + 1;
+          const height = Math.max(24, ((safeEnd - start) / 30) * slotHeight - 2);
+          return (
+            <div
+              className="pointer-events-none absolute left-[5px] right-[5px] overflow-hidden rounded-[4px] border px-2 py-1 text-left text-white"
+              style={{
+                top,
+                height,
+                backgroundColor: staffAvailabilityBlockColor,
+                borderColor: staffAvailabilityBlockBorderColor,
+              }}
+            >
+              <div className="truncate text-[12px] font-medium leading-none text-white">
+                {timeLabel(minutesToTime(start))} - {timeLabel(minutesToTime(safeEnd))}
+              </div>
+            </div>
+          );
+        })() : null}
       </>
     );
   }
@@ -9675,7 +9718,10 @@ function AvailabilityView({
             {visibleDates.map((date) => (
               <div
                 key={`availability-column-${date}`}
-                onClick={(event) => openAvailabilityDraft(date, event)}
+                onMouseDown={(event) => beginAvailabilityDrag(date, event)}
+                onMouseMove={(event) => updateAvailabilityDrag(date, event)}
+                onMouseUp={(event) => finishAvailabilityDrag(date, event)}
+                onMouseLeave={() => setDragSelection((selection) => (selection?.date === date ? null : selection))}
                 className={[
                   "relative cursor-crosshair border-r border-black/10 last:border-r-0",
                   date === today ? "bg-[#eaf6ff]" : "bg-white",
