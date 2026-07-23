@@ -18236,6 +18236,7 @@ function EditorModal({
     if (isUnavailableBooking(bookingDraft)) return "unavailable";
     return resolveBookingModalServiceKind(selectedBookingService?.category ?? matchedBookingService?.category);
   });
+  const [bookingTypeTouched, setBookingTypeTouched] = useState(false);
   const bookingServiceItems: { key: BookingModalServiceKind; label: string; icon: IconName }[] = [
     { key: "rentals", label: "Rental", icon: "clock" },
     { key: "lessons", label: "Lesson", icon: "user" },
@@ -18306,16 +18307,22 @@ function EditorModal({
   useEffect(() => {
     if (!bookingDraft) return;
 
+    if (!bookingDraft.serviceId && bookingTypeTouched) return;
+
     const nextKind: BookingModalServiceKind =
       isUnavailableBooking(bookingDraft)
         ? "unavailable"
-        : resolveBookingModalServiceKind(selectedBookingService?.category ?? matchedBookingService?.category);
+        : bookingDraft.serviceId
+          ? resolveBookingModalServiceKind(selectedBookingService?.category ?? matchedBookingService?.category)
+          : bookingServiceKind;
 
     setBookingServiceKind((current) => (current === nextKind ? current : nextKind));
   }, [
     bookingDraft,
     bookingDraft?.serviceId,
     bookingDraft?.serviceName,
+    bookingServiceKind,
+    bookingTypeTouched,
     matchedBookingService?.category,
     selectedBookingService?.category,
   ]);
@@ -18469,6 +18476,7 @@ function EditorModal({
   function changeBookingServiceKind(kind: BookingModalServiceKind) {
     if (modal.type !== "booking") return;
 
+    setBookingTypeTouched(true);
     setBookingServiceKind(kind);
 
     if (kind === "unavailable") {
