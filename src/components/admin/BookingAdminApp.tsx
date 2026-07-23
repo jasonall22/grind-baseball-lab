@@ -1489,12 +1489,12 @@ const defaultState: AppState = {
     },
   ],
   availability: [
-    ["Monday", true, "09:00", "20:00"],
-    ["Tuesday", true, "09:00", "20:00"],
-    ["Wednesday", true, "09:00", "20:00"],
-    ["Thursday", true, "09:00", "20:00"],
-    ["Friday", true, "09:00", "18:00"],
-    ["Saturday", true, "09:00", "15:00"],
+    ["Monday", true, "16:00", "20:00"],
+    ["Tuesday", true, "16:00", "20:00"],
+    ["Wednesday", true, "16:00", "20:00"],
+    ["Thursday", true, "16:00", "20:00"],
+    ["Friday", true, "16:00", "18:00"],
+    ["Saturday", false, "09:00", "15:00"],
     ["Sunday", false, "10:00", "14:00"],
   ],
   schedules: [
@@ -1506,12 +1506,12 @@ const defaultState: AppState = {
       roomNames: ["The Grind Baseball Lab", "Cage 1", "Cage 2", "Pitching Lane", "HitTrax"],
       serviceNames: [],
       dayConfigs: [
-        { day: "Monday", weekday: 1, enabled: true, slots: [{ id: "slot-mon-1", start: "09:00", end: "20:00", sortOrder: 1 }] },
-        { day: "Tuesday", weekday: 2, enabled: true, slots: [{ id: "slot-tue-1", start: "09:00", end: "20:00", sortOrder: 1 }] },
-        { day: "Wednesday", weekday: 3, enabled: true, slots: [{ id: "slot-wed-1", start: "09:00", end: "20:00", sortOrder: 1 }] },
-        { day: "Thursday", weekday: 4, enabled: true, slots: [{ id: "slot-thu-1", start: "09:00", end: "20:00", sortOrder: 1 }] },
-        { day: "Friday", weekday: 5, enabled: true, slots: [{ id: "slot-fri-1", start: "09:00", end: "18:00", sortOrder: 1 }] },
-        { day: "Saturday", weekday: 6, enabled: true, slots: [{ id: "slot-sat-1", start: "09:00", end: "15:00", sortOrder: 1 }] },
+        { day: "Monday", weekday: 1, enabled: true, slots: [{ id: "slot-mon-1", start: "16:00", end: "20:00", sortOrder: 1 }] },
+        { day: "Tuesday", weekday: 2, enabled: true, slots: [{ id: "slot-tue-1", start: "16:00", end: "20:00", sortOrder: 1 }] },
+        { day: "Wednesday", weekday: 3, enabled: true, slots: [{ id: "slot-wed-1", start: "16:00", end: "20:00", sortOrder: 1 }] },
+        { day: "Thursday", weekday: 4, enabled: true, slots: [{ id: "slot-thu-1", start: "16:00", end: "20:00", sortOrder: 1 }] },
+        { day: "Friday", weekday: 5, enabled: true, slots: [{ id: "slot-fri-1", start: "16:00", end: "18:00", sortOrder: 1 }] },
+        { day: "Saturday", weekday: 6, enabled: false, slots: [] },
         { day: "Sunday", weekday: 0, enabled: false, slots: [] },
       ],
       overrides: [],
@@ -9149,48 +9149,292 @@ function AvailabilityView({
   onChange: (rows: AppState["availability"]) => void;
   onSave: () => void;
 }) {
+  const [activeDate, setActiveDate] = useState(isoDate(new Date()));
+  const [calendarMode, setCalendarMode] = useState<"day" | "week">("week");
+  const [editorOpen, setEditorOpen] = useState(false);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const slotHeight = 50;
+  const slots = useMemo(() => Array.from({ length: 48 }, (_, index) => minutesToTime(index * 30)), []);
+  const visibleDates = useMemo(() => (calendarMode === "week" ? weekDates(activeDate) : [activeDate]), [activeDate, calendarMode]);
+  const rowByDay = useMemo(() => new Map(rows.map((row) => [row[0], row] as const)), [rows]);
+  const today = isoDate(new Date());
+  const scrollStartMinutes = useMemo(() => {
+    const openStarts = rows.filter(([, open]) => open).map(([, , start]) => timeToMinutes(start));
+    if (!openStarts.length) return 15 * 60;
+    return Math.max(0, Math.min(...openStarts) - 60);
+  }, [rows]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = (scrollStartMinutes / 30) * slotHeight;
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [scrollStartMinutes, slotHeight]);
+
   function update(index: number, next: [string, boolean, string, string]) {
     onChange(rows.map((row, i) => (i === index ? next : row)));
   }
 
-  return (
-    <section className="min-h-screen px-6 py-8">
-      <PageHeader title="Availability" subtitle="Set facility hours for public booking.">
-        <PrimaryButton icon="clock" onClick={onSave}>
-          Save hours
-        </PrimaryButton>
-      </PageHeader>
+  function availabilityRowForDate(date: string) {
+    const day = weekdayName(date);
+    return rowByDay.get(day) ?? ([day, false, "00:00", "23:59"] as [string, boolean, string, string]);
+  }
 
-      <div className="rounded-lg border border-black/10 bg-white p-5 shadow-sm">
-        {rows.map(([day, open, start, end], index) => (
-          <div key={day} className="grid gap-3 border-b border-black/10 py-3 last:border-0 sm:grid-cols-[120px_1fr_1fr_auto] sm:items-center">
-            <strong>{day}</strong>
-            <input
-              type="time"
-              value={start}
-              disabled={!open}
-              onChange={(event) => update(index, [day, open, event.target.value, end])}
-              className="min-h-10 rounded-lg border border-black/10 px-3 disabled:bg-black/[0.03]"
-            />
-            <input
-              type="time"
-              value={end}
-              disabled={!open}
-              onChange={(event) => update(index, [day, open, start, event.target.value])}
-              className="min-h-10 rounded-lg border border-black/10 px-3 disabled:bg-black/[0.03]"
-            />
-            <label className="inline-flex items-center gap-2 text-sm font-semibold">
-              <input
-                type="checkbox"
-                checked={open}
-                onChange={(event) => update(index, [day, event.target.checked, start, end])}
-                className="h-5 w-5 accent-black"
-              />
-              Open
-            </label>
+  function formatAvailabilityWeekHeading() {
+    const dates = weekDates(activeDate);
+    const first = parseLocalDate(dates[0]);
+    const last = parseLocalDate(dates[dates.length - 1]);
+    const firstLabel = first.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const lastLabel = last.toLocaleDateString("en-US", { day: "numeric" });
+    return `${firstLabel} - ${lastLabel}`;
+  }
+
+  function shiftAvailabilityDate(days: number) {
+    setActiveDate((current) => shiftDate(current, days));
+  }
+
+  function renderAvailabilityBlocks(date: string) {
+    const [day, open, start, end] = availabilityRowForDate(date);
+    const closedBlocks = closedBlocksForDate(rows, date);
+    const openStartMinutes = timeToMinutes(start);
+    const openEndMinutes = timeToMinutes(end);
+    const staffName =
+      day === "Monday"
+        ? "Jr. Jason Allaire"
+        : day === "Wednesday" || day === "Friday"
+          ? "Jason Allaire"
+          : day === "Thursday"
+            ? "August Backman"
+            : "The Grind";
+    const openColor =
+      day === "Monday"
+        ? "bg-[#e46d32] border-[#ad4f21]"
+        : day === "Wednesday" || day === "Friday"
+          ? "bg-[#249b41] border-[#16752d]"
+          : day === "Thursday"
+            ? "bg-[#e89bef] border-[#a95ab3]"
+            : "bg-[#35d75b] border-[#19963c]";
+
+    return (
+      <>
+        {closedBlocks.map((block, index) => {
+          const top = (block.start / 30) * slotHeight + 1;
+          const height = Math.max(slotHeight - 2, ((block.end - block.start) / 30) * slotHeight - 2);
+          return (
+            <div
+              key={`${date}-closed-${index}`}
+              className="absolute left-[4px] right-[4px] overflow-hidden rounded-[4px] border border-[#7f8d99] bg-[#969696]/95 px-2 py-1 text-white"
+              style={{ top, height }}
+            >
+              {height >= 48 ? (
+                <>
+                  <div className="text-[10px] font-semibold leading-none text-white/80">
+                    {timeLabel(minutesToTime(block.start))} - {timeLabel(minutesToTime(block.end))}
+                  </div>
+                  <div className="mt-1 text-[16px] font-semibold leading-none">Closed</div>
+                </>
+              ) : null}
+            </div>
+          );
+        })}
+
+        {open ? (
+          <div
+            className={`absolute left-[5px] right-[5px] overflow-hidden rounded-[4px] border px-2 py-1 text-white shadow-sm ${openColor}`}
+            style={{
+              top: (openStartMinutes / 30) * slotHeight + 1,
+              height: Math.max(slotHeight - 2, ((openEndMinutes - openStartMinutes) / 30) * slotHeight - 2),
+            }}
+          >
+            <div className="text-[10px] font-semibold leading-none text-white/90">
+              {timeLabel(start)} - {timeLabel(end)}
+            </div>
+            <div className="mt-1 truncate text-[15px] font-semibold leading-none">{staffName}</div>
+            <div className="mt-1 truncate text-[11px] font-medium leading-none text-white/95">Cage 1, Cage 2</div>
+            <div className="absolute bottom-2 right-2 grid h-7 w-7 place-items-center rounded-full bg-white/90 text-[11px] font-semibold text-black/70">
+              {staffName
+                .split(" ")
+                .map((part) => part[0])
+                .join("")
+                .slice(0, 2)}
+            </div>
           </div>
-        ))}
+        ) : null}
+      </>
+    );
+  }
+
+  return (
+    <section className="min-h-screen px-6 py-8 lg:px-7">
+      <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex shrink-0 items-center gap-2">
+          <CalendarToolbarButton label="Today" onClick={() => setActiveDate(today)} />
+          <CalendarToolbarButton label="Back" onClick={() => shiftAvailabilityDate(calendarMode === "week" ? -7 : -1)} />
+          <CalendarToolbarButton label="Next" onClick={() => shiftAvailabilityDate(calendarMode === "week" ? 7 : 1)} />
+        </div>
+
+        <div className="flex min-w-0 items-center gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <button
+            type="button"
+            className="inline-flex min-h-10 shrink-0 items-center gap-3 whitespace-nowrap rounded-lg border border-black/15 bg-white px-6 text-[16px] font-medium text-black shadow-[0_1px_0_rgba(255,255,255,0.9)]"
+          >
+            <span>{calendarMode === "week" ? formatAvailabilityWeekHeading() : formatCalendarHeading(activeDate)}</span>
+            <Icon name="chevron" className="h-4 w-4 rotate-90 text-black/60" />
+          </button>
+          <div className="flex items-center gap-2">
+            <CalendarSegmentButton active={calendarMode === "day"} onClick={() => setCalendarMode("day")}>
+              Day
+            </CalendarSegmentButton>
+            <CalendarSegmentButton active={calendarMode === "week"} onClick={() => setCalendarMode("week")}>
+              Week
+            </CalendarSegmentButton>
+          </div>
+          <CalendarToolbarButton label="Filter View" icon="table" onClick={() => setEditorOpen(true)} />
+        </div>
       </div>
+
+      <div className="overflow-hidden rounded-lg border border-black/10 bg-white shadow-sm">
+        <div
+          className="grid min-w-[980px] border-b border-black/10 bg-white"
+          style={{ gridTemplateColumns: `96px repeat(${visibleDates.length}, minmax(160px, 1fr))` }}
+        >
+          <div className="border-r border-black/10 px-4 py-4" />
+          {visibleDates.map((date) => {
+            const dateObject = parseLocalDate(date);
+            const headerLabel =
+              calendarMode === "week"
+                ? `${dateObject.getDate()} ${dateObject.toLocaleDateString("en-US", { weekday: "short" })}`
+                : dateObject.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+            return (
+              <div
+                key={`availability-header-${date}`}
+                className={[
+                  "border-r border-black/10 px-4 py-4 text-center text-[15px] font-bold last:border-r-0",
+                  date === today ? "bg-[#eaf6ff]" : "bg-white",
+                ].join(" ")}
+              >
+                {headerLabel}
+              </div>
+            );
+          })}
+        </div>
+
+        <div ref={scrollRef} className="overflow-auto" style={{ maxHeight: "calc(100vh - 260px)" }}>
+          <div
+            className="grid min-w-[980px]"
+            style={{ gridTemplateColumns: `96px repeat(${visibleDates.length}, minmax(160px, 1fr))` }}
+          >
+            <div className="relative border-r border-black/10 bg-white">
+              {slots.map((slot, index) => (
+                <div
+                  key={`availability-time-${slot}`}
+                  className="flex items-start justify-end border-b border-black/10 px-3 text-right text-[15px] font-medium text-black/90"
+                  style={{ height: slotHeight }}
+                >
+                  <div className={`w-full ${index === 0 ? "pt-1" : "pt-0.5"}`}>{timeLabel(slot)}</div>
+                </div>
+              ))}
+            </div>
+
+            {visibleDates.map((date) => (
+              <div
+                key={`availability-column-${date}`}
+                className={[
+                  "relative border-r border-black/10 last:border-r-0",
+                  date === today ? "bg-[#eaf6ff]" : "bg-white",
+                ].join(" ")}
+                style={{ height: slots.length * slotHeight }}
+              >
+                {slots.map((slot) => (
+                  <div key={`${date}-${slot}`} className="border-b border-black/10" style={{ height: slotHeight }} />
+                ))}
+                {renderAvailabilityBlocks(date)}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setEditorOpen(true)}
+        className="fixed bottom-[90px] right-5 z-20 inline-flex min-h-14 items-center gap-3 rounded-full bg-[#1f1a1a] px-6 text-[15px] font-semibold text-white shadow-[0_10px_24px_rgba(0,0,0,0.24)] lg:bottom-6"
+      >
+        <Icon name="plus" className="h-5 w-5" />
+        <span>Availability</span>
+      </button>
+
+      {editorOpen ? (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/45 p-4">
+          <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-black/10 px-6 py-5">
+              <h2 className="text-[18px] font-semibold text-black">Edit Availability</h2>
+              <button type="button" onClick={() => setEditorOpen(false)} className="text-black/45" aria-label="Close availability editor">
+                <Icon name="x" className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="min-h-0 overflow-y-auto px-6 py-5">
+              <div className="rounded-lg border border-black/10 bg-white">
+                {rows.map(([day, open, start, end], index) => (
+                  <div
+                    key={day}
+                    className="grid gap-3 border-b border-black/10 px-4 py-4 last:border-0 sm:grid-cols-[140px_1fr_1fr_auto] sm:items-center"
+                  >
+                    <strong className="text-[15px]">{day}</strong>
+                    <input
+                      type="time"
+                      value={start}
+                      disabled={!open}
+                      onChange={(event) => update(index, [day, open, event.target.value, end])}
+                      className="min-h-12 rounded-lg border border-black/10 px-4 text-[15px] disabled:bg-black/[0.03]"
+                    />
+                    <input
+                      type="time"
+                      value={end}
+                      disabled={!open}
+                      onChange={(event) => update(index, [day, open, start, event.target.value])}
+                      className="min-h-12 rounded-lg border border-black/10 px-4 text-[15px] disabled:bg-black/[0.03]"
+                    />
+                    <label className="inline-flex items-center gap-2 text-sm font-semibold">
+                      <input
+                        type="checkbox"
+                        checked={open}
+                        onChange={(event) => update(index, [day, event.target.checked, start, end])}
+                        className="h-5 w-5 accent-black"
+                      />
+                      Open
+                    </label>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-black/10 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setEditorOpen(false)}
+                className="rounded-lg border border-black/10 px-4 py-2 text-[14px] font-medium text-black/65"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onSave();
+                  setEditorOpen(false);
+                }}
+                className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-black px-5 text-[14px] font-semibold text-white"
+              >
+                <Icon name="clock" className="h-4 w-4" />
+                Save hours
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
