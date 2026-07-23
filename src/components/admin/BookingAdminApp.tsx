@@ -7952,7 +7952,16 @@ function CalendarView({
   const [mobileResource, setMobileResource] = useState<string>(allMobileResourcesValue);
   const [dragBookingId, setDragBookingId] = useState<string | null>(null);
   const [dragOverSlotKey, setDragOverSlotKey] = useState<string | null>(null);
+  const [slotSelection, setSlotSelection] = useState<{
+    resource: string;
+    anchorStart: number;
+    anchorEnd: number;
+    start: number;
+    end: number;
+    hasDragged: boolean;
+  } | null>(null);
   const dragClickGuardRef = useRef(false);
+  const slotSelectionClickGuardRef = useRef(false);
   const dateInputRef = useRef<HTMLInputElement | null>(null);
   const mobileDayScrollRef = useRef<HTMLDivElement | null>(null);
   const desktopDayScrollRef = useRef<HTMLDivElement | null>(null);
@@ -8102,6 +8111,24 @@ function CalendarView({
       };
   }, [calendarMode, mobileSlotHeight, resourceMode, scrollTargetTime, slotHeight, slots]);
 
+  useEffect(() => {
+    if (!slotSelection) return;
+
+    const cancelSlotSelection = () => {
+      setSlotSelection(null);
+      window.setTimeout(() => {
+        slotSelectionClickGuardRef.current = false;
+      }, 200);
+    };
+
+    window.addEventListener("pointerup", cancelSlotSelection);
+    window.addEventListener("pointercancel", cancelSlotSelection);
+    return () => {
+      window.removeEventListener("pointerup", cancelSlotSelection);
+      window.removeEventListener("pointercancel", cancelSlotSelection);
+    };
+  }, [slotSelection]);
+
   function openDatePicker() {
     const input = dateInputRef.current as HTMLInputElement | null;
     if (!input) return;
@@ -8153,6 +8180,20 @@ function CalendarView({
     return Math.max(segmentStart, Math.min(Math.max(segmentStart, segmentEnd - 30), snapped));
   }
 
+  function slotBoundaryFromClientY(
+    element: HTMLElement,
+    clientY: number,
+    segmentStart: number,
+    segmentEnd: number
+  ) {
+    const rect = element.getBoundingClientRect();
+    const offsetY = Math.max(0, Math.min(rect.height, clientY - rect.top));
+    const minutesInSegment = Math.max(30, segmentEnd - segmentStart);
+    const pointedMinutes = segmentStart + (offsetY / Math.max(1, rect.height)) * minutesInSegment;
+    const snapped = Math.round(pointedMinutes / 30) * 30;
+    return Math.max(segmentStart, Math.min(segmentEnd, snapped));
+  }
+
   function slotStartFromClick(
     event: React.MouseEvent<HTMLElement>,
     segmentStart: number,
@@ -8163,6 +8204,93 @@ function CalendarView({
 
   function calendarDropSlotKey(resource: string, startMinutes: number) {
     return `${activeDate}-${resource}-${startMinutes}`;
+  }
+
+  function slotSelectionRange(
+    selection: NonNullable<typeof slotSelection>,
+    boundaryMinutes: number
+  ) {
+    if (boundaryMinutes <= selection.anchorStart) {
+      return {
+        start: Math.max(0, boundaryMinutes),
+        end: selection.anchorEnd,
+      };
+    }
+
+    return {
+      start: selection.anchorStart,
+      end: Math.max(selection.anchorEnd, boundaryMinutes),
+    };
+  }
+
+  function startSlotSelection(
+    event: React.PointerEvent<HTMLElement>,
+    resource: string,
+    segmentStart: number,
+    segmentEnd: number
+  ) {
+    if (event.button !== 0 || dragBookingId) return;
+
+    const startMinutes = slotStartFromClientY(event.currentTarget, event.clientY, segmentStart, segmentEnd);
+    setSlotSelection({
+      resource,
+      anchorStart: startMinutes,
+      anchorEnd: Math.min(1439, startMinutes + 30),
+      start: startMinutes,
+      end: Math.min(1439, startMinutes + 30),
+      hasDragged: false,
+    });
+  }
+
+  function updateSlotSelection(
+    event: React.PointerEvent<HTMLElement>,
+    resource: string,
+    segmentStart: number,
+    segmentEnd: number
+  ) {
+    if (!slotSelection || slotSelection.resource !== resource || dragBookingId) return;
+
+    const boundaryMinutes = slotBoundaryFromClientY(event.currentTarget, event.clientY, segmentStart, segmentEnd);
+    const range = slotSelectionRange(slotSelection, boundaryMinutes);
+    setSlotSelection({
+      ...slotSelection,
+      ...range,
+      hasDragged:
+        slotSelection.hasDragged ||
+        range.start !== slotSelection.anchorStart ||
+        range.end !== slotSelection.anchorEnd,
+    });
+  }
+
+  function finishSlotSelection(
+    event: React.PointerEvent<HTMLElement>,
+    resource: string,
+    segmentStart: number,
+    segmentEnd: number
+  ) {
+    if (!slotSelection || slotSelection.resource !== resource || dragBookingId) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    slotSelectionClickGuardRef.current = true;
+
+    const boundaryMinutes = slotBoundaryFromClientY(event.currentTarget, event.clientY, segmentStart, segmentEnd);
+    const range = slotSelectionRange(slotSelection, boundaryMinutes);
+    setSlotSelection(null);
+    createBookingFromSlot(resource, range.start, range.end);
+
+    window.setTimeout(() => {
+      slotSelectionClickGuardRef.current = false;
+    }, 200);
+  }
+
+  function isSlotSelectionTarget(resource: string, segmentStart: number, segmentEnd: number) {
+    return Boolean(
+      slotSelection &&
+        slotSelection.resource === resource &&
+        segmentEnd > slotSelection.start &&
+        segmentStart < slotSelection.end
+    );
   }
 
   function startBookingDrag(event: React.DragEvent<HTMLElement>, booking: Booking) {
@@ -8261,7 +8389,7 @@ function CalendarView({
     segmentStart: number,
     segmentEnd: number
   ) {
-    if (dragBookingId || dragClickGuardRef.current) return;
+    if (dragBookingId || dragClickGuardRef.current || slotSelectionClickGuardRef.current) return;
 
     const startMinutes = slotStartFromClick(event, segmentStart, segmentEnd);
     createBookingFromSlot(resource, startMinutes, startMinutes + 30);
@@ -8486,17 +8614,22 @@ function CalendarView({
                           if (segment.type === "available") {
                             const slotKey = calendarDropSlotKey(resource, segment.start);
                             const isDragTarget = dragOverSlotKey === slotKey;
+                            const isSelectionTarget = isSlotSelectionTarget(resource, segment.start, segment.end);
 
                             return (
                               <button
                                 key={`${resource}-mobile-open-block-${index}`}
                                 type="button"
                                 onClick={(event) => void handleOpenSlotClick(event, resource, segment.start, segment.end)}
+                                onPointerDown={(event) => startSlotSelection(event, resource, segment.start, segment.end)}
+                                onPointerMove={(event) => updateSlotSelection(event, resource, segment.start, segment.end)}
+                                onPointerEnter={(event) => updateSlotSelection(event, resource, segment.start, segment.end)}
+                                onPointerUp={(event) => finishSlotSelection(event, resource, segment.start, segment.end)}
                                 onDragOver={(event) => handleSlotDragOver(event, resource, segment.start)}
                                 onDragLeave={() => handleSlotDragLeave(resource, segment.start)}
                                 onDrop={(event) => void handleSlotDrop(event, resource, segment.start, segment.end)}
-                                className={`absolute left-[2px] right-[2px] overflow-hidden rounded-md border px-2 py-1 text-left shadow-sm transition ${
-                                  isDragTarget
+                                className={`absolute left-[2px] right-[2px] overflow-hidden rounded-md border px-2 py-1 text-left shadow-sm transition select-none ${
+                                  isDragTarget || isSelectionTarget
                                     ? "border-black bg-[#d7f4e5] text-black ring-2 ring-black/30"
                                     : "border-[#caefdd] bg-[#f3fcf7] text-[#166443]"
                                 } ${dragBookingId ? "cursor-copy" : ""}`}
@@ -8653,18 +8786,23 @@ function CalendarView({
                         if (segment.type === "available") {
                           const slotKey = calendarDropSlotKey(resource, segment.start);
                           const isDragTarget = dragOverSlotKey === slotKey;
+                          const isSelectionTarget = isSlotSelectionTarget(resource, segment.start, segment.end);
 
                           return (
                             <button
                               key={`${resource}-available-${index}`}
                               type="button"
                               onClick={(event) => void handleOpenSlotClick(event, resource, segment.start, segment.end)}
+                              onPointerDown={(event) => startSlotSelection(event, resource, segment.start, segment.end)}
+                              onPointerMove={(event) => updateSlotSelection(event, resource, segment.start, segment.end)}
+                              onPointerEnter={(event) => updateSlotSelection(event, resource, segment.start, segment.end)}
+                              onPointerUp={(event) => finishSlotSelection(event, resource, segment.start, segment.end)}
                               onDragOver={(event) => handleSlotDragOver(event, resource, segment.start)}
                               onDragLeave={() => handleSlotDragLeave(resource, segment.start)}
                               onDrop={(event) => void handleSlotDrop(event, resource, segment.start, segment.end)}
                               aria-label={`Book ${resource} from ${timeLabel(minutesToTime(segment.start))} to ${timeLabel(minutesToTime(segment.end))}`}
-                              className={`absolute left-0 right-0 overflow-hidden border text-left transition ${
-                                isDragTarget
+                              className={`absolute left-0 right-0 overflow-hidden border text-left transition select-none ${
+                                isDragTarget || isSelectionTarget
                                   ? "border-black/30 bg-[#c8e9ff] ring-2 ring-black/25"
                                   : "border-transparent bg-transparent hover:bg-[#d9efff]/70"
                               } ${
