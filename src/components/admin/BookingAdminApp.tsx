@@ -9647,20 +9647,22 @@ function AvailabilityView({
                 event.stopPropagation();
                 editAvailabilityDraft(entry);
               }}
-              className="absolute left-[5px] right-[5px] overflow-hidden rounded-[4px] border border-black/20 pb-1 pl-[6px] pr-1.5 pt-[4px] text-left text-white shadow-sm"
+              className="absolute left-[5px] right-[5px] block appearance-none overflow-hidden rounded-[4px] border border-black/20 text-left text-white shadow-sm"
               style={{ top, height, backgroundColor: entry.color }}
             >
-              <div className="truncate text-[10px] font-semibold leading-[10px] text-white">
-                {timeLabel(entry.start)} - {timeLabel(entry.end)}
+              <div className="absolute left-[6px] right-[6px] top-[4px]">
+                <div className="truncate text-[10px] font-semibold leading-[10px] text-white">
+                  {timeLabel(entry.start)} - {timeLabel(entry.end)}
+                </div>
+                {height >= 42 ? (
+                  <>
+                    <div className="mt-[2px] truncate text-[14px] font-semibold leading-[14px] text-white">{entry.staffName}</div>
+                    <div className="mt-[2px] truncate text-[11px] font-semibold leading-[11px] text-white">
+                      {entry.resources.length ? entry.resources.join(", ") : "All rooms"}
+                    </div>
+                  </>
+                ) : null}
               </div>
-              {height >= 42 ? (
-                <>
-                  <div className="mt-[2px] truncate text-[14px] font-semibold leading-[14px] text-white">{entry.staffName}</div>
-                  <div className="mt-[2px] truncate text-[11px] font-semibold leading-[11px] text-white">
-                    {entry.resources.length ? entry.resources.join(", ") : "All rooms"}
-                  </div>
-                </>
-              ) : null}
               {height >= 86 ? (
                 <>
                   <Icon name="repeat" className="absolute bottom-[11px] right-[42px] h-5 w-5 text-white" />
