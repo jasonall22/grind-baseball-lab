@@ -1899,9 +1899,9 @@ function normalizeStaffMembers(value: unknown): StaffMember[] {
   return items.length ? items : defaultState.staff;
 }
 
-const staffAvailabilityColors = ["#8f8f8f"];
-const staffAvailabilityBlockColor = "#8f8f8f";
-const staffAvailabilityBlockBorderColor = "#6f8494";
+const staffAvailabilityColors = ["#249b41", "#e46d32", "#e89bef", "#35d75b", "#1688d1", "#7c3aed"];
+const staffAvailabilityDragPreviewColor = "#8f8f8f";
+const staffAvailabilityDragPreviewBorderColor = "#6f8494";
 
 function staffAvailabilityColor(index: number) {
   return staffAvailabilityColors[index % staffAvailabilityColors.length];
@@ -9499,7 +9499,7 @@ function AvailabilityView({
       start: existing?.start ?? minutesToTime(start),
       end: existing?.end ?? minutesToTime(end),
       resources: existing?.resources ?? resources.slice(0, Math.min(2, resources.length)),
-      color: existing?.color ?? staffAvailabilityBlockColor,
+      color: existing?.color ?? staffAvailabilityColor(entries.length),
     };
   }
 
@@ -9589,6 +9589,14 @@ function AvailabilityView({
         {dayEntries.map((entry) => {
           const top = (timeToMinutes(entry.start) / 30) * slotHeight + 1;
           const height = Math.max(30, ((timeToMinutes(entry.end) - timeToMinutes(entry.start)) / 30) * slotHeight - 2);
+          const textColor = isLightCalendarColor(entry.color) ? "text-black" : "text-white";
+          const softText = isLightCalendarColor(entry.color) ? "text-black/70" : "text-white/90";
+          const initials = entry.staffName
+            .split(" ")
+            .filter(Boolean)
+            .map((part) => part[0])
+            .join("")
+            .slice(0, 2);
 
           return (
             <button
@@ -9599,19 +9607,24 @@ function AvailabilityView({
                 event.stopPropagation();
                 editAvailabilityDraft(entry);
               }}
-              className="absolute left-[5px] right-[5px] overflow-hidden rounded-[4px] border px-2 py-1 text-left text-white"
-              style={{
-                top,
-                height,
-                backgroundColor: staffAvailabilityBlockColor,
-                borderColor: staffAvailabilityBlockBorderColor,
-              }}
+              className={`absolute left-[5px] right-[5px] overflow-hidden rounded-[4px] border border-black/20 px-2 py-1 text-left shadow-sm ${textColor}`}
+              style={{ top, height, backgroundColor: entry.color }}
             >
-              <div className="truncate text-[12px] font-medium leading-none text-white">
+              <div className={`truncate text-[10px] font-semibold leading-none ${softText}`}>
                 {timeLabel(entry.start)} - {timeLabel(entry.end)}
               </div>
-              {height >= 68 ? (
-                <div className="mt-1 truncate text-[11px] font-medium leading-none text-white/80">{entry.staffName}</div>
+              {height >= 42 ? (
+                <>
+                  <div className="mt-1 truncate text-[15px] font-semibold leading-none">{entry.staffName}</div>
+                  <div className={`mt-1 truncate text-[11px] font-medium leading-none ${softText}`}>
+                    {entry.resources.length ? entry.resources.join(", ") : "All rooms"}
+                  </div>
+                </>
+              ) : null}
+              {height >= 86 ? (
+                <div className="absolute bottom-2 right-2 grid h-7 w-7 place-items-center rounded-full bg-white/90 text-[11px] font-semibold text-black/70">
+                  {initials || "ST"}
+                </div>
               ) : null}
             </button>
           );
@@ -9629,8 +9642,8 @@ function AvailabilityView({
               style={{
                 top,
                 height,
-                backgroundColor: staffAvailabilityBlockColor,
-                borderColor: staffAvailabilityBlockBorderColor,
+                backgroundColor: staffAvailabilityDragPreviewColor,
+                borderColor: staffAvailabilityDragPreviewBorderColor,
               }}
             >
               <div className="truncate text-[12px] font-medium leading-none text-white">
