@@ -2570,18 +2570,17 @@ function membershipCreditSettings(record: CustomerMembershipRecord, membershipSe
     : [];
   const recordCreditsPerDay = Math.max(0, Math.floor(Number(record.creditsPerDay ?? 0)));
   const serviceCreditsPerDay = Math.max(0, Math.floor(Number(membershipService?.membershipCreditsPerDay ?? 0)));
-  const usesRecordCreditConfig = recordCreditsPerDay > 0 || recordEligibleServiceIds.length > 0;
-  const creditLimitPeriod = usesRecordCreditConfig
-    ? normalizeMembershipCreditLimitPeriod(record.creditLimitPeriod)
-    : normalizeMembershipCreditLimitPeriod(membershipService?.membershipCreditLimitPeriod ?? record.creditLimitPeriod);
+  const usesServiceCreditConfig = Boolean(membershipService);
 
   return {
-    creditsPerDay: recordCreditsPerDay > 0 ? recordCreditsPerDay : serviceCreditsPerDay,
-    creditLimitPeriod,
-    creditScope: usesRecordCreditConfig
-      ? record.creditScope
-      : membershipService?.membershipCreditScope ?? record.creditScope,
-    eligibleServiceIds: recordEligibleServiceIds.length > 0 ? recordEligibleServiceIds : serviceEligibleServiceIds,
+    creditsPerDay: usesServiceCreditConfig ? serviceCreditsPerDay : recordCreditsPerDay,
+    creditLimitPeriod: usesServiceCreditConfig
+      ? normalizeMembershipCreditLimitPeriod(membershipService?.membershipCreditLimitPeriod)
+      : normalizeMembershipCreditLimitPeriod(record.creditLimitPeriod),
+    creditScope: usesServiceCreditConfig
+      ? membershipService?.membershipCreditScope ?? record.creditScope
+      : record.creditScope,
+    eligibleServiceIds: usesServiceCreditConfig ? serviceEligibleServiceIds : recordEligibleServiceIds,
   };
 }
 
@@ -9946,10 +9945,17 @@ function CustomerDetailView({
     return total + (booking.paid ? servicePrice : 0);
   }, 0);
   const membershipCards = memberships
-    .map((membership) => ({
-      ...membership,
-      service: servicesById.get(membership.membershipServiceId),
-    }))
+    .map((membership) => {
+      const service = servicesById.get(membership.membershipServiceId);
+      const creditSettings = membershipCreditSettings(membership, service);
+
+      return {
+        ...membership,
+        creditsPerDay: creditSettings.creditsPerDay,
+        creditLimitPeriod: creditSettings.creditLimitPeriod,
+        service,
+      };
+    })
     .sort((left, right) => {
       const leftActive = isActiveCustomerMembership(left);
       const rightActive = isActiveCustomerMembership(right);
