@@ -140,6 +140,7 @@ type StaffMember = {
   email: string;
   role: StaffRole;
   active: boolean;
+  calendarColor?: string;
 };
 
 type StaffAvailabilityEntry = {
@@ -539,6 +540,7 @@ type BookingStaffRow = {
   role: StaffRole;
   is_active: boolean;
   sort_order: number;
+  calendar_color?: string | null;
 };
 
 type BookingRolePermissionRow = {
@@ -1881,7 +1883,7 @@ function normalizeStaffRole(value: unknown): StaffRole {
   return "Staff";
 }
 
-function normalizeStaffMemberEntry(value: unknown): StaffMember | null {
+function normalizeStaffMemberEntry(value: unknown, fallbackIndex = 0): StaffMember | null {
   if (!value || typeof value !== "object") return null;
   const item = value as Partial<StaffMember>;
   return {
@@ -1890,12 +1892,13 @@ function normalizeStaffMemberEntry(value: unknown): StaffMember | null {
     email: typeof item.email === "string" ? item.email : "",
     role: normalizeStaffRole(item.role),
     active: item.active ?? true,
+    calendarColor: normalizeCalendarColor(item.calendarColor ?? staffAvailabilityColor(fallbackIndex)),
   };
 }
 
 function normalizeStaffMembers(value: unknown): StaffMember[] {
   if (!Array.isArray(value)) return defaultState.staff;
-  const items = value.map(normalizeStaffMemberEntry).filter(Boolean) as StaffMember[];
+  const items = value.map((item, index) => normalizeStaffMemberEntry(item, index)).filter(Boolean) as StaffMember[];
   return items.length ? items : defaultState.staff;
 }
 
@@ -1926,7 +1929,7 @@ function normalizeStaffAvailabilityEntry(value: unknown, staffById: Map<string, 
     start,
     end,
     resources: Array.isArray(item.resources) ? item.resources.filter((resource): resource is string => typeof resource === "string" && resource.trim().length > 0) : [],
-    color: normalizeCalendarColor(item.color ?? staffAvailabilityColor(fallbackIndex)),
+    color: normalizeCalendarColor(item.color ?? staffMember.calendarColor ?? staffAvailabilityColor(fallbackIndex)),
   };
 }
 
@@ -1952,7 +1955,7 @@ function normalizeStaffAvailabilityRow(
       start: row.start_time,
       end: row.end_time,
       resources: row.resource_names ?? [],
-      color: row.color ?? staffAvailabilityColor(fallbackIndex),
+      color: row.color ?? staffById.get(row.staff_member_id)?.calendarColor ?? staffAvailabilityColor(fallbackIndex),
     },
     staffById,
     fallbackIndex
@@ -2241,6 +2244,7 @@ async function upsertStaffMembers(staff: StaffMember[]) {
     email: member.email.trim(),
     role: member.role,
     is_active: member.active,
+    calendar_color: normalizeCalendarColor(member.calendarColor ?? staffAvailabilityColor(index)),
     sort_order: index + 1,
   }));
 
@@ -4414,12 +4418,13 @@ export default function BookingAdminApp({
       const membershipCreditLedgerEntries = membershipCreditLedgerRows.map(normalizeMembershipCreditLedgerRow);
       const availabilityOrder = new Map(defaultState.availability.map(([day], index) => [day, index]));
       const staffMembers = staffRows.length
-        ? staffRows.map((member) => ({
+        ? staffRows.map((member, index) => ({
             id: member.id,
             name: member.full_name,
             email: member.email,
             role: normalizeStaffRole(member.role),
             active: member.is_active,
+            calendarColor: normalizeCalendarColor(member.calendar_color ?? staffAvailabilityColor(index)),
           }))
         : defaultState.staff;
       const staffById = new Map(staffMembers.map((member) => [member.id, member]));
@@ -4806,11 +4811,12 @@ export default function BookingAdminApp({
   }
 
   async function saveStaffMembers(nextStaff: StaffMember[], successMessage = "Staff saved.") {
-    const normalizedStaff = nextStaff.map((member) => ({
+    const normalizedStaff = nextStaff.map((member, index) => ({
       ...member,
       name: member.name.trim(),
       email: member.email.trim(),
       role: normalizeStaffRole(member.role),
+      calendarColor: normalizeCalendarColor(member.calendarColor ?? staffAvailabilityColor(index)),
     }));
     const nextState = {
       ...state,
@@ -4829,12 +4835,13 @@ export default function BookingAdminApp({
       const savedRows = await upsertStaffMembers(normalizedStaff);
       setState((current) => ({
         ...current,
-        staff: savedRows.map((member) => ({
+        staff: savedRows.map((member, index) => ({
           id: member.id,
           name: member.full_name,
           email: member.email,
           role: normalizeStaffRole(member.role),
           active: member.is_active,
+          calendarColor: normalizeCalendarColor(member.calendar_color ?? staffAvailabilityColor(index)),
         })),
       }));
       showToast(successMessage);
@@ -4975,9 +4982,18 @@ export default function BookingAdminApp({
       return false;
     }
 
+    const nextStaff = state.staff.map((member) =>
+      member.id === normalizedEntry.staffId
+        ? { ...member, calendarColor: normalizedEntry.color }
+        : member
+    );
+    const nextAvailability = upsert(state.staffAvailability, normalizedEntry).map((item) =>
+      item.staffId === normalizedEntry.staffId ? { ...item, color: normalizedEntry.color } : item
+    );
     const next = {
       ...state,
-      staffAvailability: upsert(state.staffAvailability, normalizedEntry),
+      staff: nextStaff,
+      staffAvailability: nextAvailability,
     };
 
     if (dataSource === "local") {
@@ -5001,6 +5017,20 @@ export default function BookingAdminApp({
       });
 
       if (error) throw error;
+      if (canManageAnyAvailability) {
+        const staffColorUpdate = await supabase
+          .from("booking_staff_members")
+          .update({ calendar_color: normalizedEntry.color })
+          .eq("id", normalizedEntry.staffId);
+        if (staffColorUpdate.error) throw staffColorUpdate.error;
+      }
+
+      const staffAvailabilityColorUpdate = await supabase
+        .from("booking_staff_availability")
+        .update({ color: normalizedEntry.color })
+        .eq("staff_member_id", normalizedEntry.staffId);
+      if (staffAvailabilityColorUpdate.error) throw staffAvailabilityColorUpdate.error;
+
       showToast("Availability saved.");
       return true;
     } catch (error) {
@@ -9442,6 +9472,16 @@ function AvailabilityView({
     () => entries.filter((entry) => canManageAny || entry.staffId === currentStaffId),
     [canManageAny, currentStaffId, entries]
   );
+  const staffColorById = useMemo(() => {
+    const colors = new Map<string, string>();
+    staff.forEach((member, index) => {
+      colors.set(member.id, normalizeCalendarColor(member.calendarColor ?? staffAvailabilityColor(index)));
+    });
+    entries.forEach((entry) => {
+      colors.set(entry.staffId, normalizeCalendarColor(entry.color));
+    });
+    return colors;
+  }, [entries, staff]);
   const today = isoDate(new Date());
   const scrollStartMinutes = useMemo(() => {
     const openStarts = rows.filter(([, open]) => open).map(([, , start]) => timeToMinutes(start));
@@ -9499,7 +9539,7 @@ function AvailabilityView({
       start: existing?.start ?? minutesToTime(start),
       end: existing?.end ?? minutesToTime(end),
       resources: existing?.resources ?? resources.slice(0, Math.min(2, resources.length)),
-      color: existing?.color ?? staffAvailabilityColor(entries.length),
+      color: existing?.color ?? staffColorById.get(fallbackStaff.id) ?? fallbackStaff.calendarColor ?? staffAvailabilityColor(entries.length),
     };
   }
 
@@ -9607,22 +9647,22 @@ function AvailabilityView({
                 event.stopPropagation();
                 editAvailabilityDraft(entry);
               }}
-              className={`absolute left-[5px] right-[5px] overflow-hidden rounded-[4px] border border-black/20 px-2 py-1 text-left shadow-sm ${textColor}`}
+              className={`absolute left-[5px] right-[5px] overflow-hidden rounded-[4px] border border-black/20 pb-1 pl-[7px] pr-2 pt-[5px] text-left shadow-sm ${textColor}`}
               style={{ top, height, backgroundColor: entry.color }}
             >
-              <div className={`truncate text-[10px] font-semibold leading-none ${softText}`}>
+              <div className={`truncate text-[10px] font-semibold leading-[10px] ${softText}`}>
                 {timeLabel(entry.start)} - {timeLabel(entry.end)}
               </div>
               {height >= 42 ? (
                 <>
-                  <div className="mt-1 truncate text-[15px] font-semibold leading-none">{entry.staffName}</div>
-                  <div className={`mt-1 truncate text-[11px] font-medium leading-none ${softText}`}>
+                  <div className="mt-[5px] truncate text-[15px] font-semibold leading-[15px]">{entry.staffName}</div>
+                  <div className={`mt-[2px] truncate text-[11px] font-medium leading-[12px] ${softText}`}>
                     {entry.resources.length ? entry.resources.join(", ") : "All rooms"}
                   </div>
                 </>
               ) : null}
               {height >= 86 ? (
-                <div className="absolute bottom-2 right-2 grid h-7 w-7 place-items-center rounded-full bg-white/90 text-[11px] font-semibold text-black/70">
+                <div className="absolute bottom-[7px] right-[7px] grid h-7 w-7 place-items-center rounded-full bg-white/90 text-[11px] font-semibold leading-none text-black/70">
                   {initials || "ST"}
                 </div>
               ) : null}
@@ -9638,7 +9678,7 @@ function AvailabilityView({
           const height = Math.max(24, ((safeEnd - start) / 30) * slotHeight - 2);
           return (
             <div
-              className="pointer-events-none absolute left-[5px] right-[5px] overflow-hidden rounded-[4px] border px-2 py-1 text-left text-white"
+              className="pointer-events-none absolute left-[5px] right-[5px] overflow-hidden rounded-[4px] border pb-1 pl-[7px] pr-2 pt-[5px] text-left text-white"
               style={{
                 top,
                 height,
@@ -9646,7 +9686,7 @@ function AvailabilityView({
                 borderColor: staffAvailabilityDragPreviewBorderColor,
               }}
             >
-              <div className="truncate text-[12px] font-medium leading-none text-white">
+              <div className="truncate text-[12px] font-medium leading-[12px] text-white">
                 {timeLabel(minutesToTime(start))} - {timeLabel(minutesToTime(safeEnd))}
               </div>
             </div>
@@ -9855,7 +9895,12 @@ function AvailabilityView({
                     const staffMember = staffById.get(event.target.value);
                     setDraft((current) =>
                       current && staffMember
-                        ? { ...current, staffId: staffMember.id, staffName: staffMember.name }
+                        ? {
+                            ...current,
+                            staffId: staffMember.id,
+                            staffName: staffMember.name,
+                            color: staffColorById.get(staffMember.id) ?? staffMember.calendarColor ?? current.color,
+                          }
                         : current
                     );
                   }}
@@ -15059,6 +15104,9 @@ function StaffSettingsView({
       email: trimmedEmail,
       role: memberRole,
       active: memberIsActive,
+      calendarColor:
+        draft.find((member) => member.id === editingStaffId)?.calendarColor ??
+        staffAvailabilityColor(draft.length),
     };
 
     const nextStaff = editingStaffId
