@@ -152,6 +152,10 @@ type StaffAvailabilityEntry = {
   end: string;
   resources: string[];
   color: string;
+  recurring?: boolean;
+  recurrenceId?: string;
+  recurrenceFrequency?: "weekly";
+  recurrenceEndDate?: string;
 };
 
 type StaffRoleSummary = {
@@ -515,6 +519,10 @@ type BookingStaffAvailabilityRow = {
   end_time: string;
   resource_names: string[] | null;
   color: string | null;
+  is_recurring?: boolean | null;
+  recurrence_id?: string | null;
+  recurrence_frequency?: string | null;
+  recurrence_end_date?: string | null;
 };
 
 type BookingCampaignRow = {
@@ -1912,16 +1920,32 @@ function staffAvailabilityColor(index: number) {
   return staffAvailabilityColors[index % staffAvailabilityColors.length];
 }
 
+function isIsoDate(value: unknown): value is string {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function defaultStaffAvailabilityRecurrenceEndDate(date: string) {
+  return shiftDate(date, 26 * 7);
+}
+
 function normalizeStaffAvailabilityEntry(value: unknown, staffById: Map<string, StaffMember>, fallbackIndex = 0): StaffAvailabilityEntry | null {
   if (!value || typeof value !== "object") return null;
   const item = value as Partial<StaffAvailabilityEntry>;
   const staffId = typeof item.staffId === "string" ? item.staffId : "";
   const staffMember = staffById.get(staffId);
-  const date = typeof item.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(item.date) ? item.date : "";
+  const date = isIsoDate(item.date) ? item.date : "";
   const start = normalizeTime(item.start);
   const end = normalizeTime(item.end);
 
   if (!staffMember || !date || timeToMinutes(end) <= timeToMinutes(start)) return null;
+
+  const recurring = Boolean(item.recurring);
+  const recurrenceEndDate =
+    recurring && isIsoDate(item.recurrenceEndDate) && item.recurrenceEndDate >= date
+      ? item.recurrenceEndDate
+      : recurring
+        ? defaultStaffAvailabilityRecurrenceEndDate(date)
+        : undefined;
 
   return {
     id: typeof item.id === "string" && item.id.trim() ? item.id : makeId("availability"),
@@ -1932,6 +1956,14 @@ function normalizeStaffAvailabilityEntry(value: unknown, staffById: Map<string, 
     end,
     resources: Array.isArray(item.resources) ? item.resources.filter((resource): resource is string => typeof resource === "string" && resource.trim().length > 0) : [],
     color: normalizeCalendarColor(item.color ?? staffMember.calendarColor ?? staffAvailabilityColor(fallbackIndex)),
+    recurring,
+    recurrenceId: recurring
+      ? typeof item.recurrenceId === "string" && item.recurrenceId.trim()
+        ? item.recurrenceId
+        : makeId("recurrence")
+      : undefined,
+    recurrenceFrequency: recurring ? "weekly" : undefined,
+    recurrenceEndDate,
   };
 }
 
@@ -1958,10 +1990,39 @@ function normalizeStaffAvailabilityRow(
       end: row.end_time,
       resources: row.resource_names ?? [],
       color: row.color ?? staffById.get(row.staff_member_id)?.calendarColor ?? staffAvailabilityColor(fallbackIndex),
+      recurring: Boolean(row.is_recurring),
+      recurrenceId: row.recurrence_id ?? undefined,
+      recurrenceFrequency: row.recurrence_frequency === "weekly" ? "weekly" : undefined,
+      recurrenceEndDate: row.recurrence_end_date ?? undefined,
     },
     staffById,
     fallbackIndex
   );
+}
+
+function expandStaffAvailabilityRecurrence(entry: StaffAvailabilityEntry, startDate = entry.date) {
+  if (!entry.recurring || !entry.recurrenceEndDate) return [entry];
+
+  const recurrenceId = entry.recurrenceId ?? makeId("recurrence");
+  const entries: StaffAvailabilityEntry[] = [];
+  let date = startDate;
+  let index = 0;
+
+  while (date <= entry.recurrenceEndDate && index < 104) {
+    entries.push({
+      ...entry,
+      id: date === entry.date ? entry.id : makeId("availability"),
+      date,
+      recurring: true,
+      recurrenceId,
+      recurrenceFrequency: "weekly",
+      recurrenceEndDate: entry.recurrenceEndDate,
+    });
+    date = shiftDate(date, 7);
+    index += 1;
+  }
+
+  return entries;
 }
 
 function normalizeBookings(bookings: Booking[], services: Service[]) {
@@ -4984,12 +5045,31 @@ export default function BookingAdminApp({
       return false;
     }
 
+    const previousEntry = state.staffAvailability.find((item) => item.id === normalizedEntry.id);
+    const recurrenceId = normalizedEntry.recurring ? normalizedEntry.recurrenceId : previousEntry?.recurrenceId;
+    const existingSeries = recurrenceId ? state.staffAvailability.filter((item) => item.recurrenceId === recurrenceId) : [];
+    const shouldPreserveSeriesStart =
+      normalizedEntry.recurring &&
+      previousEntry !== undefined &&
+      previousEntry.recurrenceId === recurrenceId &&
+      previousEntry.date === normalizedEntry.date &&
+      existingSeries.length > 0;
+    const recurrenceStartDate =
+      shouldPreserveSeriesStart
+        ? existingSeries.reduce((earliest, item) => (item.date < earliest ? item.date : earliest), existingSeries[0].date)
+        : normalizedEntry.date;
+    const expandedEntries = normalizedEntry.recurring
+      ? expandStaffAvailabilityRecurrence(normalizedEntry, recurrenceStartDate)
+      : [normalizedEntry];
+    const retainedAvailability = state.staffAvailability.filter((item) =>
+      recurrenceId ? item.recurrenceId !== recurrenceId && item.id !== normalizedEntry.id : item.id !== normalizedEntry.id
+    );
     const nextStaff = state.staff.map((member) =>
       member.id === normalizedEntry.staffId
         ? { ...member, calendarColor: normalizedEntry.color }
         : member
     );
-    const nextAvailability = upsert(state.staffAvailability, normalizedEntry).map((item) =>
+    const nextAvailability = [...retainedAvailability, ...expandedEntries].map((item) =>
       item.staffId === normalizedEntry.staffId ? { ...item, color: normalizedEntry.color } : item
     );
     const next = {
@@ -5008,15 +5088,29 @@ export default function BookingAdminApp({
     stateToStorage(next);
 
     try {
-      const { error } = await supabase.from("booking_staff_availability").upsert({
-        id: normalizedEntry.id,
-        staff_member_id: normalizedEntry.staffId,
-        availability_date: normalizedEntry.date,
-        start_time: normalizedEntry.start,
-        end_time: normalizedEntry.end,
-        resource_names: normalizedEntry.resources,
-        color: normalizedEntry.color,
-      });
+      if (recurrenceId) {
+        const deleteSeries = await supabase
+          .from("booking_staff_availability")
+          .delete()
+          .eq("recurrence_id", recurrenceId);
+        if (deleteSeries.error) throw deleteSeries.error;
+      }
+
+      const { error } = await supabase.from("booking_staff_availability").upsert(
+        expandedEntries.map((item) => ({
+          id: item.id,
+          staff_member_id: item.staffId,
+          availability_date: item.date,
+          start_time: item.start,
+          end_time: item.end,
+          resource_names: item.resources,
+          color: item.color,
+          is_recurring: Boolean(item.recurring),
+          recurrence_id: item.recurrenceId ?? null,
+          recurrence_frequency: item.recurrenceFrequency ?? null,
+          recurrence_end_date: item.recurrenceEndDate ?? null,
+        }))
+      );
 
       if (error) throw error;
       if (canManageAnyAvailability) {
@@ -9542,6 +9636,10 @@ function AvailabilityView({
       end: existing?.end ?? minutesToTime(end),
       resources: existing?.resources ?? resources.slice(0, Math.min(2, resources.length)),
       color: existing?.color ?? staffColorById.get(fallbackStaff.id) ?? fallbackStaff.calendarColor ?? staffAvailabilityColor(entries.length),
+      recurring: existing?.recurring ?? false,
+      recurrenceId: existing?.recurrenceId,
+      recurrenceFrequency: existing?.recurrenceFrequency,
+      recurrenceEndDate: existing?.recurrenceEndDate ?? defaultStaffAvailabilityRecurrenceEndDate(date),
     };
   }
 
@@ -9665,7 +9763,7 @@ function AvailabilityView({
               </div>
               {height >= 86 ? (
                 <>
-                  <Icon name="repeat" className="absolute bottom-[11px] right-[42px] h-5 w-5 text-white" />
+                  {entry.recurring ? <Icon name="repeat" className="absolute bottom-[11px] right-[42px] h-5 w-5 text-white" /> : null}
                   <div className="absolute bottom-[7px] right-[7px] grid h-7 w-7 place-items-center rounded-full border border-black/25 bg-white/90 text-[11px] font-semibold leading-none text-black/80">
                     {initials || "ST"}
                   </div>
@@ -9925,7 +10023,20 @@ function AvailabilityView({
                   <input
                     type="date"
                     value={draft.date}
-                    onChange={(event) => setDraft((current) => (current ? { ...current, date: event.target.value } : current))}
+                    onChange={(event) =>
+                      setDraft((current) =>
+                        current
+                          ? {
+                              ...current,
+                              date: event.target.value,
+                              recurrenceEndDate:
+                                current.recurring && (!current.recurrenceEndDate || current.recurrenceEndDate < event.target.value)
+                                  ? defaultStaffAvailabilityRecurrenceEndDate(event.target.value)
+                                  : current.recurrenceEndDate,
+                            }
+                          : current
+                      )
+                    }
                     className="min-h-12 rounded-lg border border-black/10 px-4 text-[15px]"
                   />
                 </label>
@@ -9947,6 +10058,95 @@ function AvailabilityView({
                     className="min-h-12 rounded-lg border border-black/10 px-4 text-[15px]"
                   />
                 </label>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-[180px_1fr_180px] sm:items-end">
+                <div className="grid gap-1.5">
+                  <span className="text-sm font-semibold text-black/70">Repeats</span>
+                  <div className="inline-grid min-h-12 grid-cols-2 overflow-hidden rounded-lg border border-black/10 bg-white">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDraft((current) =>
+                          current
+                            ? {
+                                ...current,
+                                recurring: false,
+                                recurrenceId: undefined,
+                                recurrenceFrequency: undefined,
+                                recurrenceEndDate: undefined,
+                              }
+                            : current
+                        )
+                      }
+                      className={[
+                        "px-5 text-sm font-semibold",
+                        !draft.recurring ? "bg-black text-white" : "bg-white text-black/50",
+                      ].join(" ")}
+                    >
+                      No
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDraft((current) =>
+                          current
+                            ? {
+                                ...current,
+                                recurring: true,
+                                recurrenceId: current.recurrenceId ?? makeId("recurrence"),
+                                recurrenceFrequency: "weekly",
+                                recurrenceEndDate: current.recurrenceEndDate ?? defaultStaffAvailabilityRecurrenceEndDate(current.date),
+                              }
+                            : current
+                        )
+                      }
+                      className={[
+                        "px-5 text-sm font-semibold",
+                        draft.recurring ? "bg-black text-white" : "bg-white text-black/50",
+                      ].join(" ")}
+                    >
+                      Yes
+                    </button>
+                  </div>
+                </div>
+
+                {draft.recurring ? (
+                  <>
+                    <label className="grid gap-1.5">
+                      <span className="text-sm font-semibold text-black/70">Frequency</span>
+                      <select
+                        value="weekly"
+                        onChange={() => undefined}
+                        className="min-h-12 rounded-lg border border-black/10 bg-white px-4 text-[15px]"
+                      >
+                        <option value="weekly">Weekly on {weekdayName(draft.date)}</option>
+                      </select>
+                    </label>
+                    <label className="grid gap-1.5">
+                      <span className="text-sm font-semibold text-black/70">End Date</span>
+                      <input
+                        type="date"
+                        min={draft.date}
+                        value={draft.recurrenceEndDate ?? defaultStaffAvailabilityRecurrenceEndDate(draft.date)}
+                        onChange={(event) =>
+                          setDraft((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  recurrenceEndDate:
+                                    event.target.value >= current.date
+                                      ? event.target.value
+                                      : defaultStaffAvailabilityRecurrenceEndDate(current.date),
+                                }
+                              : current
+                          )
+                        }
+                        className="min-h-12 rounded-lg border border-black/10 px-4 text-[15px]"
+                      />
+                    </label>
+                  </>
+                ) : null}
               </div>
 
               <div className="grid gap-2">
