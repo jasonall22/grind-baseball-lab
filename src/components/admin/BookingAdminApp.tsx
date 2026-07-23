@@ -7950,7 +7950,9 @@ function CalendarView({
   const [resourceMode, setResourceMode] = useState<"rooms" | "staff" | "equipment">("rooms");
   const [calendarMode, setCalendarMode] = useState<"day" | "week">("day");
   const [mobileResource, setMobileResource] = useState<string>(allMobileResourcesValue);
-  const [moveBookingId, setMoveBookingId] = useState<string | null>(null);
+  const [dragBookingId, setDragBookingId] = useState<string | null>(null);
+  const [dragOverSlotKey, setDragOverSlotKey] = useState<string | null>(null);
+  const dragClickGuardRef = useRef(false);
   const dateInputRef = useRef<HTMLInputElement | null>(null);
   const mobileDayScrollRef = useRef<HTMLDivElement | null>(null);
   const desktopDayScrollRef = useRef<HTMLDivElement | null>(null);
@@ -8062,10 +8064,6 @@ function CalendarView({
     },
     [activeDate, availability, defaultSchedule, resources, scheduleByResource]
   );
-  const moveBooking = moveBookingId
-    ? activeCalendarBookings.find((booking) => booking.id === moveBookingId) ?? null
-    : null;
-
   useEffect(() => {
     if (!resources.length) {
       setMobileResource(allMobileResourcesValue);
@@ -8141,28 +8139,120 @@ function CalendarView({
     });
   }
 
-  function slotStartFromClick(
-    event: React.MouseEvent<HTMLElement>,
+  function slotStartFromClientY(
+    element: HTMLElement,
+    clientY: number,
     segmentStart: number,
     segmentEnd: number
   ) {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const offsetY = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
+    const rect = element.getBoundingClientRect();
+    const offsetY = Math.max(0, Math.min(rect.height, clientY - rect.top));
     const minutesInSegment = Math.max(30, segmentEnd - segmentStart);
     const clickedMinutes = segmentStart + (offsetY / Math.max(1, rect.height)) * minutesInSegment;
     const snapped = Math.floor(clickedMinutes / 30) * 30;
     return Math.max(segmentStart, Math.min(Math.max(segmentStart, segmentEnd - 30), snapped));
   }
 
-  function selectBookingForMove(booking: Booking) {
-    if (moveBookingId === booking.id) {
-      setMoveBookingId(null);
-      onEdit(booking.id);
+  function slotStartFromClick(
+    event: React.MouseEvent<HTMLElement>,
+    segmentStart: number,
+    segmentEnd: number
+  ) {
+    return slotStartFromClientY(event.currentTarget, event.clientY, segmentStart, segmentEnd);
+  }
+
+  function calendarDropSlotKey(resource: string, startMinutes: number) {
+    return `${activeDate}-${resource}-${startMinutes}`;
+  }
+
+  function startBookingDrag(event: React.DragEvent<HTMLElement>, booking: Booking) {
+    dragClickGuardRef.current = true;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", booking.id);
+    event.dataTransfer.setData("application/x-booking-id", booking.id);
+    setDragBookingId(booking.id);
+  }
+
+  function endBookingDrag() {
+    setDragBookingId(null);
+    setDragOverSlotKey(null);
+    window.setTimeout(() => {
+      dragClickGuardRef.current = false;
+    }, 200);
+  }
+
+  function handleBookingCardClick(booking: Booking) {
+    if (dragClickGuardRef.current) return;
+    onEdit(booking.id);
+  }
+
+  function handleSlotDragOver(
+    event: React.DragEvent<HTMLElement>,
+    resource: string,
+    segmentStart: number
+  ) {
+    if (!dragBookingId) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDragOverSlotKey(calendarDropSlotKey(resource, segmentStart));
+  }
+
+  function handleSlotDragLeave(resource: string, segmentStart: number) {
+    const slotKey = calendarDropSlotKey(resource, segmentStart);
+    setDragOverSlotKey((current) => (current === slotKey ? null : current));
+  }
+
+  async function handleSlotDrop(
+    event: React.DragEvent<HTMLElement>,
+    resource: string,
+    segmentStart: number,
+    segmentEnd: number
+  ) {
+    const bookingId =
+      event.dataTransfer.getData("application/x-booking-id") ||
+      event.dataTransfer.getData("text/plain") ||
+      dragBookingId;
+
+    if (!bookingId) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const booking = activeCalendarBookings.find((item) => item.id === bookingId);
+    if (!booking) {
+      showToast("Could not find the dragged booking.");
+      endBookingDrag();
       return;
     }
 
-    setMoveBookingId(booking.id);
-    showToast("Booking selected. Click an open time to move it, or click it again to edit.");
+    const startMinutes = slotStartFromClientY(event.currentTarget, event.clientY, segmentStart, segmentEnd);
+    const durationMinutes = bookingDurationMinutes(booking);
+    const endMinutes = Math.min(1439, startMinutes + durationMinutes);
+
+    if (booking.date === activeDate && booking.resource === resource && booking.start === minutesToTime(startMinutes)) {
+      endBookingDrag();
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Move ${booking.playerName || booking.serviceName || "this booking"} to ${resource} from ${timeLabel(
+        minutesToTime(startMinutes)
+      )} to ${timeLabel(minutesToTime(endMinutes))}?`
+    );
+
+    if (!confirmed) {
+      endBookingDrag();
+      return;
+    }
+
+    await onMoveBooking(booking.id, {
+      date: activeDate,
+      resource,
+      start: minutesToTime(startMinutes),
+      end: minutesToTime(endMinutes),
+    });
+
+    endBookingDrag();
   }
 
   async function handleOpenSlotClick(
@@ -8171,40 +8261,10 @@ function CalendarView({
     segmentStart: number,
     segmentEnd: number
   ) {
+    if (dragBookingId || dragClickGuardRef.current) return;
+
     const startMinutes = slotStartFromClick(event, segmentStart, segmentEnd);
-
-    if (!moveBookingId) {
-      createBookingFromSlot(resource, startMinutes, startMinutes + 30);
-      return;
-    }
-
-    const booking = activeCalendarBookings.find((item) => item.id === moveBookingId);
-    if (!booking) {
-      setMoveBookingId(null);
-      showToast("Could not find the selected booking.");
-      return;
-    }
-
-    const durationMinutes = bookingDurationMinutes(booking);
-    const endMinutes = Math.min(1439, startMinutes + durationMinutes);
-    const confirmed = window.confirm(
-      `Move ${booking.playerName || booking.serviceName || "this booking"} to ${resource} from ${timeLabel(
-        minutesToTime(startMinutes)
-      )} to ${timeLabel(minutesToTime(endMinutes))}?`
-    );
-
-    if (!confirmed) return;
-
-    const moved = await onMoveBooking(booking.id, {
-      date: activeDate,
-      resource,
-      start: minutesToTime(startMinutes),
-      end: minutesToTime(endMinutes),
-    });
-
-    if (moved) {
-      setMoveBookingId(null);
-    }
+    createBookingFromSlot(resource, startMinutes, startMinutes + 30);
   }
 
   return (
@@ -8282,21 +8342,6 @@ function CalendarView({
         </CalendarSegmentButton>
         <CalendarToolbarButton label="Filter" icon="table" onClick={() => showToast("Filter View is next.")} />
       </div>
-
-      {moveBooking ? (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-black/10 bg-black px-4 py-3 text-white shadow-sm">
-          <div className="text-[14px] font-semibold">
-            Moving {moveBooking.playerName || moveBooking.serviceName || "booking"} - click an open time to place it.
-          </div>
-          <button
-            type="button"
-            onClick={() => setMoveBookingId(null)}
-            className="rounded-md border border-white/25 px-3 py-1.5 text-[12px] font-semibold text-white/90"
-          >
-            Cancel Move
-          </button>
-        </div>
-      ) : null}
 
       {resourceMode === "rooms" ? (
         <div className="mb-4 flex gap-2 overflow-x-auto pb-1 lg:hidden">
@@ -8439,12 +8484,22 @@ function CalendarView({
                           }
 
                           if (segment.type === "available") {
+                            const slotKey = calendarDropSlotKey(resource, segment.start);
+                            const isDragTarget = dragOverSlotKey === slotKey;
+
                             return (
                               <button
                                 key={`${resource}-mobile-open-block-${index}`}
                                 type="button"
                                 onClick={(event) => void handleOpenSlotClick(event, resource, segment.start, segment.end)}
-                                className="absolute left-[2px] right-[2px] overflow-hidden rounded-md border border-[#caefdd] bg-[#f3fcf7] px-2 py-1 text-left text-[#166443] shadow-sm"
+                                onDragOver={(event) => handleSlotDragOver(event, resource, segment.start)}
+                                onDragLeave={() => handleSlotDragLeave(resource, segment.start)}
+                                onDrop={(event) => void handleSlotDrop(event, resource, segment.start, segment.end)}
+                                className={`absolute left-[2px] right-[2px] overflow-hidden rounded-md border px-2 py-1 text-left shadow-sm transition ${
+                                  isDragTarget
+                                    ? "border-black bg-[#d7f4e5] text-black ring-2 ring-black/30"
+                                    : "border-[#caefdd] bg-[#f3fcf7] text-[#166443]"
+                                } ${dragBookingId ? "cursor-copy" : ""}`}
                                 style={{ top, height }}
                               >
                                 <div className="text-[9px] font-semibold leading-none text-[#15835d]/75">
@@ -8463,7 +8518,7 @@ function CalendarView({
                           const durationMinutes = Math.max(30, segment.end - segment.start);
                           const isCompactBooking = durationMinutes <= 30;
                           const isUnavailableBlock = isUnavailableBooking(booking);
-                          const isMoveSelected = moveBookingId === booking.id;
+                          const isDraggingBooking = dragBookingId === booking.id;
                           const bookingCustomerName =
                             isUnavailableBlock ? "Unavailable" : booking.playerName || customer?.player || customer?.name || "Customer";
                           const bookingServiceName = isUnavailableBlock
@@ -8474,10 +8529,13 @@ function CalendarView({
                             <button
                               key={booking.id}
                               type="button"
-                              onClick={() => selectBookingForMove(booking)}
+                              draggable
+                              onDragStart={(event) => startBookingDrag(event, booking)}
+                              onDragEnd={endBookingDrag}
+                              onClick={() => handleBookingCardClick(booking)}
                               className={`absolute left-[2px] right-[2px] overflow-hidden rounded-md border text-left shadow-sm ${tone.borderClass} ${tone.containerClass} ${
                                 isCompactBooking ? "px-2 py-1" : "px-2 py-1.5"
-                              } ${isMoveSelected ? "ring-2 ring-black ring-offset-2" : ""}`}
+                              } ${isDraggingBooking ? "cursor-grabbing opacity-60 ring-2 ring-black ring-offset-2" : "cursor-grab"}`}
                               style={{ top, height, ...tone.style }}
                             >
                               <div className="flex items-start justify-between gap-1">
@@ -8593,14 +8651,24 @@ function CalendarView({
                         }
 
                         if (segment.type === "available") {
+                          const slotKey = calendarDropSlotKey(resource, segment.start);
+                          const isDragTarget = dragOverSlotKey === slotKey;
+
                           return (
                             <button
                               key={`${resource}-available-${index}`}
                               type="button"
                               onClick={(event) => void handleOpenSlotClick(event, resource, segment.start, segment.end)}
+                              onDragOver={(event) => handleSlotDragOver(event, resource, segment.start)}
+                              onDragLeave={() => handleSlotDragLeave(resource, segment.start)}
+                              onDrop={(event) => void handleSlotDrop(event, resource, segment.start, segment.end)}
                               aria-label={`Book ${resource} from ${timeLabel(minutesToTime(segment.start))} to ${timeLabel(minutesToTime(segment.end))}`}
-                              className={`absolute left-0 right-0 overflow-hidden border border-transparent bg-transparent text-left transition hover:bg-[#d9efff]/70 ${
-                                moveBookingId ? "cursor-copy" : ""
+                              className={`absolute left-0 right-0 overflow-hidden border text-left transition ${
+                                isDragTarget
+                                  ? "border-black/30 bg-[#c8e9ff] ring-2 ring-black/25"
+                                  : "border-transparent bg-transparent hover:bg-[#d9efff]/70"
+                              } ${
+                                dragBookingId ? "cursor-copy" : ""
                               }`}
                               style={{ top, height }}
                             >
@@ -8620,7 +8688,7 @@ function CalendarView({
                         const durationMinutes = Math.max(30, segment.end - segment.start);
                         const isCompactBooking = durationMinutes <= 30;
                         const isUnavailableBlock = isUnavailableBooking(booking);
-                        const isMoveSelected = moveBookingId === booking.id;
+                        const isDraggingBooking = dragBookingId === booking.id;
                         const bookingTitle = isUnavailableBlock
                           ? "Unavailable"
                           : booking.playerName || customer?.player || customer?.name || "Customer";
@@ -8632,10 +8700,13 @@ function CalendarView({
                           <button
                             key={booking.id}
                             type="button"
-                            onClick={() => selectBookingForMove(booking)}
+                            draggable
+                            onDragStart={(event) => startBookingDrag(event, booking)}
+                            onDragEnd={endBookingDrag}
+                            onClick={() => handleBookingCardClick(booking)}
                             className={`absolute left-[1px] right-[1px] overflow-hidden rounded-[4px] border text-left shadow-sm ${tone.borderClass} ${tone.containerClass} ${
                               isCompactBooking ? "px-2 py-1" : "px-2.5 py-1.5"
-                            } ${isMoveSelected ? "ring-2 ring-black ring-offset-2" : ""}`}
+                            } ${isDraggingBooking ? "cursor-grabbing opacity-60 ring-2 ring-black ring-offset-2" : "cursor-grab"}`}
                             style={{ top, height, ...tone.style }}
                           >
                             <div className={isCompactBooking ? "pr-7" : "pr-16"}>
