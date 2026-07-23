@@ -392,6 +392,11 @@ type BookingCustomerRow = {
 };
 
 type CustomerMembershipStatus = "Active" | "Paused" | "Past Due" | "Cancelled" | "Expired";
+type MembershipCancelTiming = "immediate" | "period_end";
+type MembershipCancelOptions = {
+  timing: MembershipCancelTiming;
+  refundProrated: boolean;
+};
 
 type BookingCustomerMembershipRow = {
   id: string;
@@ -5132,7 +5137,11 @@ export default function BookingAdminApp({
     }
   }
 
-  async function cancelCustomerMembership(customerId: string, membershipRecordId: string) {
+  async function cancelCustomerMembership(
+    customerId: string,
+    membershipRecordId: string,
+    options: MembershipCancelOptions
+  ) {
     const now = new Date().toISOString();
 
     if (dataSource === "local") {
@@ -5140,33 +5149,46 @@ export default function BookingAdminApp({
         ...previous,
         [customerId]: (previous[customerId] ?? []).map((membership) =>
           membership.id === membershipRecordId
-            ? { ...membership, status: "Cancelled", autoRenew: false, cancelledAt: now, updatedAt: now }
+            ? options.timing === "period_end"
+              ? { ...membership, autoRenew: false, cancelledAt: now, updatedAt: now }
+              : { ...membership, status: "Cancelled", autoRenew: false, cancelledAt: now, currentPeriodEnd: now, updatedAt: now }
             : membership
         ),
       }));
-      showToast("Membership cancelled.");
+      showToast(options.timing === "period_end" ? "Membership will cancel at period end." : "Membership cancelled.");
       return true;
     }
 
     try {
-      const { data, error } = await supabase
-        .from("booking_customer_memberships")
-        .update({ status: "Cancelled", auto_renew: false, cancelled_at: now })
-        .eq("id", membershipRecordId)
-        .eq("customer_id", customerId)
-        .select("*")
-        .single();
+      const response = await fetch("/api/stripe/memberships/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerId,
+          membershipRecordId,
+          timing: options.timing,
+          refundProrated: options.refundProrated,
+        }),
+      });
+      const payload = await response.json();
 
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error(payload?.error || "Membership could not be cancelled.");
+      }
 
-      const normalized = normalizeCustomerMembershipRow(data as BookingCustomerMembershipRow);
+      const normalized = normalizeCustomerMembershipRow(payload.membership as BookingCustomerMembershipRow);
       setCustomerMembershipsByCustomerId((previous) => ({
         ...previous,
         [customerId]: (previous[customerId] ?? []).map((membership) =>
           membership.id === normalized.id ? normalized : membership
         ),
       }));
-      showToast("Membership cancelled.");
+      const refundAmount = Number(payload.refund?.amountCents ?? 0);
+      if (refundAmount > 0) {
+        showToast(`Membership cancelled and ${moneyPrecise(refundAmount / 100)} refunded.`);
+      } else {
+        showToast(options.timing === "period_end" ? "Membership will cancel at period end." : "Membership cancelled.");
+      }
       return true;
     } catch (error) {
       console.error(error);
@@ -9637,7 +9659,11 @@ function CustomerDetailView({
   membershipServices: Service[];
   onSaveCustomer: (item: Customer, options?: { message?: string; silent?: boolean }) => Promise<boolean>;
   onAssignMembership: (customerId: string, membershipServiceId: string) => Promise<boolean>;
-  onCancelMembership: (customerId: string, membershipRecordId: string) => Promise<boolean>;
+  onCancelMembership: (
+    customerId: string,
+    membershipRecordId: string,
+    options: MembershipCancelOptions
+  ) => Promise<boolean>;
   showToast: (message: string) => void;
 }) {
   const tabLabels = ["Profile", "Billing", "Memberships", "Packages", "Activity", "Invoices", "Credits"] as const;
@@ -9713,6 +9739,9 @@ function CustomerDetailView({
   const [submittingCharge, setSubmittingCharge] = useState(false);
   const [membershipServiceDraft, setMembershipServiceDraft] = useState("");
   const [membershipActionId, setMembershipActionId] = useState("");
+  const [membershipCancelDraft, setMembershipCancelDraft] = useState<CustomerMembershipRecord | null>(null);
+  const [membershipCancelTiming, setMembershipCancelTiming] = useState<MembershipCancelTiming>("period_end");
+  const [membershipCancelRefundProrated, setMembershipCancelRefundProrated] = useState(false);
 
   const customerBookings = useMemo(
     () =>
@@ -9753,6 +9782,9 @@ function CustomerDetailView({
     setChargeReturnDate("");
     setMembershipServiceDraft("");
     setMembershipActionId("");
+    setMembershipCancelDraft(null);
+    setMembershipCancelTiming("period_end");
+    setMembershipCancelRefundProrated(false);
   }, [customer?.id]);
 
   const currentCustomerId = customer?.id ?? "";
@@ -10001,10 +10033,26 @@ function CustomerDetailView({
     }
   }
 
-  async function cancelSelectedMembership(membershipId: string) {
-    setMembershipActionId(membershipId);
+  function openCancelMembershipDialog(membership: CustomerMembershipRecord) {
+    setMembershipCancelDraft(membership);
+    setMembershipCancelTiming("period_end");
+    setMembershipCancelRefundProrated(false);
+  }
+
+  async function cancelSelectedMembership() {
+    if (!membershipCancelDraft) return;
+
+    setMembershipActionId(membershipCancelDraft.id);
     try {
-      await onCancelMembership(currentCustomer.id, membershipId);
+      const saved = await onCancelMembership(currentCustomer.id, membershipCancelDraft.id, {
+        timing: membershipCancelTiming,
+        refundProrated: membershipCancelTiming === "immediate" && membershipCancelRefundProrated,
+      });
+      if (saved) {
+        setMembershipCancelDraft(null);
+        setMembershipCancelTiming("period_end");
+        setMembershipCancelRefundProrated(false);
+      }
     } finally {
       setMembershipActionId("");
     }
@@ -11208,15 +11256,19 @@ function CustomerDetailView({
                       >
                         {membership.status}
                       </span>
-                      {isActiveCustomerMembership(membership) ? (
+                      {isActiveCustomerMembership(membership) && membership.autoRenew ? (
                         <button
                           type="button"
-                          onClick={() => void cancelSelectedMembership(membership.id)}
+                          onClick={() => openCancelMembershipDialog(membership)}
                           disabled={membershipActionId === membership.id}
                           className="rounded-lg border border-black/10 px-3 py-1.5 text-[12px] font-semibold text-black/65 hover:bg-black/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {membershipActionId === membership.id ? "Cancelling..." : "Cancel"}
                         </button>
+                      ) : isActiveCustomerMembership(membership) && !membership.autoRenew ? (
+                        <span className="rounded-lg bg-amber-50 px-3 py-1.5 text-[12px] font-semibold text-amber-700">
+                          Ends at period end
+                        </span>
                       ) : null}
                     </div>
                   </div>
@@ -11518,6 +11570,109 @@ function CustomerDetailView({
         />
       ) : null}
     </section>
+
+      {membershipCancelDraft ? (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/45 p-4">
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-black/10 px-6 py-5">
+              <div>
+                <h2 className="text-[18px] font-semibold text-black">Cancel Membership</h2>
+                <p className="mt-1 text-[13px] text-black/55">
+                  {servicesById.get(membershipCancelDraft.membershipServiceId)?.name || "Membership"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setMembershipCancelDraft(null);
+                  setMembershipCancelTiming("period_end");
+                  setMembershipCancelRefundProrated(false);
+                }}
+                className="text-black/45"
+                aria-label="Close cancel membership dialog"
+              >
+                <Icon name="x" className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="grid gap-3 px-6 py-5">
+              <button
+                type="button"
+                onClick={() => setMembershipCancelTiming("period_end")}
+                className={[
+                  "rounded-xl border px-4 py-3 text-left transition",
+                  membershipCancelTiming === "period_end"
+                    ? "border-black bg-black text-white"
+                    : "border-black/10 bg-white text-black hover:bg-black/[0.03]",
+                ].join(" ")}
+              >
+                <span className="block text-[15px] font-semibold">Cancel at end of billing period</span>
+                <span className={membershipCancelTiming === "period_end" ? "mt-1 block text-[13px] text-white/70" : "mt-1 block text-[13px] text-black/55"}>
+                  Keep the membership active until {formatMembershipDate(membershipCancelDraft.currentPeriodEnd)} and stop auto renewal.
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setMembershipCancelTiming("immediate")}
+                className={[
+                  "rounded-xl border px-4 py-3 text-left transition",
+                  membershipCancelTiming === "immediate"
+                    ? "border-black bg-black text-white"
+                    : "border-black/10 bg-white text-black hover:bg-black/[0.03]",
+                ].join(" ")}
+              >
+                <span className="block text-[15px] font-semibold">Cancel right away</span>
+                <span className={membershipCancelTiming === "immediate" ? "mt-1 block text-[13px] text-white/70" : "mt-1 block text-[13px] text-black/55"}>
+                  End access now. Stripe subscription cancellation is processed immediately when connected.
+                </span>
+              </button>
+
+              {membershipCancelTiming === "immediate" ? (
+                <label className="mt-1 flex items-start gap-3 rounded-xl border border-black/10 bg-black/[0.02] px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(membershipCancelDraft.stripeSubscriptionId) && membershipCancelRefundProrated}
+                    disabled={!membershipCancelDraft.stripeSubscriptionId}
+                    onChange={(event) => setMembershipCancelRefundProrated(event.target.checked)}
+                    className="mt-1"
+                  />
+                  <span>
+                    <span className="block text-[14px] font-semibold text-black">Refund prorated unused time to card</span>
+                    <span className="mt-1 block text-[13px] leading-5 text-black/55">
+                      {membershipCancelDraft.stripeSubscriptionId
+                        ? "Refunds the unused portion of the current billing period against the last paid Stripe invoice when available."
+                        : "This membership is not linked to a Stripe subscription, so no card refund can be issued."}
+                    </span>
+                  </span>
+                </label>
+              ) : null}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-end gap-3 border-t border-black/10 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setMembershipCancelDraft(null);
+                  setMembershipCancelTiming("period_end");
+                  setMembershipCancelRefundProrated(false);
+                }}
+                className="rounded-lg border border-black/10 px-4 py-2.5 text-[14px] font-medium text-black/65"
+              >
+                Keep Membership
+              </button>
+              <button
+                type="button"
+                onClick={() => void cancelSelectedMembership()}
+                disabled={membershipActionId === membershipCancelDraft.id}
+                className="rounded-lg bg-black px-4 py-2.5 text-[14px] font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:bg-black/20"
+              >
+                {membershipActionId === membershipCancelDraft.id ? "Cancelling..." : "Confirm Cancel"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showPaymentMethodModal ? (
         <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/45 p-4">
