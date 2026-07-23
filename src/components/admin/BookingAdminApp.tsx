@@ -1585,6 +1585,7 @@ type IconName =
   | "eye"
   | "x"
   | "arrow-left"
+  | "repeat"
   | "refresh";
 
 const iconPaths: Record<IconName, string[]> = {
@@ -1621,6 +1622,7 @@ const iconPaths: Record<IconName, string[]> = {
   eye: ["M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z", "M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"],
   x: ["M18 6 6 18", "M6 6l12 12"],
   "arrow-left": ["m12 19-7-7 7-7", "M19 12H5"],
+  repeat: ["m17 2 4 4-4 4", "M3 11V9a4 4 0 0 1 4-4h14", "m7 22-4-4 4-4", "M21 13v2a4 4 0 0 1-4 4H3"],
   refresh: ["M21 12a9 9 0 1 1-2.64-6.36", "M21 3v6h-6"],
 };
 
@@ -9629,8 +9631,6 @@ function AvailabilityView({
         {dayEntries.map((entry) => {
           const top = (timeToMinutes(entry.start) / 30) * slotHeight + 1;
           const height = Math.max(30, ((timeToMinutes(entry.end) - timeToMinutes(entry.start)) / 30) * slotHeight - 2);
-          const textColor = isLightCalendarColor(entry.color) ? "text-black" : "text-white";
-          const softText = isLightCalendarColor(entry.color) ? "text-black/70" : "text-white/90";
           const initials = entry.staffName
             .split(" ")
             .filter(Boolean)
@@ -9647,24 +9647,27 @@ function AvailabilityView({
                 event.stopPropagation();
                 editAvailabilityDraft(entry);
               }}
-              className={`absolute left-[5px] right-[5px] overflow-hidden rounded-[4px] border border-black/20 pb-1 pl-[7px] pr-2 pt-[5px] text-left shadow-sm ${textColor}`}
+              className="absolute left-[5px] right-[5px] overflow-hidden rounded-[4px] border border-black/20 pb-1 pl-[6px] pr-1.5 pt-[4px] text-left text-white shadow-sm"
               style={{ top, height, backgroundColor: entry.color }}
             >
-              <div className={`truncate text-[10px] font-semibold leading-[10px] ${softText}`}>
+              <div className="truncate text-[10px] font-semibold leading-[10px] text-white">
                 {timeLabel(entry.start)} - {timeLabel(entry.end)}
               </div>
               {height >= 42 ? (
                 <>
-                  <div className="mt-[5px] truncate text-[15px] font-semibold leading-[15px]">{entry.staffName}</div>
-                  <div className={`mt-[2px] truncate text-[11px] font-medium leading-[12px] ${softText}`}>
+                  <div className="mt-[2px] truncate text-[14px] font-semibold leading-[14px] text-white">{entry.staffName}</div>
+                  <div className="mt-[2px] truncate text-[11px] font-semibold leading-[11px] text-white">
                     {entry.resources.length ? entry.resources.join(", ") : "All rooms"}
                   </div>
                 </>
               ) : null}
               {height >= 86 ? (
-                <div className="absolute bottom-[7px] right-[7px] grid h-7 w-7 place-items-center rounded-full bg-white/90 text-[11px] font-semibold leading-none text-black/70">
-                  {initials || "ST"}
-                </div>
+                <>
+                  <Icon name="repeat" className="absolute bottom-[11px] right-[42px] h-5 w-5 text-white" />
+                  <div className="absolute bottom-[7px] right-[7px] grid h-7 w-7 place-items-center rounded-full border border-black/25 bg-white/90 text-[11px] font-semibold leading-none text-black/80">
+                    {initials || "ST"}
+                  </div>
+                </>
               ) : null}
             </button>
           );
