@@ -1,0 +1,702 @@
+"use client";
+
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import Image from "next/image";
+
+import {
+  calculatePublicTotals,
+  fallbackPublicBookingData,
+  initials,
+  isoDate,
+  minutesToTime,
+  money,
+  parseLocalDate,
+  publicBookingCategoryLabels,
+  scheduleSlotsForDate,
+  serviceRooms,
+  timeLabel,
+  timeToMinutes,
+  type PublicBookingCategory,
+  type PublicBookingData,
+  type PublicBookingService,
+} from "@/lib/publicBooking";
+
+type BookingStep = "overview" | "player" | "time" | "summary" | "done";
+type TimeChoice = { start: string; end: string; resourceId: string; resourceName: string };
+
+const categoryOrder: PublicBookingCategory[] = ["rentals", "lessons", "camps", "classes", "memberships", "packages"];
+
+function todayIso() {
+  return isoDate(new Date());
+}
+
+function durationLabel(minutes: number) {
+  return `${minutes} mins`;
+}
+
+function formatLongDate(value: string) {
+  return parseLocalDate(value).toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function isConflict(choice: TimeChoice, date: string, bookings: PublicBookingData["bookings"]) {
+  return bookings.some(
+    (booking) =>
+      booking.resourceId === choice.resourceId &&
+      booking.date === date &&
+      timeToMinutes(choice.start) < timeToMinutes(booking.end) &&
+      timeToMinutes(choice.end) > timeToMinutes(booking.start)
+  );
+}
+
+function getAvailableSlots(
+  data: PublicBookingData,
+  service: PublicBookingService | null,
+  date: string
+): TimeChoice[] {
+  if (!service) return [];
+  const schedulesById = new Map(data.schedules.map((schedule) => [schedule.id, schedule]));
+  const resourcesByName = new Map(data.resources.map((resource) => [resource.name, resource]));
+  const defaultSchedule = data.schedules.find((schedule) => schedule.isDefault) ?? data.schedules[0];
+  const now = new Date();
+  const isToday = date === todayIso();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const choices: TimeChoice[] = [];
+
+  for (const roomName of serviceRooms(service, data.resources)) {
+    const resource = resourcesByName.get(roomName);
+    if (!resource) continue;
+    const schedule = schedulesById.get(service.scheduleId || "") ?? schedulesById.get(resource.scheduleId || "") ?? defaultSchedule;
+    const openSlots = scheduleSlotsForDate(schedule, date);
+
+    for (const openSlot of openSlots) {
+      for (
+        let start = timeToMinutes(openSlot.start);
+        start + service.duration <= timeToMinutes(openSlot.end);
+        start += Math.min(30, service.duration)
+      ) {
+        const choice = {
+          start: minutesToTime(start),
+          end: minutesToTime(start + service.duration),
+          resourceId: resource.id,
+          resourceName: resource.name,
+        };
+        if (isToday && start <= currentMinutes) continue;
+        if (!isConflict(choice, date, data.bookings)) choices.push(choice);
+      }
+    }
+  }
+
+  const seen = new Set<string>();
+  return choices
+    .sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start) || a.resourceName.localeCompare(b.resourceName))
+    .filter((choice) => {
+      const key = `${choice.start}-${choice.resourceId}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function MonthCalendar({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const selected = parseLocalDate(value);
+  const first = new Date(selected.getFullYear(), selected.getMonth(), 1);
+  const daysInMonth = new Date(selected.getFullYear(), selected.getMonth() + 1, 0).getDate();
+  const blanks = first.getDay();
+  const today = todayIso();
+  const cells = Array.from({ length: blanks + daysInMonth }, (_, index) => {
+    if (index < blanks) return "";
+    return String(index - blanks + 1);
+  });
+
+  function moveMonth(delta: number) {
+    const next = new Date(selected.getFullYear(), selected.getMonth() + delta, Math.min(selected.getDate(), 28));
+    onChange(isoDate(next));
+  }
+
+  return (
+    <div className="w-full max-w-[400px] rounded-[3px] bg-white p-6 shadow-[0_8px_22px_rgba(0,0,0,0.22)]">
+      <div className="mb-7 flex items-center justify-between text-[18px] font-semibold">
+        <button type="button" onClick={() => moveMonth(-1)} className="rounded-full p-1 text-black/45 hover:bg-black/5">
+          ‹
+        </button>
+        <span>
+          {selected.toLocaleDateString("en-US", {
+            month: "long",
+            year: "numeric",
+          })}
+        </span>
+        <button type="button" onClick={() => moveMonth(1)} className="rounded-full p-1 text-black/45 hover:bg-black/5">
+          ›
+        </button>
+      </div>
+      <div className="grid grid-cols-7 gap-2 text-center text-[14px] text-black/45">
+        {["S", "M", "T", "W", "T", "F", "S"].map((day, index) => (
+          <div key={`${day}-${index}`}>{day}</div>
+        ))}
+      </div>
+      <div className="mt-5 grid grid-cols-7 gap-2 text-center text-[15px]">
+        {cells.map((day, index) => {
+          if (!day) return <div key={`blank-${index}`} />;
+          const date = isoDate(new Date(selected.getFullYear(), selected.getMonth(), Number(day)));
+          const active = date === value;
+          const available = date >= today;
+          return (
+            <button
+              key={date}
+              type="button"
+              disabled={!available}
+              onClick={() => onChange(date)}
+              className={`mx-auto flex h-11 w-11 items-center justify-center rounded-full ${
+                active
+                  ? "bg-[#221f1f] font-semibold text-white"
+                  : available
+                    ? "bg-[#91add1] text-white hover:bg-[#789bc4]"
+                    : "text-black/25"
+              }`}
+            >
+              {day}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function LogoPanel({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className={`flex items-center justify-center overflow-hidden bg-[#f4f4f4] ${compact ? "h-full min-h-[92px]" : "min-h-[300px]"}`}>
+      <Image
+        src="/logo.png"
+        alt="The Grind Baseball Lab"
+        width={compact ? 180 : 620}
+        height={compact ? 70 : 241}
+        className={`${compact ? "w-[180px]" : "w-[620px] max-w-[78%]"} h-auto opacity-75`}
+        priority={!compact}
+      />
+    </div>
+  );
+}
+
+function InfoCard({ settings }: { settings: PublicBookingData["settings"] }) {
+  const iconClass = "mt-1 block h-5 w-5 shrink-0 rounded-full border-2 border-black/45";
+  return (
+    <aside className="rounded-[6px] border border-black/10 p-7 text-[14px] leading-6">
+      <div className="grid gap-4">
+        <div className="flex gap-4">
+          <span className={iconClass} />
+          <span>{settings.address}</span>
+        </div>
+        <div className="flex gap-4">
+          <span className={iconClass} />
+          <span>{settings.phone}</span>
+        </div>
+        <div className="flex gap-4">
+          <span className={iconClass} />
+          <span>
+            <span className="text-[#d10018]">Closed</span> - Opens 4PM today
+          </span>
+          <span className="ml-auto text-black/55">⌄</span>
+        </div>
+      </div>
+      <div className="mt-8 font-semibold">Follow us</div>
+      <div className="mt-3 flex gap-5 text-[22px] text-black/45">
+        <span className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-black/45 text-[12px]">w</span>
+        <span>f</span>
+      </div>
+    </aside>
+  );
+}
+
+function ModalShell({
+  step,
+  children,
+  footer,
+  onBack,
+  onClose,
+  avatar,
+}: {
+  step: BookingStep;
+  children: ReactNode;
+  footer: ReactNode;
+  onBack: () => void;
+  onClose: () => void;
+  avatar?: string;
+}) {
+  const titles: Record<BookingStep, string> = {
+    overview: "Overview",
+    player: "Choose Player",
+    time: "Choose Times",
+    summary: "Summary",
+    done: "Done",
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/55 px-4 py-10">
+      <div className="flex h-[min(83vh,795px)] w-full max-w-[752px] flex-col overflow-hidden rounded-[4px] bg-white shadow-[0_18px_40px_rgba(0,0,0,0.34)]">
+        <div className="flex h-[90px] shrink-0 items-center border-b border-black/10 px-8">
+          <button type="button" onClick={onBack} className="text-[34px] text-black/45 disabled:opacity-25" disabled={step === "overview" || step === "done"}>
+            ‹
+          </button>
+          <div className="flex-1 text-center text-[20px] font-semibold">{titles[step]}</div>
+          {avatar ? <div className="mr-6 flex h-11 w-11 items-center justify-center rounded-full bg-[#bdbdbd] text-white">{avatar}</div> : null}
+          <button type="button" onClick={onClose} className="text-[34px] leading-none text-black/45">
+            ×
+          </button>
+        </div>
+        <div key={step} className="min-h-0 flex-1 overflow-y-auto px-8 py-7">
+          {children}
+        </div>
+        <div className="shrink-0 border-t border-black/10 px-4 py-4">{footer}</div>
+      </div>
+    </div>
+  );
+}
+
+export default function CustomerBookingApp() {
+  const [data, setData] = useState<PublicBookingData>(fallbackPublicBookingData);
+  const [loading, setLoading] = useState(true);
+  const [selectedCategory, setSelectedCategory] = useState<PublicBookingCategory | null>(null);
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
+  const [step, setStep] = useState<BookingStep>("overview");
+  const [selectedDate, setSelectedDate] = useState(todayIso());
+  const [selectedTime, setSelectedTime] = useState<TimeChoice | null>(null);
+  const [selectedPlayer, setSelectedPlayer] = useState("Yourself");
+  const [form, setForm] = useState({ parentName: "", playerName: "Yourself", email: "", phone: "" });
+  const [discountCode, setDiscountCode] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+    fetch("/api/book/public", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : fallbackPublicBookingData))
+      .then((payload: PublicBookingData) => {
+        if (mounted) setData(payload.services.length ? payload : fallbackPublicBookingData);
+      })
+      .catch(() => {
+        if (mounted) setData(fallbackPublicBookingData);
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const selectedService = useMemo(
+    () => data.services.find((service) => service.id === selectedServiceId) ?? null,
+    [data.services, selectedServiceId]
+  );
+  const visibleCategories = categoryOrder.filter((category) => data.services.some((service) => service.category === category));
+  const servicesForCategory = selectedCategory ? data.services.filter((service) => service.category === selectedCategory) : [];
+  const availableTimes = useMemo(() => getAvailableSlots(data, selectedService, selectedDate), [data, selectedDate, selectedService]);
+  const selectedInstructor = selectedService?.instructors[0] || data.staff[0]?.name || "";
+  const onlineTotals = selectedService ? calculatePublicTotals(selectedService, data.settings, "online") : null;
+  const inPersonTotals = selectedService ? calculatePublicTotals(selectedService, data.settings, "in-person") : null;
+
+  function openService(service: PublicBookingService) {
+    setSelectedServiceId(service.id);
+    setSelectedTime(null);
+    setStep("overview");
+  }
+
+  function closeModal() {
+    setSelectedServiceId(null);
+    setStep("overview");
+    setSubmitError("");
+  }
+
+  function goBack() {
+    if (step === "player") setStep("overview");
+    if (step === "time") setStep("player");
+    if (step === "summary") setStep("time");
+  }
+
+  async function submitBooking(paymentMethod: "online" | "in-person") {
+    if (!selectedService || !selectedTime) return;
+    setSubmitting(true);
+    setSubmitError("");
+    try {
+      const response = await fetch("/api/book/bookings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          serviceId: selectedService.id,
+          date: selectedDate,
+          start: selectedTime.start,
+          resourceId: selectedTime.resourceId,
+          parentName: form.parentName,
+          playerName: form.playerName || selectedPlayer,
+          email: form.email,
+          phone: form.phone,
+          paymentMethod,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Could not create booking.");
+      setData((current) => ({
+        ...current,
+        bookings: [
+          ...current.bookings,
+          {
+            id: payload.bookingId,
+            date: selectedDate,
+            start: selectedTime.start,
+            end: selectedTime.end,
+            resourceId: selectedTime.resourceId,
+          },
+        ],
+      }));
+      setStep("done");
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Could not create booking.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <main className="min-h-screen bg-white text-black">
+      <header className="sticky top-0 z-30 border-b border-black/10 bg-white">
+        <div className="mx-auto flex h-[102px] max-w-[1380px] items-center justify-between px-8">
+          <span className="rounded-[2px] bg-black px-3 py-2">
+            <Image src="/logo.png" alt="The Grind Baseball Lab" width={82} height={32} className="h-8 w-auto" priority />
+          </span>
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#bdbdbd] text-white">JA</div>
+        </div>
+      </header>
+
+      <LogoPanel />
+
+      <section className="mx-auto grid max-w-[1380px] gap-16 px-8 py-14 lg:grid-cols-[1fr_440px]">
+        <div>
+          <h1 className="text-[36px] font-normal leading-tight">{data.settings.facilityName}</h1>
+          <p className="mt-9 max-w-[900px] text-center text-[18px] leading-[1.55]">
+            The Grind Baseball Lab prides itself on delivering exceptional training experiences designed to elevate players at every level.
+            With a focus on comprehensive development, our recent projects reflect innovative techniques and methodologies that promote both
+            physical and mental growth in athletes. Check out how we&apos;re making a real difference in the world of baseball and softball
+          </p>
+          <button type="button" className="mt-8 inline-flex items-center gap-3 text-[16px] font-semibold">
+            Read more <span className="text-[22px]">⌄</span>
+          </button>
+
+          <div className="mt-10 flex items-center gap-3 text-[30px]">
+            {selectedCategory ? (
+              <button type="button" onClick={() => setSelectedCategory(null)} className="text-[34px] text-black/35">
+                ‹
+              </button>
+            ) : null}
+            <h2 className="font-normal">{selectedCategory ? publicBookingCategoryLabels[selectedCategory].title : "Services"}</h2>
+          </div>
+
+          {selectedCategory ? (
+            <div className="mt-12 grid gap-5">
+              <div className="flex justify-end">
+                <button type="button" className="rounded-full border border-black/15 px-5 py-2 text-[15px] text-black/55">
+                  ☷ Filters
+                </button>
+              </div>
+              {loading
+                ? [1, 2, 3].map((item) => (
+                    <div key={item} className="h-[152px] rounded-[16px] border border-black/10 p-6">
+                      <div className="h-8 w-40 rounded bg-black/5" />
+                      <div className="mt-5 h-5 w-2/3 rounded bg-black/5" />
+                    </div>
+                  ))
+                : servicesForCategory.map((service) => (
+                    <button
+                      key={service.id}
+                      type="button"
+                      onClick={() => openService(service)}
+                      className="grid min-h-[152px] grid-cols-[170px_1fr_auto] overflow-hidden rounded-[16px] border border-black/15 text-left hover:border-black"
+                    >
+                      <LogoPanel compact />
+                      <div className="px-6 py-7">
+                        <div className="text-[22px] font-semibold">{service.name}</div>
+                        <div className="mt-4 text-[16px] text-black/55">
+                          Book {durationLabel(service.duration).toLowerCase()} of{" "}
+                          {service.category === "lessons" ? "private instruction" : serviceRooms(service, data.resources).join(", ")}.
+                        </div>
+                        <span className="mt-5 inline-flex rounded-full bg-black/5 px-4 py-1 text-[14px]">{durationLabel(service.duration)}</span>
+                      </div>
+                      <div className="px-7 py-7 text-[26px]">{money(service.price)}</div>
+                    </button>
+                  ))}
+            </div>
+          ) : (
+            <div className="mt-6 grid gap-5">
+              {visibleCategories.map((category) => (
+                <button
+                  key={category}
+                  type="button"
+                  onClick={() => setSelectedCategory(category)}
+                  className="rounded-[16px] border border-black/15 px-6 py-8 text-left hover:border-black"
+                >
+                  <div className="text-[20px] font-semibold">{publicBookingCategoryLabels[category].title}</div>
+                  <div className="mt-5 text-[17px] text-black/55">{publicBookingCategoryLabels[category].description}</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <InfoCard settings={data.settings} />
+      </section>
+
+      <footer className="mt-6 flex h-14 items-center justify-center gap-4 bg-[#111] text-white">
+        <span>powered by</span>
+        <span className="font-semibold">Swift</span>
+      </footer>
+
+      {selectedService ? (
+        <ModalShell
+          step={step}
+          onBack={goBack}
+          onClose={closeModal}
+          avatar={step === "overview" ? undefined : initials(selectedPlayer)}
+          footer={
+            step === "overview" ? (
+              <button type="button" onClick={() => setStep("player")} className="w-full rounded-[10px] bg-[#272322] py-4 text-[18px] font-semibold text-white shadow-lg">
+                Book now
+              </button>
+            ) : step === "player" ? (
+              <button
+                type="button"
+                disabled={!form.parentName || !form.playerName || !form.email}
+                onClick={() => setStep("time")}
+                className="w-full rounded-[10px] bg-[#272322] py-4 text-[18px] font-semibold text-white disabled:bg-black/12 disabled:text-black/30"
+              >
+                Next
+              </button>
+            ) : step === "time" ? (
+              <button
+                type="button"
+                disabled={!selectedTime}
+                onClick={() => setStep("summary")}
+                className="w-full rounded-[10px] bg-[#272322] py-4 text-[18px] font-semibold text-white disabled:bg-black/12 disabled:text-black/30"
+              >
+                Next
+              </button>
+            ) : step === "summary" ? (
+              <div className="grid gap-3">
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => submitBooking("online")}
+                  className="w-full rounded-[10px] bg-[#3a3432] py-4 text-[18px] font-semibold text-white disabled:opacity-60"
+                >
+                  {submitting ? "Saving..." : "Pay Online"}
+                </button>
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => submitBooking("in-person")}
+                  className="w-full rounded-[10px] border border-black/20 py-4 text-[18px] font-semibold disabled:opacity-60"
+                >
+                  Pay In-Person
+                </button>
+              </div>
+            ) : (
+              <button type="button" onClick={closeModal} className="w-full rounded-[10px] bg-[#272322] py-4 text-[18px] font-semibold text-white">
+                Done
+              </button>
+            )
+          }
+        >
+          {step === "overview" ? (
+            <div>
+              <LogoPanel />
+              <div className="mt-10">
+                <h3 className="text-[28px] font-normal">{selectedService.name}</h3>
+                <div className="mt-5 flex flex-wrap items-center gap-2 text-[14px] text-black/70">
+                  {selectedService.instructors.map((name) => (
+                    <span key={name} className="inline-flex items-center gap-2 rounded-full bg-black/6 px-3 py-1">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-black/15 text-[11px]">{initials(name)}</span>
+                      {name}
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-7 flex items-center gap-3 text-[16px] text-black/55">☑ No age restrictions</div>
+                <div className="mt-9 border-t border-black/10 pt-5">
+                  <div className="text-[15px] font-semibold uppercase tracking-[0.12em] text-black/45">Pricing</div>
+                  <div className="mt-3 text-[20px]">{money(selectedService.price)}</div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {step === "player" ? (
+            <div>
+              <div className="rounded-[4px] bg-[#dfe8fb] px-6 py-4 text-[16px] text-[#365b97]">
+                ⓘ To add or edit family members, go to the <span className="underline">account settings page</span>
+              </div>
+              <div className="mt-8 text-[15px]">Players in Family Account</div>
+              <div className="mt-4 text-[16px]">Who is the player attending this booking?</div>
+              <div className="mt-6 flex flex-wrap gap-4">
+                {["Yourself", "Zachary Allaire"].map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => {
+                      setSelectedPlayer(name);
+                      setForm((current) => ({ ...current, playerName: name }));
+                    }}
+                    className={`h-[310px] w-[190px] rounded-[8px] border px-5 py-7 text-center ${
+                      selectedPlayer === name ? "border-black shadow-[inset_0_0_0_1px_black]" : "border-black/15"
+                    }`}
+                  >
+                    <span className="mx-auto flex h-[126px] w-[126px] items-center justify-center rounded-full bg-[#bebebe] text-[26px] text-white">
+                      {initials(name)}
+                    </span>
+                    <span className="mt-5 block text-[18px]">{name}</span>
+                    <span className="mt-6 block text-[14px]">{name === "Yourself" ? "47" : "18"} years old</span>
+                  </button>
+                ))}
+              </div>
+              <div className="mt-8 grid gap-4 sm:grid-cols-2">
+                <label className="grid gap-2 text-[14px] font-medium">
+                  Parent name
+                  <input className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]" value={form.parentName} onChange={(event) => setForm({ ...form, parentName: event.target.value })} />
+                </label>
+                <label className="grid gap-2 text-[14px] font-medium">
+                  Player name
+                  <input className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]" value={form.playerName} onChange={(event) => setForm({ ...form, playerName: event.target.value })} />
+                </label>
+                <label className="grid gap-2 text-[14px] font-medium">
+                  Email
+                  <input className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+                </label>
+                <label className="grid gap-2 text-[14px] font-medium">
+                  Phone
+                  <input className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
+                </label>
+              </div>
+            </div>
+          ) : null}
+
+          {step === "time" ? (
+            <div>
+              <label className="grid gap-3 text-[14px] font-medium">
+                Date
+                <input
+                  type="date"
+                  value={selectedDate}
+                  min={todayIso()}
+                  onChange={(event) => {
+                    setSelectedDate(event.target.value);
+                    setSelectedTime(null);
+                  }}
+                  className="h-[66px] rounded-[4px] border border-black px-5 text-[20px] font-normal"
+                />
+              </label>
+              <div className="mt-1 grid items-start gap-8 lg:grid-cols-[400px_1fr]">
+                <MonthCalendar
+                  value={selectedDate}
+                  onChange={(value) => {
+                    setSelectedDate(value);
+                    setSelectedTime(null);
+                  }}
+                />
+                <div className="flex flex-wrap gap-4 pt-16">
+                  {availableTimes.length ? (
+                    availableTimes.slice(0, 18).map((choice) => (
+                      <button
+                        key={`${choice.resourceId}-${choice.start}`}
+                        type="button"
+                        onClick={() => setSelectedTime(choice)}
+                        className={`rounded-full px-6 py-3 text-[15px] ${
+                          selectedTime?.resourceId === choice.resourceId && selectedTime.start === choice.start
+                            ? "bg-[#252121] text-white"
+                            : "bg-black/8 text-black/75 hover:bg-black/12"
+                        }`}
+                      >
+                        {timeLabel(choice.start)} - {timeLabel(choice.end)}
+                      </button>
+                    ))
+                  ) : (
+                    <div className="rounded-[8px] bg-black/5 px-5 py-4 text-black/55">No times are available for this date.</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {step === "summary" && selectedTime && onlineTotals && inPersonTotals ? (
+            <div>
+              <div className="grid grid-cols-[126px_1fr] gap-5">
+                <div className="overflow-hidden rounded-[16px] border border-black/15">
+                  <LogoPanel compact />
+                </div>
+                <div>
+                  <div className="text-[13px] text-black/45">{selectedService.category.slice(0, -1) || "Booking"}</div>
+                  <div className="mt-2 text-[18px]">{selectedService.name}</div>
+                  {selectedInstructor ? (
+                    <span className="mt-4 inline-flex items-center gap-2 rounded-full bg-black/7 px-3 py-1 text-[12px]">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-black/15">{initials(selectedInstructor)}</span>
+                      {selectedInstructor}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+              <div className="mt-8 border-t border-black/10 pt-7">
+                <div className="text-[20px] font-semibold">Timing & Location</div>
+                <div className="mt-6 flex justify-between gap-8">
+                  <div>
+                    <div>{formatLongDate(selectedDate)}</div>
+                    <div className="mt-2">
+                      {timeLabel(selectedTime.start)} - {timeLabel(selectedTime.end)}
+                    </div>
+                    <div className="mt-2 text-black/55">{selectedTime.resourceName}</div>
+                  </div>
+                  <button type="button" onClick={() => setStep("time")} className="font-semibold underline">
+                    Edit
+                  </button>
+                </div>
+              </div>
+              <div className="mt-7 border-t border-black/10 pt-7">
+                <div className="text-[18px] font-semibold">Payment Details</div>
+                <div className="mt-5 grid gap-3 text-[16px] text-black/65">
+                  <div className="flex justify-between"><span>Price</span><span>{money(selectedService.price)}</span></div>
+                  <div className="flex justify-between"><span>Subtotal</span><span>{money(onlineTotals.subtotal)}</span></div>
+                  {onlineTotals.tax > 0 ? <div className="flex justify-between"><span>{onlineTotals.taxName}</span><span>{money(onlineTotals.tax)}</span></div> : null}
+                  {onlineTotals.serviceFee > 0 ? <div className="flex justify-between"><span>{onlineTotals.feeName}</span><span>{money(onlineTotals.serviceFee)}</span></div> : null}
+                  <div className="flex justify-between text-[20px] font-semibold text-black"><span>Total</span><span>{money(onlineTotals.total)}</span></div>
+                </div>
+                <div className="mt-6 flex gap-5">
+                  <input
+                    value={discountCode}
+                    onChange={(event) => setDiscountCode(event.target.value)}
+                    placeholder="Discount code"
+                    className="h-[54px] flex-1 rounded-[5px] border border-black/20 px-5 text-[17px]"
+                  />
+                  <button type="button" className="rounded-[5px] bg-black/12 px-7 text-[17px] font-semibold text-black/25">
+                    Apply
+                  </button>
+                </div>
+                <div className="mt-4 text-[13px] text-black/45">Pay in-person total: {money(inPersonTotals.total)}</div>
+                {submitError ? <div className="mt-4 rounded-[6px] bg-red-50 px-4 py-3 text-sm text-red-700">{submitError}</div> : null}
+              </div>
+            </div>
+          ) : null}
+
+          {step === "done" ? (
+            <div className="flex min-h-[520px] flex-col items-center justify-center text-center">
+              <div className="flex h-[122px] w-[122px] items-center justify-center rounded-full bg-[#7ad33d] text-[80px] text-white">✓</div>
+              <div className="mt-12 text-[22px] font-semibold">{selectedService.name} - Booking Confirmed</div>
+              <p className="mt-5 max-w-[630px] text-[20px] leading-[1.55]">
+                Looking forward to seeing you at The Grind Baseball Lab! You will receive a confirmation email with your booking details shortly.
+              </p>
+            </div>
+          ) : null}
+        </ModalShell>
+      ) : null}
+    </main>
+  );
+}

@@ -6,9 +6,9 @@ import SiteNav from "@/components/SiteNav";
 
 export default function SiteChrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isAdminRoute = pathname?.startsWith("/admin");
+  const isStandaloneRoute = pathname?.startsWith("/admin") || pathname === "/book";
 
-  if (isAdminRoute) {
+  if (isStandaloneRoute) {
     return <main>{children}</main>;
   }
 
