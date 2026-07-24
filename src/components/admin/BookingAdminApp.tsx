@@ -17720,7 +17720,7 @@ function SchedulesSettingsView({
         </Link>
       </div>
 
-      <div className="hidden min-h-screen xl:grid xl:grid-cols-[284px_minmax(0,1fr)]">
+      <div className="hidden min-h-screen xl:grid xl:grid-cols-[280px_minmax(0,1fr)]">
         <aside className="border-b border-black/10 bg-[#f7f7f7] px-4 py-5 lg:border-b-0 lg:border-r">
           <Link
             href={backHref}
@@ -17771,19 +17771,24 @@ function SchedulesSettingsView({
           </div>
         </aside>
 
-        <div className="px-7 py-8 lg:px-8">
-          <div className="max-w-[1084px]">
-            <PageHeader
-              title="Schedules"
-              subtitle="Schedules indicate when a set of rooms are available for online booking"
-            >
-              <PrimaryButton
-                icon="plus"
+        <div className="px-7 py-8 lg:px-9">
+          <div className="w-full">
+            <div className="mb-8 flex items-start justify-between gap-4">
+              <div>
+                <h1 className="text-[26px] font-medium leading-tight text-black">Schedules</h1>
+                <p className="mt-1 text-[16px] leading-6 text-black/80">
+                  Schedules indicate when a set of rooms are available for online booking
+                </p>
+              </div>
+              <button
+                type="button"
                 onClick={() => router.push(bookingAdminRouteByView["settings-schedules-add"])}
+                className="inline-flex min-h-12 items-center gap-3 rounded-[4px] bg-[#1f1b1b] px-6 text-[16px] font-semibold text-white shadow-[0_3px_8px_rgba(0,0,0,0.22)]"
               >
+                <Icon name="plus" className="h-5 w-5" />
                 New
-              </PrimaryButton>
-            </PageHeader>
+              </button>
+            </div>
 
             <div className="mb-5 max-w-full">
               <div className="relative">
@@ -17792,23 +17797,23 @@ function SchedulesSettingsView({
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search schedules"
-                  className="min-h-12 w-full rounded-lg border border-black/10 bg-white pl-14 pr-4 text-[15px] outline-none focus:border-black/30"
+                  className="min-h-12 w-full rounded-[4px] border border-black/25 bg-white pl-14 pr-4 text-[17px] outline-none focus:border-[#526f9f]"
                 />
               </div>
             </div>
 
-            <div className="overflow-hidden rounded-[10px] border border-black/10 bg-white shadow-sm">
+            <div className="overflow-hidden rounded-[4px] border border-black/10 bg-white shadow-sm">
               <table className="w-full border-collapse">
                 <colgroup>
-                  <col className="w-[24%]" />
-                  <col className="w-[38%]" />
-                  <col className="w-[38%]" />
+                  <col className="w-[34%]" />
+                  <col className="w-[35%]" />
+                  <col className="w-[31%]" />
                 </colgroup>
                 <thead>
-                  <tr className="bg-[#f3f6fa]">
-                    <th className="px-5 py-5 text-left text-[15px] font-semibold text-black">Name</th>
-                    <th className="px-5 py-5 text-left text-[15px] font-semibold text-black">Services</th>
-                    <th className="px-5 py-5 text-left text-[15px] font-semibold text-black">Rooms</th>
+                  <tr className="bg-[#f3f4f6]">
+                    <th className="px-5 py-5 text-left text-[16px] font-semibold text-black">Name</th>
+                    <th className="px-5 py-5 text-left text-[16px] font-semibold text-black">Services</th>
+                    <th className="px-5 py-5 text-right text-[16px] font-semibold text-black">Rooms</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-black/10">
@@ -17818,50 +17823,46 @@ function SchedulesSettingsView({
                       className="cursor-pointer bg-white transition hover:bg-black/[0.02]"
                       onClick={() => router.push(scheduleHref(schedule.id))}
                     >
-                      <td className="px-5 py-6 align-middle">
-                        <div className="max-w-[170px]">
-                          <div className="text-[18px] font-medium leading-[1.35] text-black break-words">
+                      <td className="px-5 py-5 align-middle">
+                        <div className="max-w-[260px]">
+                          <div className="text-[16px] font-semibold leading-[1.35] text-black break-words">
                             {schedule.name}
-                          </div>
-                          <div className="mt-2 text-[13px] leading-5 text-black/55">
-                            {schedule.serviceNames.length} service{schedule.serviceNames.length === 1 ? "" : "s"} \u00b7{" "}
-                            {schedule.roomNames.length} room{schedule.roomNames.length === 1 ? "" : "s"}
                           </div>
                         </div>
                       </td>
-                      <td className="px-5 py-6 align-middle text-[16px] text-black/75">
+                      <td className="px-5 py-5 align-middle text-[16px] text-black">
                         {schedule.serviceNames.length ? (
-                          <div className="flex flex-wrap gap-2.5">
+                          <div className="flex flex-wrap gap-2">
                             {schedule.serviceNames.map((serviceName) => (
                               <span
                                 key={`${schedule.id}-service-${serviceName}`}
-                                className="inline-flex min-h-9 items-center rounded-full bg-black/[0.06] px-3.5 py-1 text-[13px] font-medium text-black/80"
+                                className="inline-flex min-h-8 items-center rounded-full bg-black/[0.06] px-3 py-1 text-[14px] font-medium text-black"
                               >
                                 {serviceName}
                               </span>
                             ))}
                           </div>
                         ) : (
-                          <span className="inline-flex min-h-9 items-center rounded-full bg-black/[0.04] px-3.5 py-1 text-[13px] font-medium text-black/50">
-                            No services assigned
+                          <span className="text-[15px] text-black">
+                            This schedule has no services assigned.
                           </span>
                         )}
                       </td>
-                      <td className="px-5 py-6 align-middle">
+                      <td className="px-5 py-5 align-middle text-right">
                         {schedule.roomNames.length ? (
-                          <div className="flex flex-wrap gap-2.5">
+                          <div className="flex flex-wrap justify-end gap-2">
                             {schedule.roomNames.map((room) => (
                               <span
                                 key={`${schedule.id}-room-${room}`}
-                                className="inline-flex min-h-9 items-center rounded-full bg-black/[0.06] px-3.5 py-1 text-[13px] font-medium text-black/80"
+                                className="inline-flex min-h-8 items-center rounded-full bg-black/[0.06] px-3 py-1 text-[14px] font-medium text-black"
                               >
                                 {room}
                               </span>
                             ))}
                           </div>
                         ) : (
-                          <span className="inline-flex min-h-9 items-center rounded-full bg-black/[0.04] px-3.5 py-1 text-[13px] font-medium text-black/50">
-                            No rooms assigned
+                          <span className="text-[15px] text-black">
+                            This schedule has no rooms assigned.
                           </span>
                         )}
                       </td>
@@ -18197,7 +18198,7 @@ function ScheduleEditorView({
 
   return (
     <section className="min-h-screen bg-white">
-      <div className="hidden min-h-screen xl:grid xl:grid-cols-[284px_minmax(0,1fr)]">
+      <div className="hidden min-h-screen xl:grid xl:grid-cols-[280px_minmax(0,1fr)]">
         <aside className="border-b border-black/10 bg-[#f7f7f7] px-4 py-5 lg:border-b-0 lg:border-r">
           <button
             type="button"
@@ -18249,9 +18250,9 @@ function ScheduleEditorView({
           </div>
         </aside>
 
-        <div className="px-7 py-8 lg:px-8">
-          <div className="max-w-[1084px]">
-            <div className="mb-6">
+        <div className="px-7 py-8 lg:px-9">
+          <div className="w-full max-w-[1376px]">
+            <div className="mb-5">
               <div className="mb-3 flex items-center gap-3 text-[14px] font-medium text-black/60">
                 <Link href={bookingAdminRouteByView["settings-schedules"]} className="text-black/70 hover:text-black">
                   Schedules
@@ -18259,17 +18260,17 @@ function ScheduleEditorView({
                 <span>/</span>
                 <span className="text-black">{breadcrumbLabel}</span>
               </div>
-              <h1 className="text-[24px] font-semibold text-black">{pageTitle}</h1>
             </div>
 
-            <div className="overflow-hidden rounded-[10px] border border-black/10 bg-white shadow-sm">
+            <div className="overflow-hidden rounded-[4px] border border-black/15 bg-white shadow-[0_2px_8px_rgba(0,0,0,0.16)]">
               <div className="border-t-4 border-t-[#4866b0]" />
-              <div className="border-b border-black/10 px-5 py-4 text-[18px] font-semibold">Schedule Details</div>
+              <div className="border-b border-black/10 px-5 py-6 text-[26px] font-medium">Schedule Details</div>
 
-              <div className="divide-y divide-black/10">
-                <div className="px-5 py-5">
+              <div className="grid gap-10 px-5 py-5 xl:grid-cols-[minmax(0,760px)_minmax(360px,532px)]">
+                <div className="space-y-12">
+                <div>
                   <label className="grid max-w-[240px] gap-1.5">
-                    <span className="text-sm font-semibold text-black/70">Name</span>
+                    <span className="text-[14px] font-medium text-black">Name</span>
                     <input
                       value={draft.name}
                       onChange={(event) =>
@@ -18279,33 +18280,33 @@ function ScheduleEditorView({
                           slug: slugifyScheduleName(event.target.value) || current.slug,
                         }))
                       }
-                      className="min-h-12 rounded-lg border border-black/10 px-4 text-[15px] outline-none focus:border-black/30"
+                      className="min-h-12 rounded-[4px] border border-black/40 px-4 text-[17px] outline-none focus:border-[#526f9f]"
                     />
                   </label>
                 </div>
 
-                <div className="px-5 py-5">
-                  <div className="mb-5 text-[18px] font-semibold text-black">Hours</div>
-                  <div className="space-y-4">
+                <div>
+                  <div className="mb-3 text-[14px] font-medium text-black">Hours</div>
+                  <div className="space-y-3">
                     {draft.dayConfigs.map((config) => (
-                      <div key={config.day} className="grid grid-cols-[170px_minmax(0,1fr)] items-start gap-6">
+                      <div key={config.day} className="grid grid-cols-[168px_minmax(0,1fr)] items-start gap-5">
                         <div className="flex items-center gap-3">
                           <ToggleSwitch
                             checked={config.enabled}
                             onChange={(checked) => toggleDay(config.day, checked)}
                             label={`${config.day} open`}
                           />
-                          <span className="text-[16px] font-medium text-black">{config.day}</span>
+                          <span className="text-[18px] font-normal text-black">{config.day}</span>
                         </div>
 
                         {config.enabled ? (
-                          <div className="space-y-3">
+                          <div className="space-y-2">
                             {config.slots.map((slot, slotIndex) => (
-                              <div key={slot.id} className="flex flex-wrap items-center gap-4">
+                              <div key={slot.id} className="flex flex-wrap items-center gap-5">
                                 <select
                                   value={slot.start}
                                   onChange={(event) => updateSlot(config.day, slot.id, { start: event.target.value })}
-                                  className="min-h-12 min-w-[164px] rounded-lg border border-black/10 px-4 text-[15px] outline-none focus:border-black/30"
+                                  className="min-h-[46px] min-w-[164px] rounded-[4px] border border-black/25 bg-white px-4 text-[17px] outline-none focus:border-[#526f9f]"
                                 >
                                   {scheduleTimeOptions.map((value) => (
                                     <option key={value} value={value}>
@@ -18313,11 +18314,11 @@ function ScheduleEditorView({
                                     </option>
                                   ))}
                                 </select>
-                                <span className="text-[18px] text-black/45">-</span>
+                                <span className="text-[18px] text-black">-</span>
                                 <select
                                   value={slot.end}
                                   onChange={(event) => updateSlot(config.day, slot.id, { end: event.target.value })}
-                                  className="min-h-12 min-w-[164px] rounded-lg border border-black/10 px-4 text-[15px] outline-none focus:border-black/30"
+                                  className="min-h-[46px] min-w-[164px] rounded-[4px] border border-black/25 bg-white px-4 text-[17px] outline-none focus:border-[#526f9f]"
                                 >
                                   {scheduleTimeOptions.map((value) => (
                                     <option key={value} value={value}>
@@ -18388,32 +18389,23 @@ function ScheduleEditorView({
                     ))}
                   </div>
                 </div>
+                </div>
 
-                <div className="px-5 py-5">
-                  <div className="overflow-hidden rounded-[10px] border border-black/10 bg-white">
-                    <div className="border-b border-black/10 px-5 py-4 text-[18px] font-semibold text-black">
-                      Date Overrides ({draft.overrides.length})
-                    </div>
-                    <div className="flex flex-col items-start gap-4 px-5 py-5">
+                <div className="pt-[68px]">
+                  <div className="overflow-hidden rounded-[4px] border border-black/15 bg-white">
+                    <div className="flex flex-col items-start gap-4 px-5 py-7">
+                      <div className="text-[15px] font-medium text-black">Date Overrides</div>
                       <p className="text-[15px] leading-7 text-black/65">
                         Add specific dates when your schedule changes from your regular hours.
                       </p>
                       <div className="flex flex-wrap gap-3">
                         <button
                           type="button"
-                          onClick={addClosedOverride}
-                          className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-black/10 bg-white px-5 py-2.5 text-[15px] font-medium text-black"
-                        >
-                          <Icon name="plus" className="h-4 w-4" />
-                          Add closed date
-                        </button>
-                        <button
-                          type="button"
                           onClick={addCustomHoursOverride}
-                          className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-black/10 bg-white px-5 py-2.5 text-[15px] font-medium text-black"
+                          className="inline-flex min-h-10 items-center gap-2 rounded-[4px] border border-black/25 bg-white px-4 py-2 text-[15px] font-medium text-black"
                         >
                           <Icon name="plus" className="h-4 w-4" />
-                          Add custom hours date
+                          Add an override
                         </button>
                       </div>
                       {draft.overrides.length ? (
