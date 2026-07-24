@@ -278,43 +278,46 @@ function BookingHero({
 }) {
   return (
     <section className="bg-white px-4 py-5 sm:px-6 lg:px-8">
-      <div className="mx-auto grid max-w-[1240px] overflow-hidden rounded-[10px] border border-black/10 bg-white shadow-[0_16px_38px_rgba(15,23,42,0.08)] lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="border-t-[6px] border-[#1784bd] px-5 py-6 sm:px-8">
+      <div className="mx-auto max-w-[1240px] overflow-hidden rounded-[10px] border border-black/10 bg-white shadow-[0_18px_45px_rgba(0,0,0,0.12)]">
+        <div className="relative flex min-h-[250px] items-center justify-center overflow-hidden bg-black px-6 py-10 sm:min-h-[310px]">
+          <div className="absolute inset-x-0 bottom-0 h-[6px] bg-[#1784bd]" />
+          <Image
+            src="/logo.png"
+            alt="The Grind Baseball Lab"
+            width={620}
+            height={241}
+            className="relative h-auto w-[620px] max-w-[78%]"
+            priority
+          />
+        </div>
+
+        <div className="grid gap-5 border-t border-black/10 px-5 py-5 sm:px-7 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
           <div className="min-w-0">
             <div className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#1784bd]">Book Online</div>
-            <h1 className="mt-2 text-[30px] font-semibold leading-tight tracking-normal sm:text-[38px]">Reserve your training time</h1>
-            <p className="mt-3 max-w-[720px] text-[16px] leading-7 text-black/60">
-              Choose a service, pick an available time, and book your visit at {settings.facilityName}.
-            </p>
-            <div className="mt-5 flex flex-wrap gap-2 text-[14px] font-semibold text-black/65">
-              <span className="rounded-full border border-black/10 bg-[#f7f8fa] px-4 py-2">Cages</span>
-              <span className="rounded-full border border-black/10 bg-[#f7f8fa] px-4 py-2">Lessons</span>
-              <span className="rounded-full border border-black/10 bg-[#f7f8fa] px-4 py-2">Memberships</span>
+            <h1 className="mt-2 text-[30px] font-semibold leading-tight tracking-normal sm:text-[38px]">{settings.facilityName}</h1>
+            <div className="mt-4 flex flex-wrap gap-2 text-[14px] font-semibold text-black/65">
+              <span className="rounded-full border border-black/10 bg-[#f7f8fa] px-4 py-2">{settings.address}</span>
+              <span className="rounded-full border border-black/10 bg-[#f7f8fa] px-4 py-2">{settings.phone}</span>
               <span className="rounded-full border border-red-100 bg-red-50 px-4 py-2">
                 <span className="text-[#d10018]">Closed</span> - Opens 4PM today
               </span>
             </div>
           </div>
-        </div>
-
-        <div className="grid gap-3 border-t border-black/10 bg-[#f8fafc] px-5 py-5 sm:px-8 lg:border-l lg:border-t-0">
-          <button
-            type="button"
-            onClick={() => onSelectCategory("rentals")}
-            className="rounded-[6px] bg-black px-5 py-3 text-[15px] font-semibold text-white shadow-[0_10px_24px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:bg-[#1f1f1f]"
-          >
-            Book cage time
-          </button>
-          <button
-            type="button"
-            onClick={() => onSelectCategory("lessons")}
-            className="rounded-[6px] border border-black/15 bg-white px-5 py-3 text-[15px] font-semibold text-black transition hover:-translate-y-0.5 hover:bg-[#f1f5f9]"
-          >
-            Book a lesson
-          </button>
-          <div className="mt-2 grid gap-2 text-[14px] text-black/60">
-            <div>{settings.address}</div>
-            <div>{settings.phone}</div>
+          <div className="flex flex-wrap gap-3 lg:justify-end">
+            <button
+              type="button"
+              onClick={() => onSelectCategory("rentals")}
+              className="rounded-[6px] bg-black px-5 py-3 text-[15px] font-semibold text-white shadow-[0_10px_24px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:bg-[#1f1f1f]"
+            >
+              Book cage time
+            </button>
+            <button
+              type="button"
+              onClick={() => onSelectCategory("lessons")}
+              className="rounded-[6px] border border-black/15 bg-white px-5 py-3 text-[15px] font-semibold text-black transition hover:-translate-y-0.5 hover:bg-[#f5f6f7]"
+            >
+              Book a lesson
+            </button>
           </div>
         </div>
       </div>
@@ -780,12 +783,11 @@ export default function CustomerBookingApp() {
   return (
     <main className="min-h-screen bg-[#f6f7f9] text-black">
       <header className="sticky top-0 z-30 border-b border-black/10 bg-white/95 backdrop-blur">
-        <div className="mx-auto grid min-h-[142px] max-w-[1240px] grid-cols-1 items-center gap-4 px-5 py-5 sm:grid-cols-[1fr_auto_1fr] sm:gap-5 lg:px-8">
-          <div className="hidden sm:block" />
-          <a href="/book" className="justify-self-center" aria-label="The Grind Baseball Lab booking home">
-            <Image src="/logo-header.png" alt="The Grind Baseball Lab" width={420} height={164} className="h-auto w-[280px] sm:w-[360px] lg:w-[420px]" priority />
-          </a>
-          <div className="flex items-center justify-center gap-3 justify-self-center sm:justify-self-end sm:gap-5">
+        <div className="mx-auto flex min-h-[86px] max-w-[1240px] items-center justify-between gap-5 px-5 py-4 lg:px-8">
+          <span className="inline-flex h-12 items-center rounded-[6px] bg-black px-4 shadow-sm">
+            <Image src="/logo.png" alt="The Grind Baseball Lab" width={118} height={46} className="h-8 w-auto" priority />
+          </span>
+          <div className="flex items-center gap-3 sm:gap-5">
             {parentAccount ? (
               <div ref={accountMenuRef} className="relative">
                 <button
