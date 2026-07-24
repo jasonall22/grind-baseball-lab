@@ -138,6 +138,9 @@ type StaffMember = {
   id: string;
   name: string;
   email: string;
+  phone?: string;
+  bio?: string;
+  notes?: string;
   role: StaffRole;
   active: boolean;
   calendarColor?: string;
@@ -548,6 +551,9 @@ type BookingStaffRow = {
   id: string;
   full_name: string;
   email: string;
+  phone?: string | null;
+  bio?: string | null;
+  notes?: string | null;
   role: StaffRole;
   is_active: boolean;
   sort_order: number;
@@ -1903,6 +1909,9 @@ function normalizeStaffMemberEntry(value: unknown, fallbackIndex = 0): StaffMemb
     id: typeof item.id === "string" && item.id.trim() ? item.id : makeId("staff"),
     name: typeof item.name === "string" ? item.name : "",
     email: typeof item.email === "string" ? item.email : "",
+    phone: typeof item.phone === "string" ? item.phone : "",
+    bio: typeof item.bio === "string" ? item.bio : "",
+    notes: typeof item.notes === "string" ? item.notes : "",
     role: normalizeStaffRole(item.role),
     active: item.active ?? true,
     calendarColor: normalizeCalendarColor(item.calendarColor ?? staffAvailabilityColor(fallbackIndex)),
@@ -2325,6 +2334,9 @@ async function upsertStaffMembers(staff: StaffMember[]) {
     id: member.id,
     full_name: member.name.trim(),
     email: member.email.trim(),
+    phone: member.phone?.trim() || null,
+    bio: member.bio?.trim() || null,
+    notes: member.notes?.trim() || null,
     role: member.role,
     is_active: member.active,
     calendar_color: normalizeCalendarColor(member.calendarColor ?? staffAvailabilityColor(index)),
@@ -4505,6 +4517,9 @@ export default function BookingAdminApp({
             id: member.id,
             name: member.full_name,
             email: member.email,
+            phone: member.phone ?? "",
+            bio: member.bio ?? "",
+            notes: member.notes ?? "",
             role: normalizeStaffRole(member.role),
             active: member.is_active,
             calendarColor: normalizeCalendarColor(member.calendar_color ?? staffAvailabilityColor(index)),
@@ -4922,6 +4937,9 @@ export default function BookingAdminApp({
           id: member.id,
           name: member.full_name,
           email: member.email,
+          phone: member.phone ?? "",
+          bio: member.bio ?? "",
+          notes: member.notes ?? "",
           role: normalizeStaffRole(member.role),
           active: member.is_active,
           calendarColor: normalizeCalendarColor(member.calendar_color ?? staffAvailabilityColor(index)),
@@ -15464,6 +15482,64 @@ function StaffRoleBadge({ role }: { role: StaffRole }) {
   );
 }
 
+function splitStaffName(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) {
+    return { firstName: parts[0] ?? "", lastName: "" };
+  }
+  return {
+    firstName: parts.slice(0, -1).join(" "),
+    lastName: parts[parts.length - 1],
+  };
+}
+
+function composeStaffName(firstName: string, lastName: string) {
+  return [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
+}
+
+function StaffRichTextBox({
+  label,
+  value,
+  placeholder,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="grid gap-3">
+      <div className="flex items-center gap-3">
+        <span className="text-[14px] font-medium text-black">{label}</span>
+        <span className="rounded-full bg-black/[0.08] px-3 py-1 text-[13px] text-black/75">Optional</span>
+      </div>
+      <div className="overflow-hidden rounded-[4px] border border-black/25 bg-white">
+        <div className="flex min-h-12 items-center gap-1 border-b border-black/10 px-3 text-black/55">
+          {["Undo", "Redo", "Align", "Normal", "B", "I", "U", "S", "<>", "Link", "Left", "Center", "Right", "Justify"].map((item, index) => (
+            <span
+              key={`${label}-${item}-${index}`}
+              className={[
+                "inline-flex h-8 min-w-8 items-center justify-center px-1 text-[16px]",
+                index === 2 || index === 4 || index === 10 ? "ml-2 border-l border-black/10 pl-4" : "",
+                item === "Normal" ? "min-w-[96px] justify-between text-black/55" : "",
+              ].join(" ")}
+            >
+              {item}
+            </span>
+          ))}
+        </div>
+        <textarea
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          className="min-h-[170px] w-full resize-y px-4 py-4 text-[17px] outline-none placeholder:text-black/40"
+        />
+      </div>
+    </label>
+  );
+}
+
 function StaffSettingsView({
   backHref,
   staff,
@@ -15476,58 +15552,31 @@ function StaffSettingsView({
   onSave: (nextStaff: StaffMember[], successMessage?: string) => Promise<boolean | void>;
 }) {
   const [draft, setDraft] = useState(staff);
-  const [activeTab, setActiveTab] = useState<"active" | "inactive">("active");
-  const [search, setSearch] = useState("");
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [editingStaffId, setEditingStaffId] = useState<string | null>(null);
-  const [memberName, setMemberName] = useState("");
-  const [memberEmail, setMemberEmail] = useState("");
-  const [memberRole, setMemberRole] = useState<StaffRole>("Staff");
-  const [memberIsActive, setMemberIsActive] = useState(true);
+  const [selectedStaffId, setSelectedStaffId] = useState<string | null>(() => staff.find((member) => member.role === "Owner")?.id ?? staff[0]?.id ?? null);
+  const [activeDetailTab, setActiveDetailTab] = useState<"profile" | "payroll">("profile");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setDraft(staff);
+    setSelectedStaffId((current) =>
+      current && staff.some((member) => member.id === current)
+        ? current
+        : staff.find((member) => member.role === "Owner")?.id ?? staff[0]?.id ?? null
+    );
   }, [staff]);
 
-  const activeCount = draft.filter((member) => member.active).length;
-  const inactiveCount = draft.length - activeCount;
-  const normalizedSearch = search.trim().toLowerCase();
+  const selectedMember = draft.find((member) => member.id === selectedStaffId) ?? draft[0];
+  const selectedNameParts = splitStaffName(selectedMember?.name ?? "");
 
-  const filteredStaff = useMemo(() => {
-    return draft.filter((member) => {
-      if (activeTab === "active" && !member.active) return false;
-      if (activeTab === "inactive" && member.active) return false;
-      if (!normalizedSearch) return true;
-      return [member.name, member.email, member.role].join(" ").toLowerCase().includes(normalizedSearch);
-    });
-  }, [activeTab, draft, normalizedSearch]);
-
-  function resetEditor() {
-    setEditingStaffId(null);
-    setMemberName("");
-    setMemberEmail("");
-    setMemberRole("Staff");
-    setMemberIsActive(true);
+  function patchSelectedStaff(patch: Partial<StaffMember>) {
+    if (!selectedMember) return;
+    setDraft((current) => current.map((member) => (member.id === selectedMember.id ? { ...member, ...patch } : member)));
   }
 
-  function openNewEditor() {
-    resetEditor();
-    setEditorOpen(true);
-  }
-
-  function openEditEditor(member: StaffMember) {
-    setEditingStaffId(member.id);
-    setMemberName(member.name);
-    setMemberEmail(member.email);
-    setMemberRole(member.role);
-    setMemberIsActive(member.active);
-    setEditorOpen(true);
-  }
-
-  async function saveMember() {
-    const trimmedName = memberName.trim();
-    const trimmedEmail = memberEmail.trim();
+  async function saveSelectedMember() {
+    if (!selectedMember) return;
+    const trimmedName = selectedMember.name.trim();
+    const trimmedEmail = selectedMember.email.trim();
 
     if (!trimmedName) {
       showToast("Staff name is required.");
@@ -15539,333 +15588,280 @@ function StaffSettingsView({
       return;
     }
 
-    const nextMember: StaffMember = {
-      id: editingStaffId ?? makeId("staff"),
-      name: trimmedName,
-      email: trimmedEmail,
-      role: memberRole,
-      active: memberIsActive,
-      calendarColor:
-        draft.find((member) => member.id === editingStaffId)?.calendarColor ??
-        staffAvailabilityColor(draft.length),
-    };
-
-    const nextStaff = editingStaffId
-      ? draft.map((member) => (member.id === editingStaffId ? nextMember : member))
-      : [...draft, nextMember];
+    const nextStaff = draft.map((member) =>
+      member.id === selectedMember.id
+        ? {
+            ...member,
+            name: trimmedName,
+            email: trimmedEmail,
+            phone: member.phone?.trim() ?? "",
+            bio: member.bio?.trim() ?? "",
+            notes: member.notes?.trim() ?? "",
+            calendarColor: normalizeCalendarColor(member.calendarColor ?? staffAvailabilityColor(0)),
+          }
+        : member
+    );
 
     setSaving(true);
     try {
       setDraft(nextStaff);
-      const result = await onSave(nextStaff, editingStaffId ? "Staff member updated." : "Staff member added.");
-      if (result !== false) {
-        setEditorOpen(false);
-        resetEditor();
-      }
+      await onSave(nextStaff, "Staff member updated.");
     } finally {
       setSaving(false);
     }
   }
 
-  const summaryRange =
-    filteredStaff.length === 0 ? "0-0 of 0" : `1-${Math.min(filteredStaff.length, 25)} of ${filteredStaff.length}`;
+  if (!selectedMember) {
+    return (
+      <section className="min-h-screen bg-white px-8 py-9">
+        <PageHeader title="Staff" subtitle="Manage your staff members & permissions" />
+        <div className="rounded-lg border border-dashed border-black/15 px-6 py-12 text-center text-black/55">
+          No staff members found.
+        </div>
+      </section>
+    );
+  }
 
   return (
-    <section className="min-h-screen bg-white">
-      <div className="px-5 py-4 xl:hidden">
-        <Link href={backHref} className="inline-flex items-center gap-2 text-[15px] font-medium text-black">
-          <Icon name="arrow-left" className="h-4 w-4" />
-          Staff
-        </Link>
-      </div>
-
-      <div className="hidden min-h-screen xl:grid xl:grid-cols-[284px_minmax(0,1fr)]">
-        <aside className="border-b border-black/10 bg-[#f7f7f7] px-4 py-5 lg:border-b-0 lg:border-r">
-          <Link
-            href={backHref}
-            className="inline-flex items-center gap-2 text-sm font-semibold text-black/70 transition hover:text-black"
-          >
-            <Icon name="arrow-left" className="h-4 w-4" />
-            Back to app
-          </Link>
-
-          <div className="mt-6 space-y-6">
-            {settingsNavGroups.map((group) => (
-              <div key={group.title}>
-                <div className="mb-2 text-sm font-medium text-black/45">{group.title}</div>
-                <div className="space-y-1">
-                  {group.items.map((item) => {
-                    const isActive = item.section === "staff";
-                    const className = [
-                      "flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-[15px] transition",
-                      isActive && item.section === "staff"
-                        ? "bg-[#e9e9e9] font-semibold"
-                        : "text-black/75 hover:bg-black/5",
-                    ].join(" ");
-
-                    const content = (
-                      <>
-                        <Icon name={item.icon} className="h-[18px] w-[18px]" />
-                        <span>{item.label}</span>
-                      </>
-                    );
-
-                    return item.href ? (
-                      <Link key={item.label} href={item.href} className={className}>
-                        {content}
-                      </Link>
-                    ) : (
-                      <button key={item.label} type="button" className={className}>
-                        {content}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        </aside>
-
-        <div className="px-8 py-9">
-          <PageHeader title="Staff" subtitle="Manage your staff members & permissions">
-            <PrimaryButton icon="plus" onClick={openNewEditor}>
-              New
-            </PrimaryButton>
-          </PageHeader>
-
-          <div className="mb-6 flex items-end gap-8 border-b border-black/10">
-            <button
-              type="button"
-              onClick={() => setActiveTab("active")}
-              className={[
-                "border-b-2 px-5 pb-4 text-[16px] transition",
-                activeTab === "active" ? "border-black font-medium text-black" : "border-transparent text-black/55",
-              ].join(" ")}
-            >
-              Active ({activeCount})
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("inactive")}
-              className={[
-                "border-b-2 px-1 pb-4 text-[16px] transition",
-                activeTab === "inactive"
-                  ? "border-black font-medium text-black"
-                  : "border-transparent text-black/55",
-              ].join(" ")}
-            >
-              Inactive ({inactiveCount})
-            </button>
-          </div>
-
-          <div className="mb-5 max-w-[920px]">
-            <div className="relative">
-              <Icon name="search" className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-black/35" />
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search staff..."
-                className="min-h-12 w-full rounded-lg border border-black/10 bg-white pl-14 pr-4 text-[15px] outline-none focus:border-black/30"
-              />
-            </div>
-          </div>
-
-          <div className="overflow-hidden rounded-xl border border-black/10 bg-white">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="bg-[#f3f6fa]">
-                  <th className="px-5 py-5 text-left text-[15px] font-semibold text-black">Name</th>
-                  <th className="px-5 py-5 text-left text-[15px] font-semibold text-black">Email</th>
-                  <th className="px-5 py-5 text-left text-[15px] font-semibold text-black">Role</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-black/10">
-                {filteredStaff.length ? (
-                  filteredStaff.map((member) => (
-                    <tr
-                      key={member.id}
-                      className="cursor-pointer bg-white transition hover:bg-black/[0.02]"
-                      onClick={() => openEditEditor(member)}
-                    >
-                      <td className="px-5 py-5 align-middle">
-                        <div className="flex items-center gap-4">
-                          <div className="grid h-[34px] w-[34px] place-items-center rounded-full bg-black/[0.12] text-[14px] font-medium text-white">
-                            {staffInitials(member.name)}
-                          </div>
-                          <span className="text-[17px] text-black">{member.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-5 py-5 align-middle text-[17px] text-black/80">{member.email}</td>
-                      <td className="px-5 py-5 align-middle">
-                        <StaffRoleBadge role={member.role} />
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={3} className="px-5 py-12 text-center text-[15px] text-black/45">
-                      No staff members found.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-
-            <div className="flex items-center justify-end gap-8 border-t border-black/10 px-5 py-4 text-[15px] text-black/70">
-              <div className="flex items-center gap-2">
-                <span>Rows per page:</span>
-                <div className="inline-flex items-center gap-2">
-                  <span>25</span>
-                  <Icon name="chevron" className="h-4 w-4 -rotate-90 text-black/45" />
-                </div>
-              </div>
-              <div>{summaryRange}</div>
-              <div className="flex items-center gap-2 text-black/25">
-                <Icon name="chevron" className="h-4 w-4 rotate-180" />
-                <Icon name="chevron" className="h-4 w-4" />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-5 px-5 pb-8 xl:hidden">
-        <PageHeader title="Staff" subtitle="Manage your staff members & permissions">
-          <PrimaryButton icon="plus" onClick={openNewEditor}>
-            New
-          </PrimaryButton>
-        </PageHeader>
-
-        <div className="flex items-end gap-6 border-b border-black/10">
-          <button
-            type="button"
-            onClick={() => setActiveTab("active")}
-            className={[
-              "border-b-2 pb-3 text-[16px] transition",
-              activeTab === "active" ? "border-black font-medium text-black" : "border-transparent text-black/55",
-            ].join(" ")}
-          >
-            Active ({activeCount})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("inactive")}
-            className={[
-              "border-b-2 pb-3 text-[16px] transition",
-              activeTab === "inactive" ? "border-black font-medium text-black" : "border-transparent text-black/55",
-            ].join(" ")}
-          >
-            Inactive ({inactiveCount})
-          </button>
-        </div>
-
-        <div className="relative">
-          <Icon name="search" className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-black/35" />
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search staff..."
-            className="min-h-12 w-full rounded-lg border border-black/10 bg-white pl-14 pr-4 text-[15px] outline-none focus:border-black/30"
-          />
-        </div>
-
-        <div className="overflow-hidden rounded-xl border border-black/10 bg-white">
-          <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto] gap-3 bg-[#f3f6fa] px-4 py-4 text-[14px] font-semibold text-black">
-            <span>Name</span>
-            <span>Email</span>
-            <span>Role</span>
-          </div>
-          {filteredStaff.length ? (
-            filteredStaff.map((member) => (
-              <button
-                key={member.id}
-                type="button"
-                onClick={() => openEditEditor(member)}
-                className="grid w-full grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto] gap-3 border-t border-black/10 px-4 py-4 text-left"
+    <section className="min-h-screen bg-[#f7f7f7] px-5 py-7 lg:px-8">
+      <div className="mx-auto max-w-[1120px]">
+        <div className="mb-5 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="mb-4 flex items-center gap-2 text-[15px] text-black">
+              <Link href={backHref} className="text-black hover:underline">
+                Staff
+              </Link>
+              <span className="text-black/45">/</span>
+              <select
+                value={selectedMember.id}
+                onChange={(event) => setSelectedStaffId(event.target.value)}
+                className="max-w-[260px] appearance-none bg-transparent pr-5 text-black outline-none"
               >
-                <div className="flex items-center gap-3">
-                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-black/[0.12] text-[13px] font-medium text-white">
-                    {staffInitials(member.name)}
-                  </div>
-                  <span className="text-[15px] font-medium text-black">{member.name}</span>
-                </div>
-                <span className="truncate text-[14px] text-black/70">{member.email}</span>
-                <StaffRoleBadge role={member.role} />
-              </button>
-            ))
+                {draft.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-wrap items-center gap-4">
+              <h1 className="text-[28px] font-medium leading-tight text-black">{selectedMember.name}</h1>
+              <span
+                className={[
+                  "rounded-full px-4 py-1.5 text-[15px] font-medium",
+                  selectedMember.active ? "bg-[#d8f4c8] text-[#1f5c13]" : "bg-black/[0.08] text-black/60",
+                ].join(" ")}
+              >
+                {selectedMember.active ? "Active" : "Inactive"}
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => patchSelectedStaff({ active: !selectedMember.active })}
+            className="inline-flex min-h-11 items-center overflow-hidden rounded-md bg-[#d9d9d9] text-[15px] font-medium text-black shadow-[0_2px_8px_rgba(0,0,0,0.16)]"
+          >
+            <span className="inline-flex items-center gap-3 px-5">
+              <span className="relative h-3 w-6 rounded-full bg-black/20">
+                <span
+                  className={[
+                    "absolute top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-white transition",
+                    selectedMember.active ? "left-1" : "right-1",
+                  ].join(" ")}
+                />
+              </span>
+              {selectedMember.active ? "Deactivate staff" : "Activate staff"}
+            </span>
+            <span className="grid h-11 w-12 place-items-center border-l border-black/10">
+              <Icon name="chevron" className="h-4 w-4 rotate-90 text-black/35" />
+            </span>
+          </button>
+        </div>
+
+        <div className="mb-5 flex items-end gap-8 border-b border-black/15">
+          {(["profile", "payroll"] as const).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveDetailTab(tab)}
+              className={[
+                "border-b-[3px] px-8 pb-4 text-[17px] font-semibold transition",
+                activeDetailTab === tab ? "border-[#526f9f] text-black" : "border-transparent text-black/60",
+              ].join(" ")}
+            >
+              {tab === "profile" ? "Profile" : "Payroll"}
+            </button>
+          ))}
+        </div>
+
+        <div className="overflow-hidden rounded-[4px] border border-black/15 bg-white shadow-[0_2px_8px_rgba(0,0,0,0.16)]">
+          <div className="h-1 bg-[#2f55ad]" />
+          <div className="border-b border-black/10 px-5 py-7">
+            <h2 className="text-[26px] font-medium text-black">Staff Details</h2>
+          </div>
+
+          {activeDetailTab === "payroll" ? (
+            <div className="px-5 py-10">
+              <h3 className="text-[22px] font-semibold text-black">Payroll</h3>
+              <p className="mt-2 text-[17px] text-black/65">Payroll settings can be added here when you are ready.</p>
+            </div>
           ) : (
-            <div className="px-4 py-10 text-center text-[15px] text-black/45">No staff members found.</div>
+            <>
+              <div className="px-5 py-7">
+                <h3 className="text-[21px] font-semibold text-black">Profile</h3>
+                <p className="mt-2 text-[17px] text-black/80">Update their profile picture and name</p>
+
+                <div className="mt-10 grid gap-6 border-b border-black/10 pb-8 lg:grid-cols-[104px_1fr_1fr] lg:items-end">
+                  <div className="grid h-[104px] w-[104px] place-items-center rounded-full bg-[#c7c7c7] text-white shadow-[inset_0_-2px_0_rgba(255,255,255,0.45)]">
+                    <Icon name="user" className="h-16 w-16" />
+                  </div>
+                  <label className="grid gap-2">
+                    <span className="text-[14px] font-medium text-black">First Name</span>
+                    <input
+                      value={selectedNameParts.firstName}
+                      onChange={(event) => patchSelectedStaff({ name: composeStaffName(event.target.value, selectedNameParts.lastName) })}
+                      className="min-h-12 rounded-[4px] border border-black/25 px-4 text-[17px] outline-none focus:border-[#526f9f]"
+                    />
+                  </label>
+                  <label className="grid gap-2">
+                    <span className="text-[14px] font-medium text-black">Last Name</span>
+                    <input
+                      value={selectedNameParts.lastName}
+                      onChange={(event) => patchSelectedStaff({ name: composeStaffName(selectedNameParts.firstName, event.target.value) })}
+                      className="min-h-12 rounded-[4px] border border-black/25 px-4 text-[17px] outline-none focus:border-[#526f9f]"
+                    />
+                  </label>
+                </div>
+
+                <div className="border-b border-black/10 py-8">
+                  <h3 className="text-[21px] font-semibold text-black">Contact Information</h3>
+                  <p className="mt-2 text-[17px] text-black/80">Update email and phone number.</p>
+
+                  <div className="mt-10 grid gap-7">
+                    <label className="grid gap-2">
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="text-[14px] font-medium text-black">Email</span>
+                        <div className="flex gap-4 text-[14px] font-semibold text-[#526f9f]">
+                          <button type="button">Change email</button>
+                          <button type="button">Resend invite</button>
+                        </div>
+                      </div>
+                      <input
+                        value={selectedMember.email}
+                        onChange={(event) => patchSelectedStaff({ email: event.target.value })}
+                        className="min-h-12 rounded-[4px] border border-black/25 px-4 text-[17px] outline-none focus:border-[#526f9f]"
+                      />
+                    </label>
+
+                    <label className="grid gap-2">
+                      <div className="flex items-center gap-3">
+                        <span className="text-[14px] font-medium text-black">Phone Number</span>
+                        <span className="rounded-full bg-black/[0.08] px-3 py-1 text-[13px] text-black/75">Optional</span>
+                      </div>
+                      <div className="grid grid-cols-[50px_1fr]">
+                        <div className="grid min-h-12 place-items-center rounded-l-[4px] border border-r-0 border-black/25 text-[14px] font-semibold text-black/65">US</div>
+                        <input
+                          value={selectedMember.phone ?? ""}
+                          onChange={(event) => patchSelectedStaff({ phone: formatUsPhoneInput(event.target.value) })}
+                          placeholder="+1 941 525 0880"
+                          className="min-h-12 rounded-r-[4px] border border-black/25 px-4 text-[17px] outline-none focus:border-[#526f9f]"
+                        />
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="border-b border-black/10 py-8">
+                  <h3 className="text-[21px] font-semibold text-black">Role and Permissions</h3>
+                  <p className="mt-2 text-[17px] text-black/80">Set their role and whether they can offer services like lessons, camps, etc.</p>
+                  <label className="mt-10 grid gap-2">
+                    <span className="text-[14px] font-medium text-black">Role</span>
+                    <select
+                      value={selectedMember.role}
+                      onChange={(event) => patchSelectedStaff({ role: normalizeStaffRole(event.target.value) })}
+                      className="min-h-12 rounded-[4px] border border-black/25 bg-white px-4 text-[17px] text-black/70 outline-none focus:border-[#526f9f]"
+                    >
+                      {["Owner", "Admin", "Instructor", "Staff"].map((role) => (
+                        <option key={role} value={role}>
+                          {role}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <div className="border-b border-black/10 py-8">
+                  <h3 className="text-[21px] font-semibold text-black">Bio</h3>
+                  <p className="mt-2 text-[17px] text-black/80">This will be shown to customers when booking a service.</p>
+                  <div className="mt-10">
+                    <StaffRichTextBox
+                      label="Bio"
+                      value={selectedMember.bio ?? ""}
+                      placeholder="Add bio..."
+                      onChange={(value) => patchSelectedStaff({ bio: value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="border-b border-black/10 py-8">
+                  <h3 className="text-[21px] font-semibold text-black">Notes</h3>
+                  <p className="mt-2 text-[17px] text-black/80">This is for internal use only.</p>
+                  <div className="mt-10">
+                    <StaffRichTextBox
+                      label="Notes"
+                      value={selectedMember.notes ?? ""}
+                      placeholder="Add notes..."
+                      onChange={(value) => patchSelectedStaff({ notes: value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="py-8">
+                  <h3 className="text-[21px] font-semibold text-black">Calendar Color</h3>
+                  <p className="mt-2 text-[17px] text-black/80">The color used to display this staff member on the availability calendar.</p>
+                  <div className="mt-10 flex flex-wrap items-center gap-3">
+                    {staffAvailabilityColors.map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        onClick={() => patchSelectedStaff({ calendarColor: color })}
+                        className={[
+                          "grid h-12 w-12 place-items-center rounded-[8px] border bg-white",
+                          normalizeCalendarColor(selectedMember.calendarColor ?? staffAvailabilityColor(0)) === color
+                            ? "border-black shadow-[0_0_0_2px_rgba(0,0,0,0.12)]"
+                            : "border-black/15",
+                        ].join(" ")}
+                        aria-label={`Use calendar color ${color}`}
+                      >
+                        <span className="h-7 w-7 rounded-full" style={{ backgroundColor: color }} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="sticky bottom-0 flex items-center justify-between border-t border-black/10 bg-[#f4f4f4] px-5 py-5">
+                <button
+                  type="button"
+                  disabled
+                  className="rounded-[4px] border border-black/10 px-5 py-3 text-[15px] font-medium text-black/25"
+                >
+                  Delete
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void saveSelectedMember()}
+                  disabled={saving}
+                  className="rounded-[4px] bg-[#1f1b1b] px-6 py-3 text-[16px] font-semibold text-white shadow-[0_3px_8px_rgba(0,0,0,0.18)] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {saving ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </>
           )}
         </div>
       </div>
-
-      {editorOpen ? (
-        <div className="fixed inset-0 z-50 bg-black/45 px-4 py-10">
-          <div className="mx-auto w-full max-w-[560px] overflow-hidden rounded-[18px] bg-white shadow-[0_16px_48px_rgba(0,0,0,0.22)]">
-            <div className="flex items-center justify-between border-b border-black/10 px-6 py-5">
-              <h2 className="text-[28px] font-medium text-black">
-                {editingStaffId ? "Edit Staff Member" : "New Staff Member"}
-              </h2>
-              <button
-                type="button"
-                onClick={() => {
-                  setEditorOpen(false);
-                  resetEditor();
-                }}
-                className="text-black/45 transition hover:text-black"
-                aria-label="Close"
-              >
-                <Icon name="x" className="h-7 w-7" />
-              </button>
-            </div>
-
-            <div className="grid gap-4 px-6 py-6">
-              <TextField label="Name" value={memberName} onChange={setMemberName} placeholder="Full name" />
-              <TextField
-                label="Email"
-                value={memberEmail}
-                onChange={setMemberEmail}
-                type="email"
-                placeholder="staff@example.com"
-              />
-              <SelectField
-                label="Role"
-                value={memberRole}
-                onChange={(value) => setMemberRole(normalizeStaffRole(value))}
-                options={["Owner", "Admin", "Instructor", "Staff"]}
-              />
-              <div className="flex items-center justify-between rounded-xl border border-black/10 px-4 py-3">
-                <div>
-                  <div className="text-[15px] font-semibold text-black">Active</div>
-                  <div className="text-sm text-black/55">Inactive staff members stay available in the inactive tab.</div>
-                </div>
-                <ToggleSwitch checked={memberIsActive} onChange={setMemberIsActive} label="Toggle active staff member" />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 border-t border-black/10 px-6 py-5">
-              <button
-                type="button"
-                onClick={() => {
-                  setEditorOpen(false);
-                  resetEditor();
-                }}
-                className="rounded-lg px-4 py-3 text-[16px] text-black/70 transition hover:bg-black/[0.03]"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void saveMember()}
-                disabled={saving}
-                className="rounded-lg bg-[#1f1b1b] px-6 py-3 text-[16px] font-medium text-white shadow-[0_3px_8px_rgba(0,0,0,0.18)] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {saving ? "Saving..." : "Save"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </section>
   );
 }
