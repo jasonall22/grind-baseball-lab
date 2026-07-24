@@ -22,6 +22,13 @@ function clean(value: unknown) {
   return String(value ?? "").trim();
 }
 
+function parsePrice(value: unknown) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  const normalized = clean(value).replace(/[^0-9.-]/g, "");
+  const amount = Number(normalized);
+  return Number.isFinite(amount) ? amount : 0;
+}
+
 function normalizeBillingPeriod(value: unknown) {
   return value === "Weekly" || value === "Yearly" ? value : "Monthly";
 }
@@ -139,7 +146,7 @@ export async function POST(req: Request) {
 
     const now = new Date().toISOString();
     const billingPeriod = normalizeBillingPeriod(service.membership_billing_period);
-    const priceCents = Math.round(Number(service.price || 0) * 100);
+    const priceCents = Math.round(parsePrice(service.price) * 100);
     const creditsPerDay = Math.max(0, Math.floor(Number(service.membership_credits_per_day ?? 0)));
     const creditLimitPeriod = normalizeCreditLimitPeriod(service.membership_credit_limit_period);
     const creditScope = normalizeCreditScope(service.membership_credit_scope);

@@ -1176,6 +1176,10 @@ export default function CustomerBookingApp() {
         return;
       }
 
+      if (selectedService.price > 0 && !setupIntentId) {
+        throw new Error("Card payment is required before this membership can be started.");
+      }
+
       setMembershipCardSetup(null);
       setStep("done");
     } catch (error) {
