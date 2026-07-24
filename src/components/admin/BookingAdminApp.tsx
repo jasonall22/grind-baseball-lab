@@ -1982,7 +1982,7 @@ function normalizeStaffAvailabilityEntry(value: unknown, staffById: Map<string, 
     start,
     end,
     resources: Array.isArray(item.resources) ? item.resources.filter((resource): resource is string => typeof resource === "string" && resource.trim().length > 0) : [],
-    color: normalizeCalendarColor(item.color ?? staffMember.calendarColor ?? staffAvailabilityColor(fallbackIndex)),
+    color: normalizeCalendarColor(staffMember.calendarColor ?? item.color ?? staffAvailabilityColor(fallbackIndex)),
     recurring,
     recurrenceId: recurring
       ? typeof item.recurrenceId === "string" && item.recurrenceId.trim()
@@ -1992,6 +1992,14 @@ function normalizeStaffAvailabilityEntry(value: unknown, staffById: Map<string, 
     recurrenceFrequency: recurring ? normalizeStaffAvailabilityRecurrenceFrequency(item.recurrenceFrequency) : undefined,
     recurrenceEndDate,
   };
+}
+
+function applyStaffCalendarColorsToAvailabilityEntries(entries: StaffAvailabilityEntry[], staff: StaffMember[]) {
+  const staffColorsById = new Map(staff.map((member, index) => [member.id, normalizeCalendarColor(member.calendarColor ?? staffAvailabilityColor(index))]));
+  return entries.map((entry) => ({
+    ...entry,
+    color: staffColorsById.get(entry.staffId) ?? normalizeCalendarColor(entry.color),
+  }));
 }
 
 function normalizeStaffAvailabilityEntries(value: unknown, staff: StaffMember[]): StaffAvailabilityEntry[] {
@@ -4919,6 +4927,7 @@ export default function BookingAdminApp({
     const nextState = {
       ...state,
       staff: normalizedStaff,
+      staffAvailability: applyStaffCalendarColorsToAvailabilityEntries(state.staffAvailability, normalizedStaff),
     };
 
     if (dataSource === "local") {
@@ -4931,19 +4940,32 @@ export default function BookingAdminApp({
 
     try {
       const savedRows = await upsertStaffMembers(normalizedStaff);
+      const savedStaff = savedRows.map((member, index) => ({
+        id: member.id,
+        name: member.full_name,
+        email: member.email,
+        phone: member.phone ?? "",
+        bio: member.bio ?? "",
+        notes: member.notes ?? "",
+        role: normalizeStaffRole(member.role),
+        active: member.is_active,
+        calendarColor: normalizeCalendarColor(member.calendar_color ?? staffAvailabilityColor(index)),
+      }));
+      const availabilityColorUpdates = await Promise.all(
+        savedStaff.map((member) =>
+          supabase
+            .from("booking_staff_availability")
+            .update({ color: member.calendarColor })
+            .eq("staff_member_id", member.id)
+        )
+      );
+      const failedAvailabilityColorUpdate = availabilityColorUpdates.find((result) => result.error);
+      if (failedAvailabilityColorUpdate?.error) throw failedAvailabilityColorUpdate.error;
+
       setState((current) => ({
         ...current,
-        staff: savedRows.map((member, index) => ({
-          id: member.id,
-          name: member.full_name,
-          email: member.email,
-          phone: member.phone ?? "",
-          bio: member.bio ?? "",
-          notes: member.notes ?? "",
-          role: normalizeStaffRole(member.role),
-          active: member.is_active,
-          calendarColor: normalizeCalendarColor(member.calendar_color ?? staffAvailabilityColor(index)),
-        })),
+        staff: savedStaff,
+        staffAvailability: applyStaffCalendarColorsToAvailabilityEntries(current.staffAvailability, savedStaff),
       }));
       showToast(successMessage);
       return true;
@@ -9630,11 +9652,8 @@ function AvailabilityView({
     staff.forEach((member, index) => {
       colors.set(member.id, normalizeCalendarColor(member.calendarColor ?? staffAvailabilityColor(index)));
     });
-    entries.forEach((entry) => {
-      colors.set(entry.staffId, normalizeCalendarColor(entry.color));
-    });
     return colors;
-  }, [entries, staff]);
+  }, [staff]);
   const today = isoDate(new Date());
   const scrollStartMinutes = useMemo(() => {
     const openStarts = rows.filter(([, open]) => open).map(([, , start]) => timeToMinutes(start));
@@ -9698,7 +9717,7 @@ function AvailabilityView({
       start: existing?.start ?? minutesToTime(start),
       end: existing?.end ?? minutesToTime(end),
       resources: existing?.resources ?? resources.slice(0, Math.min(2, resources.length)),
-      color: existing?.color ?? staffColorById.get(fallbackStaff.id) ?? fallbackStaff.calendarColor ?? staffAvailabilityColor(entries.length),
+      color: staffColorById.get(existing?.staffId ?? fallbackStaff.id) ?? existing?.color ?? fallbackStaff.calendarColor ?? staffAvailabilityColor(entries.length),
       recurring: existing?.recurring ?? false,
       recurrenceId: existing?.recurrenceId,
       recurrenceFrequency: existing?.recurrenceFrequency,
@@ -9860,7 +9879,7 @@ function AvailabilityView({
                   ? "z-30 overflow-visible ring-2 ring-white/90 brightness-105"
                   : "z-10 overflow-hidden hover:ring-2 hover:ring-white/80 hover:brightness-105",
               ].join(" ")}
-              style={{ top, height, backgroundColor: entry.color }}
+              style={{ top, height, backgroundColor: staffColorById.get(entry.staffId) ?? entry.color }}
             >
               {selected ? (
                 <div
