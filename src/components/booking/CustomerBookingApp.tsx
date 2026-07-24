@@ -71,6 +71,35 @@ function durationLabel(minutes: number) {
   return `${minutes} mins`;
 }
 
+function membershipPeriodLabel(period: string) {
+  return period === "Weekly" ? "week" : period === "Yearly" ? "year" : "month";
+}
+
+function membershipCreditPeriodLabel(period: string) {
+  return period === "weekly" ? "week" : period === "monthly" ? "month" : "day";
+}
+
+function membershipCreditLabel(service: PublicBookingService) {
+  const credits = Math.max(0, Math.floor(Number(service.membershipCreditsPerDay ?? 0)));
+  if (!credits) return "Member booking credits";
+  const period = membershipCreditPeriodLabel(service.membershipCreditLimitPeriod);
+  return `${credits} credit${credits === 1 ? "" : "s"} per ${period}`;
+}
+
+function serviceCardDescription(service: PublicBookingService, data: PublicBookingData) {
+  if (service.category === "memberships") {
+    return `${membershipCreditLabel(service)} for eligible services.`;
+  }
+  return `Book ${durationLabel(service.duration).toLowerCase()} of ${
+    service.category === "lessons" ? "private instruction" : serviceRooms(service, data.resources).join(", ")
+  }.`;
+}
+
+function serviceCardBadge(service: PublicBookingService) {
+  if (service.category === "memberships") return `${service.membershipBillingPeriod} membership`;
+  return durationLabel(service.duration);
+}
+
 function formatLongDate(value: string) {
   return parseLocalDate(value).toLocaleDateString("en-US", {
     weekday: "long",
@@ -686,6 +715,7 @@ export default function CustomerBookingApp() {
   const selectedCoach = coachOptions.find((coach) => coach.id === selectedCoachId) ?? null;
   const selectedCoachName = selectedCoach?.name ?? "";
   const needsCoach = selectedService?.category === "lessons";
+  const isMembership = selectedService?.category === "memberships";
   const availableTimes = useMemo(
     () => getAvailableSlots(data, selectedService, selectedDate, needsCoach ? selectedCoachId : undefined),
     [data, needsCoach, selectedCoachId, selectedDate, selectedService]
@@ -917,6 +947,51 @@ export default function CustomerBookingApp() {
     }
   }
 
+  async function submitMembershipPurchase() {
+    if (!selectedService || selectedService.category !== "memberships") return;
+
+    setSubmitting(true);
+    setSubmitError("");
+    try {
+      const response = await fetch("/api/book/memberships", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          serviceId: selectedService.id,
+          customerId: parentAccount?.id,
+          parentName: form.parentName,
+          playerName: form.playerName || selectedPlayer,
+          email: form.email,
+          phone: form.phone,
+        }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Could not start membership purchase.");
+
+      if (payload.customerId && !parentAccount?.id) {
+        setParentAccount({
+          id: payload.customerId,
+          parentName: form.parentName,
+          playerName: form.playerName || selectedPlayer,
+          email: form.email,
+          phone: form.phone,
+        });
+      }
+
+      if (payload.requiresCheckout && payload.url) {
+        window.location.href = payload.url;
+        return;
+      }
+
+      setStep("done");
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Could not start membership purchase.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <main className="min-h-screen bg-[#f6f7f9] text-black">
       <header className="sticky top-0 z-30 border-b border-black/10 bg-white">
@@ -1026,16 +1101,18 @@ export default function CustomerBookingApp() {
                       <div className="px-5 py-6 sm:px-6">
                         <div className="text-[20px] font-semibold leading-tight">{service.name}</div>
                         <div className="mt-3 text-[15px] leading-6 text-black/60">
-                          Book {durationLabel(service.duration).toLowerCase()} of{" "}
-                          {service.category === "lessons" ? "private instruction" : serviceRooms(service, data.resources).join(", ")}.
+                          {serviceCardDescription(service, data)}
                         </div>
                         <span className="mt-5 inline-flex rounded-full bg-[#eef4fb] px-4 py-1.5 text-[13px] font-semibold text-[#315f90]">
-                          {durationLabel(service.duration)}
+                          {serviceCardBadge(service)}
                         </span>
                       </div>
                       <div className="flex items-center justify-between border-t border-black/10 px-5 py-4 sm:block sm:border-l sm:border-t-0 sm:px-7 sm:py-6">
-                        <div className="text-[24px] font-semibold">{money(service.price)}</div>
-                        <div className="mt-0 text-[13px] font-semibold text-[#1784bd] sm:mt-8">Book now</div>
+                        <div className="text-[24px] font-semibold">
+                          {money(service.price)}
+                          {service.category === "memberships" ? <span className="text-[14px] font-medium text-black/45">/{membershipPeriodLabel(service.membershipBillingPeriod)}</span> : null}
+                        </div>
+                        <div className="mt-0 text-[13px] font-semibold text-[#1784bd] sm:mt-8">{service.category === "memberships" ? "Join now" : "Book now"}</div>
                       </div>
                     </button>
                   ))}
@@ -1095,13 +1172,13 @@ export default function CustomerBookingApp() {
           footer={
             step === "overview" ? (
               <button type="button" onClick={() => setStep("player")} className="w-full rounded-[10px] bg-[#272322] py-4 text-[18px] font-semibold text-white shadow-lg">
-                Book now
+                {isMembership ? "Join now" : "Book now"}
               </button>
             ) : step === "player" ? (
               <button
                 type="button"
                 disabled={!form.parentName || !form.playerName || !form.email || (needsCoach && !selectedCoachId)}
-                onClick={() => setStep("time")}
+                onClick={() => setStep(isMembership ? "summary" : "time")}
                 className="w-full rounded-[10px] bg-[#272322] py-4 text-[18px] font-semibold text-white disabled:bg-black/12 disabled:text-black/30"
               >
                 Next
@@ -1116,24 +1193,35 @@ export default function CustomerBookingApp() {
                 Next
               </button>
             ) : step === "summary" ? (
-              <div className="grid gap-3">
+              isMembership ? (
                 <button
                   type="button"
                   disabled={submitting}
-                  onClick={() => submitBooking("online")}
+                  onClick={submitMembershipPurchase}
                   className="w-full rounded-[10px] bg-[#3a3432] py-4 text-[18px] font-semibold text-white disabled:opacity-60"
                 >
-                  {submitting ? "Saving..." : "Pay Online"}
+                  {submitting ? "Starting..." : "Purchase membership"}
                 </button>
-                <button
-                  type="button"
-                  disabled={submitting}
-                  onClick={() => submitBooking("in-person")}
-                  className="w-full rounded-[10px] border border-black/20 py-4 text-[18px] font-semibold disabled:opacity-60"
-                >
-                  Pay In-Person
-                </button>
-              </div>
+              ) : (
+                <div className="grid gap-3">
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => submitBooking("online")}
+                    className="w-full rounded-[10px] bg-[#3a3432] py-4 text-[18px] font-semibold text-white disabled:opacity-60"
+                  >
+                    {submitting ? "Saving..." : "Pay Online"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => submitBooking("in-person")}
+                    className="w-full rounded-[10px] border border-black/20 py-4 text-[18px] font-semibold disabled:opacity-60"
+                  >
+                    Pay In-Person
+                  </button>
+                </div>
+              )
             ) : (
               <button type="button" onClick={closeModal} className="w-full rounded-[10px] bg-[#272322] py-4 text-[18px] font-semibold text-white">
                 Done
@@ -1217,7 +1305,9 @@ export default function CustomerBookingApp() {
                 </div>
               ) : null}
               <div className="mt-8 text-[15px]">Players in Family Account</div>
-              <div className="mt-4 text-[16px]">Who is the player attending this booking?</div>
+              <div className="mt-4 text-[16px]">
+                {isMembership ? "Who is this membership for?" : "Who is the player attending this booking?"}
+              </div>
               <div className="mt-6 flex flex-wrap gap-4">
                 {parentAccount ? (
                   <button
@@ -1268,7 +1358,7 @@ export default function CustomerBookingApp() {
                   <input className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]" value={form.parentName} onChange={(event) => setForm({ ...form, parentName: event.target.value })} />
                 </label>
                 <label className="grid gap-2 text-[14px] font-medium">
-                  Player name
+                  {isMembership ? "Membership for" : "Player name"}
                   <input className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]" value={form.playerName} onChange={(event) => setForm({ ...form, playerName: event.target.value })} />
                 </label>
                 <label className="grid gap-2 text-[14px] font-medium">
@@ -1334,7 +1424,7 @@ export default function CustomerBookingApp() {
             </div>
           ) : null}
 
-          {step === "summary" && selectedTime && onlineTotals && inPersonTotals ? (
+          {step === "summary" && (isMembership || selectedTime) && onlineTotals && inPersonTotals ? (
             <div>
               <div className="grid grid-cols-[126px_1fr] gap-5">
                 <div className="overflow-hidden rounded-[16px] border border-black/15">
@@ -1356,43 +1446,83 @@ export default function CustomerBookingApp() {
                   ) : null}
                 </div>
               </div>
-              <div className="mt-8 border-t border-black/10 pt-7">
-                <div className="text-[20px] font-semibold">Timing & Location</div>
-                <div className="mt-6 flex justify-between gap-8">
-                  <div>
-                    <div>{formatLongDate(selectedDate)}</div>
-                    <div className="mt-2">
-                      {timeLabel(selectedTime.start)} - {timeLabel(selectedTime.end)}
-                    </div>
-                    <div className="mt-2 text-black/55">{selectedTime.resourceName}</div>
-                    {selectedCoachName ? <div className="mt-2 text-black/55">Coach: {selectedCoachName}</div> : null}
+              {isMembership ? (
+                <div className="mt-8 border-t border-black/10 pt-7">
+                  <div className="text-[20px] font-semibold">Membership For</div>
+                  <div className="mt-6 rounded-[10px] border border-black/10 bg-black/[0.02] px-5 py-4">
+                    <div className="text-[18px] font-semibold">{form.playerName || selectedPlayer}</div>
+                    <div className="mt-2 text-[15px] text-black/55">Parent: {form.parentName}</div>
+                    <div className="mt-1 text-[15px] text-black/55">{form.email}</div>
                   </div>
-                  <button type="button" onClick={() => setStep("time")} className="font-semibold underline">
-                    Edit
-                  </button>
+                  <div className="mt-5 grid gap-3 text-[15px] text-black/65">
+                    <div className="flex justify-between gap-6">
+                      <span>Billing</span>
+                      <span className="text-right text-black">{selectedService.membershipBillingPeriod}</span>
+                    </div>
+                    <div className="flex justify-between gap-6">
+                      <span>Credits</span>
+                      <span className="text-right text-black">{membershipCreditLabel(selectedService)}</span>
+                    </div>
+                    <div className="flex justify-between gap-6">
+                      <span>Renewal</span>
+                      <span className="text-right text-black">{selectedService.stripePriceId ? "Auto renews after purchase" : "Manual setup"}</span>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ) : selectedTime ? (
+                <div className="mt-8 border-t border-black/10 pt-7">
+                  <div className="text-[20px] font-semibold">Timing & Location</div>
+                  <div className="mt-6 flex justify-between gap-8">
+                    <div>
+                      <div>{formatLongDate(selectedDate)}</div>
+                      <div className="mt-2">
+                        {timeLabel(selectedTime.start)} - {timeLabel(selectedTime.end)}
+                      </div>
+                      <div className="mt-2 text-black/55">{selectedTime.resourceName}</div>
+                      {selectedCoachName ? <div className="mt-2 text-black/55">Coach: {selectedCoachName}</div> : null}
+                    </div>
+                    <button type="button" onClick={() => setStep("time")} className="font-semibold underline">
+                      Edit
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               <div className="mt-7 border-t border-black/10 pt-7">
-                <div className="text-[18px] font-semibold">Payment Details</div>
-                <div className="mt-5 grid gap-3 text-[16px] text-black/65">
-                  <div className="flex justify-between"><span>Price</span><span>{money(selectedService.price)}</span></div>
-                  <div className="flex justify-between"><span>Subtotal</span><span>{money(onlineTotals.subtotal)}</span></div>
-                  {onlineTotals.tax > 0 ? <div className="flex justify-between"><span>{onlineTotals.taxName}</span><span>{money(onlineTotals.tax)}</span></div> : null}
-                  {onlineTotals.serviceFee > 0 ? <div className="flex justify-between"><span>{onlineTotals.feeName}</span><span>{money(onlineTotals.serviceFee)}</span></div> : null}
-                  <div className="flex justify-between text-[20px] font-semibold text-black"><span>Total</span><span>{money(onlineTotals.total)}</span></div>
-                </div>
-                <div className="mt-6 flex gap-5">
-                  <input
-                    value={discountCode}
-                    onChange={(event) => setDiscountCode(event.target.value)}
-                    placeholder="Discount code"
-                    className="h-[54px] flex-1 rounded-[5px] border border-black/20 px-5 text-[17px]"
-                  />
-                  <button type="button" className="rounded-[5px] bg-black/12 px-7 text-[17px] font-semibold text-black/25">
-                    Apply
-                  </button>
-                </div>
-                <div className="mt-4 text-[13px] text-black/45">Pay in-person total: {money(inPersonTotals.total)}</div>
+                <div className="text-[18px] font-semibold">{isMembership ? "Purchase Details" : "Payment Details"}</div>
+                {isMembership ? (
+                  <div className="mt-5 grid gap-3 text-[16px] text-black/65">
+                    <div className="flex justify-between">
+                      <span>{selectedService.membershipBillingPeriod} membership</span>
+                      <span>{money(selectedService.price)}/{membershipPeriodLabel(selectedService.membershipBillingPeriod)}</span>
+                    </div>
+                    <div className="flex justify-between text-[20px] font-semibold text-black">
+                      <span>Due today</span>
+                      <span>{money(selectedService.price)}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="mt-5 grid gap-3 text-[16px] text-black/65">
+                      <div className="flex justify-between"><span>Price</span><span>{money(selectedService.price)}</span></div>
+                      <div className="flex justify-between"><span>Subtotal</span><span>{money(onlineTotals.subtotal)}</span></div>
+                      {onlineTotals.tax > 0 ? <div className="flex justify-between"><span>{onlineTotals.taxName}</span><span>{money(onlineTotals.tax)}</span></div> : null}
+                      {onlineTotals.serviceFee > 0 ? <div className="flex justify-between"><span>{onlineTotals.feeName}</span><span>{money(onlineTotals.serviceFee)}</span></div> : null}
+                      <div className="flex justify-between text-[20px] font-semibold text-black"><span>Total</span><span>{money(onlineTotals.total)}</span></div>
+                    </div>
+                    <div className="mt-6 flex gap-5">
+                      <input
+                        value={discountCode}
+                        onChange={(event) => setDiscountCode(event.target.value)}
+                        placeholder="Discount code"
+                        className="h-[54px] flex-1 rounded-[5px] border border-black/20 px-5 text-[17px]"
+                      />
+                      <button type="button" className="rounded-[5px] bg-black/12 px-7 text-[17px] font-semibold text-black/25">
+                        Apply
+                      </button>
+                    </div>
+                    <div className="mt-4 text-[13px] text-black/45">Pay in-person total: {money(inPersonTotals.total)}</div>
+                  </>
+                )}
                 {submitError ? <div className="mt-4 rounded-[6px] bg-red-50 px-4 py-3 text-sm text-red-700">{submitError}</div> : null}
               </div>
             </div>
@@ -1401,9 +1531,11 @@ export default function CustomerBookingApp() {
           {step === "done" ? (
             <div className="flex min-h-[520px] flex-col items-center justify-center text-center">
               <div className="flex h-[122px] w-[122px] items-center justify-center rounded-full bg-[#7ad33d] text-[32px] font-semibold text-white">Done</div>
-              <div className="mt-12 text-[22px] font-semibold">{selectedService.name} - Booking Confirmed</div>
+              <div className="mt-12 text-[22px] font-semibold">{selectedService.name} - {isMembership ? "Membership Started" : "Booking Confirmed"}</div>
               <p className="mt-5 max-w-[630px] text-[20px] leading-[1.55]">
-                Looking forward to seeing you at The Grind Baseball Lab! You will receive a confirmation email with your booking details shortly.
+                {isMembership
+                  ? "Your membership is ready to use for eligible services at The Grind Baseball Lab."
+                  : "Looking forward to seeing you at The Grind Baseball Lab! You will receive a confirmation email with your booking details shortly."}
               </p>
             </div>
           ) : null}

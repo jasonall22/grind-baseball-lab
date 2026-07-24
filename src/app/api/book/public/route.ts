@@ -8,6 +8,9 @@ import {
   shiftDate,
   type PublicBookingCategory,
   type PublicBookingData,
+  type PublicMembershipBillingPeriod,
+  type PublicMembershipCreditLimitPeriod,
+  type PublicMembershipCreditScope,
   type PublicBookingSchedule,
   type PublicBookingStaffAvailability,
 } from "@/lib/publicBooking";
@@ -54,6 +57,18 @@ function normalizeCategory(value: unknown): PublicBookingCategory {
 
 function normalizeMoneySettings(value: unknown, fallback: unknown[]) {
   return Array.isArray(value) && value.length ? (value as Array<{ id: string; name: string }>) : fallback;
+}
+
+function normalizeBillingPeriod(value: unknown): PublicMembershipBillingPeriod {
+  return value === "Weekly" || value === "Yearly" ? value : "Monthly";
+}
+
+function normalizeCreditLimitPeriod(value: unknown): PublicMembershipCreditLimitPeriod {
+  return value === "weekly" || value === "monthly" ? value : "daily";
+}
+
+function normalizeCreditScope(value: unknown): PublicMembershipCreditScope {
+  return value === "all_services" ? "all_services" : "selected_services";
 }
 
 function normalizeRecurrenceFrequency(value: unknown) {
@@ -243,6 +258,12 @@ export async function GET() {
       scheduleId: typeof service.schedule_id === "string" ? service.schedule_id : null,
       collectTax: Boolean(service.collect_tax),
       collectFee: Boolean(service.collect_fee),
+      membershipBillingPeriod: normalizeBillingPeriod(service.membership_billing_period),
+      membershipCreditsPerDay: Math.max(0, Math.floor(parseNumber(service.membership_credits_per_day))),
+      membershipCreditLimitPeriod: normalizeCreditLimitPeriod(service.membership_credit_limit_period),
+      membershipCreditScope: normalizeCreditScope(service.membership_credit_scope),
+      membershipEligibleServiceIds: stringArray(service.membership_eligible_service_ids),
+      stripePriceId: typeof service.stripe_price_id === "string" && service.stripe_price_id.trim() ? service.stripe_price_id.trim() : null,
     }));
 
     const payload: PublicBookingData = {

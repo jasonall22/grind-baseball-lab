@@ -1,4 +1,7 @@
 export type PublicBookingCategory = "rentals" | "lessons" | "camps" | "classes" | "memberships" | "packages";
+export type PublicMembershipBillingPeriod = "Weekly" | "Monthly" | "Yearly";
+export type PublicMembershipCreditLimitPeriod = "daily" | "weekly" | "monthly";
+export type PublicMembershipCreditScope = "all_services" | "selected_services";
 
 export type PublicBookingSettings = {
   facilityName: string;
@@ -27,6 +30,12 @@ export type PublicBookingService = {
   scheduleId: string | null;
   collectTax: boolean;
   collectFee: boolean;
+  membershipBillingPeriod: PublicMembershipBillingPeriod;
+  membershipCreditsPerDay: number;
+  membershipCreditLimitPeriod: PublicMembershipCreditLimitPeriod;
+  membershipCreditScope: PublicMembershipCreditScope;
+  membershipEligibleServiceIds: string[];
+  stripePriceId: string | null;
 };
 
 export type PublicBookingScheduleSlot = {
@@ -134,6 +143,12 @@ export const fallbackPublicBookingData: PublicBookingData = {
       scheduleId: "working-hours",
       collectTax: false,
       collectFee: true,
+      membershipBillingPeriod: "Monthly",
+      membershipCreditsPerDay: 0,
+      membershipCreditLimitPeriod: "daily",
+      membershipCreditScope: "selected_services",
+      membershipEligibleServiceIds: [],
+      stripePriceId: null,
     },
     {
       id: "lesson-30",
@@ -147,6 +162,12 @@ export const fallbackPublicBookingData: PublicBookingData = {
       scheduleId: "working-hours",
       collectTax: false,
       collectFee: true,
+      membershipBillingPeriod: "Monthly",
+      membershipCreditsPerDay: 0,
+      membershipCreditLimitPeriod: "daily",
+      membershipCreditScope: "selected_services",
+      membershipEligibleServiceIds: [],
+      stripePriceId: null,
     },
     {
       id: "pitching-rental-30",
@@ -160,6 +181,12 @@ export const fallbackPublicBookingData: PublicBookingData = {
       scheduleId: "working-hours",
       collectTax: false,
       collectFee: true,
+      membershipBillingPeriod: "Monthly",
+      membershipCreditsPerDay: 0,
+      membershipCreditLimitPeriod: "daily",
+      membershipCreditScope: "selected_services",
+      membershipEligibleServiceIds: [],
+      stripePriceId: null,
     },
   ],
   schedules: [
