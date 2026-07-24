@@ -10100,10 +10100,10 @@ function AvailabilityView({
       ) : null}
 
       {draft ? (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/45 p-4">
-          <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-black/10 px-6 py-5">
-              <h2 className="text-[18px] font-semibold text-black">
+        <div className="fixed inset-0 z-[90] bg-black/35 p-0 lg:p-2">
+          <div className="flex h-full w-full flex-col overflow-hidden rounded-none bg-white shadow-2xl lg:rounded-lg">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-black/10 bg-white px-7 py-6">
+              <h2 className="text-[20px] font-semibold text-black">
                 {entries.some((entry) => entry.id === draft.id) ? "Edit Availability" : "Add Availability"}
               </h2>
               <button type="button" onClick={() => setDraft(null)} className="text-black/45" aria-label="Close availability editor">
@@ -10111,7 +10111,8 @@ function AvailabilityView({
               </button>
             </div>
 
-            <div className="grid gap-5 overflow-y-auto px-6 py-5">
+            <div className="min-h-0 flex-1 overflow-y-auto px-7 py-7">
+              <div className="mx-auto grid max-w-6xl gap-8">
               <div className="grid gap-4 sm:grid-cols-3">
                 <label className="grid gap-1.5">
                   <span className="text-sm font-semibold text-black/70">Date</span>
@@ -10341,9 +10342,10 @@ function AvailabilityView({
                   ))}
                 </div>
               </label>
+              </div>
             </div>
 
-            <div className="flex items-center justify-between gap-3 border-t border-black/10 px-6 py-4">
+            <div className="sticky bottom-0 z-10 flex items-center justify-between gap-3 border-t border-black/10 bg-white px-7 py-4">
               {entries.some((entry) => entry.id === draft.id) ? (
                 <button
                   type="button"
