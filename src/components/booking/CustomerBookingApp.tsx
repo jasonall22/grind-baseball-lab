@@ -269,6 +269,87 @@ function LogoPanel({ compact = false }: { compact?: boolean }) {
   );
 }
 
+function BookingHero({
+  settings,
+  onSelectCategory,
+}: {
+  settings: PublicBookingData["settings"];
+  onSelectCategory: (category: PublicBookingCategory) => void;
+}) {
+  const heroActions: Array<{ label: string; detail: string; category: PublicBookingCategory }> = [
+    { label: "Cage Rentals", detail: "Reserve training space", category: "rentals" },
+    { label: "Hitting Lessons", detail: "Book private instruction", category: "lessons" },
+    { label: "Memberships", detail: "Use credits and benefits", category: "memberships" },
+  ];
+
+  return (
+    <section className="bg-white px-4 py-5 sm:px-6 lg:px-8">
+      <div className="mx-auto grid max-w-[1240px] overflow-hidden rounded-[10px] border border-black/10 bg-black text-white shadow-[0_18px_45px_rgba(0,0,0,0.16)] lg:grid-cols-[minmax(0,1fr)_390px]">
+        <div className="px-6 py-8 sm:px-9 sm:py-10 lg:px-12 lg:py-12">
+          <div className="inline-flex h-16 items-center rounded-[8px] bg-white px-5">
+            <Image src="/logo.png" alt="The Grind Baseball Lab" width={180} height={70} className="h-11 w-auto" priority />
+          </div>
+          <h1 className="mt-8 max-w-[680px] text-[38px] font-semibold leading-[1.05] tracking-normal sm:text-[54px]">
+            Train smarter. Book faster.
+          </h1>
+          <p className="mt-5 max-w-[650px] text-[17px] leading-8 text-white/70">
+            Reserve cage time, lessons, camps, and memberships at {settings.facilityName} with a smooth online booking flow.
+          </p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => onSelectCategory("rentals")}
+              className="rounded-[6px] bg-[#1784bd] px-5 py-3 text-[15px] font-semibold text-white shadow-[0_10px_24px_rgba(23,132,189,0.28)] transition hover:-translate-y-0.5 hover:bg-[#0f76ac]"
+            >
+              Book a cage
+            </button>
+            <button
+              type="button"
+              onClick={() => onSelectCategory("lessons")}
+              className="rounded-[6px] border border-white/20 bg-white/10 px-5 py-3 text-[15px] font-semibold text-white transition hover:-translate-y-0.5 hover:bg-white/15"
+            >
+              Find a lesson
+            </button>
+          </div>
+          <div className="mt-10 grid gap-3 text-[13px] font-semibold text-white/70 sm:grid-cols-3">
+            <div className="rounded-[8px] border border-white/10 bg-white/[0.04] px-4 py-3">Indoor cages</div>
+            <div className="rounded-[8px] border border-white/10 bg-white/[0.04] px-4 py-3">Private coaching</div>
+            <div className="rounded-[8px] border border-white/10 bg-white/[0.04] px-4 py-3">Member credits</div>
+          </div>
+        </div>
+
+        <div className="border-t border-white/10 bg-[#101820] p-5 lg:border-l lg:border-t-0">
+          <div className="h-full rounded-[8px] border border-white/10 bg-white/[0.04] p-5">
+            <div className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#5fc5f2]">Start Booking</div>
+            <div className="mt-5 grid gap-3">
+              {heroActions.map((item) => (
+                <button
+                  key={item.category}
+                  type="button"
+                  onClick={() => onSelectCategory(item.category)}
+                  className="group flex items-center justify-between gap-4 rounded-[8px] border border-white/10 bg-black/20 px-4 py-4 text-left transition hover:border-[#1784bd]/70 hover:bg-[#1784bd]/12"
+                >
+                  <span>
+                    <span className="block text-[16px] font-semibold">{item.label}</span>
+                    <span className="mt-1 block text-[13px] text-white/50">{item.detail}</span>
+                  </span>
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white text-[18px] font-semibold text-black transition group-hover:bg-[#1784bd] group-hover:text-white">
+                    {">"}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <div className="mt-5 rounded-[8px] border border-white/10 bg-black/25 px-4 py-4 text-[14px] leading-6 text-white/60">
+              <div className="font-semibold text-white">Today&apos;s hours</div>
+              <div className="mt-1"><span className="text-[#ff6b6b]">Closed</span> - Opens 4PM today</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function InfoCard({ settings }: { settings: PublicBookingData["settings"] }) {
   const iconClass = "mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full border border-black/10 bg-white text-[14px] font-bold text-[#1784bd]";
   return (
@@ -780,28 +861,11 @@ export default function CustomerBookingApp() {
         </div>
       </header>
 
-      <section className="bg-white px-4 py-5 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-[1240px] overflow-hidden rounded-[10px] border border-black/10 bg-black shadow-[0_18px_45px_rgba(0,0,0,0.16)]">
-          <LogoPanel />
-        </div>
-      </section>
+      <BookingHero settings={data.settings} onSelectCategory={setSelectedCategory} />
 
       <section className="mx-auto grid max-w-[1240px] gap-8 px-5 py-10 lg:grid-cols-[minmax(0,1fr)_370px] lg:px-8">
         <div className="min-w-0">
-          <div className="rounded-[10px] border border-black/10 bg-white px-5 py-6 shadow-[0_10px_30px_rgba(15,23,42,0.06)] sm:px-8 sm:py-8">
-            <div className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#1784bd]">Book Online</div>
-            <h1 className="mt-3 text-[34px] font-semibold leading-tight tracking-normal sm:text-[42px]">{data.settings.facilityName}</h1>
-            <p className="mt-5 max-w-[850px] text-[17px] leading-8 text-black/65">
-              Reserve cage time, lessons, camps, and memberships with a smoother booking experience built for baseball and softball families.
-            </p>
-            <div className="mt-7 flex flex-wrap gap-3 text-[14px] font-semibold text-black/70">
-              <span className="rounded-full bg-[#e9f6fd] px-4 py-2 text-[#176d99]">Indoor training</span>
-              <span className="rounded-full bg-[#eef8ef] px-4 py-2 text-[#26723a]">Private lessons</span>
-              <span className="rounded-full bg-[#f3f4f6] px-4 py-2">Easy scheduling</span>
-            </div>
-          </div>
-
-          <div className="mt-8 flex items-center gap-3">
+          <div className="flex items-center gap-3">
             {selectedCategory ? (
               <button
                 type="button"
