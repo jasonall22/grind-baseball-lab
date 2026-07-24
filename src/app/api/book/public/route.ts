@@ -3,10 +3,13 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import {
   fallbackPublicBookingData,
+  isoDate,
   normalizeClock,
+  shiftDate,
   type PublicBookingCategory,
   type PublicBookingData,
   type PublicBookingSchedule,
+  type PublicBookingStaffAvailability,
 } from "@/lib/publicBooking";
 
 export const dynamic = "force-dynamic";
@@ -53,13 +56,51 @@ function normalizeMoneySettings(value: unknown, fallback: unknown[]) {
   return Array.isArray(value) && value.length ? (value as Array<{ id: string; name: string }>) : fallback;
 }
 
+function normalizeRecurrenceFrequency(value: unknown) {
+  return value === "weekly" ? "weekly" : "daily";
+}
+
+function staffAvailabilityRowsForRange(rows: Array<Record<string, unknown>>, fromDate: string, throughDate: string): PublicBookingStaffAvailability[] {
+  const byKey = new Map<string, PublicBookingStaffAvailability>();
+
+  for (const row of rows) {
+    const startDate = String(row.availability_date);
+    const recurrenceEndDate = typeof row.recurrence_end_date === "string" ? row.recurrence_end_date : startDate;
+    const finalDate = row.is_recurring ? recurrenceEndDate : startDate;
+    const frequency = normalizeRecurrenceFrequency(row.recurrence_frequency);
+    const stepDays = frequency === "weekly" ? 7 : 1;
+    let date = startDate;
+    let index = 0;
+
+    while (date <= finalDate && date <= throughDate && index < 120) {
+      if (date >= fromDate) {
+        const entry = {
+          id: `${String(row.id)}-${date}`,
+          staffId: String(row.staff_member_id ?? ""),
+          date,
+          start: normalizeClock(String(row.start_time)),
+          end: normalizeClock(String(row.end_time)),
+          resourceNames: stringArray(row.resource_names),
+        };
+        const key = `${entry.staffId}-${entry.date}-${entry.start}-${entry.end}-${entry.resourceNames.join("|")}`;
+        byKey.set(key, entry);
+      }
+      date = shiftDate(date, stepDays);
+      index += 1;
+    }
+  }
+
+  return Array.from(byKey.values()).sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start));
+}
+
 export async function GET() {
   try {
     const supabase = getSupabaseAdmin() as unknown as PublicSupabaseClient;
     const today = new Date();
-    const fromDate = today.toISOString().slice(0, 10);
+    const fromDate = isoDate(today);
     const throughDate = new Date(today);
     throughDate.setDate(today.getDate() + 90);
+    const throughDateIso = isoDate(throughDate);
 
     const [
       settingsResult,
@@ -82,7 +123,7 @@ export async function GET() {
         .from("booking_bookings")
         .select("id,booking_date,start_time,end_time,resource_id,staff_member_id,status")
         .gte("booking_date", fromDate)
-        .lte("booking_date", throughDate.toISOString().slice(0, 10))
+        .lte("booking_date", throughDateIso)
         .neq("status", "Cancelled"),
       supabase
         .from("booking_staff_members")
@@ -91,9 +132,7 @@ export async function GET() {
         .order("sort_order"),
       supabase
         .from("booking_staff_availability")
-        .select("id,staff_member_id,availability_date,start_time,end_time,resource_names")
-        .gte("availability_date", fromDate)
-        .lte("availability_date", throughDate.toISOString().slice(0, 10))
+        .select("id,staff_member_id,availability_date,start_time,end_time,resource_names,is_recurring,recurrence_frequency,recurrence_end_date")
         .order("availability_date")
         .order("start_time"),
     ]);
@@ -232,14 +271,11 @@ export async function GET() {
         role: String(member.role ?? "Staff"),
         calendarColor: String(member.calendar_color ?? "#249b41"),
       })),
-      staffAvailability: ((staffAvailabilityResult.data ?? []) as Array<Record<string, unknown>>).map((entry) => ({
-        id: String(entry.id),
-        staffId: String(entry.staff_member_id ?? ""),
-        date: String(entry.availability_date),
-        start: normalizeClock(String(entry.start_time)),
-        end: normalizeClock(String(entry.end_time)),
-        resourceNames: stringArray(entry.resource_names),
-      })),
+      staffAvailability: staffAvailabilityRowsForRange(
+        (staffAvailabilityResult.data ?? []) as Array<Record<string, unknown>>,
+        fromDate,
+        throughDateIso
+      ),
     };
 
     return NextResponse.json(payload);

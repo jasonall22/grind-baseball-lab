@@ -179,6 +179,15 @@ function getAvailableSlots(
     });
 }
 
+function nextAvailableDateForCoach(data: PublicBookingData, service: PublicBookingService | null, fromDate: string, staffId: string) {
+  if (!service || !staffId) return "";
+  for (let offset = 0; offset <= 90; offset += 1) {
+    const date = isoDate(new Date(parseLocalDate(fromDate).getTime() + offset * 24 * 60 * 60 * 1000));
+    if (getAvailableSlots(data, service, date, staffId).length) return date;
+  }
+  return "";
+}
+
 function MonthCalendar({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const selected = parseLocalDate(value);
   const first = new Date(selected.getFullYear(), selected.getMonth(), 1);
@@ -905,6 +914,8 @@ export default function CustomerBookingApp() {
                           type="button"
                           onClick={() => {
                             setSelectedCoachId(coach.id);
+                            const nextDate = nextAvailableDateForCoach(data, selectedService, selectedDate, coach.id);
+                            if (nextDate && nextDate !== selectedDate) setSelectedDate(nextDate);
                             setSelectedTime(null);
                           }}
                           className={`flex items-center gap-4 rounded-[8px] border px-5 py-4 text-left ${
