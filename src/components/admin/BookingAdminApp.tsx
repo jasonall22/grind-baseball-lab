@@ -3260,23 +3260,10 @@ function scheduleAllowsRange(
 }
 
 function scheduleScrollTargetTime(schedule: ScheduleRecord | null | undefined, date: string) {
-  const today = isoDate(new Date());
-
-  if (date === today) {
-    const config = dayConfigForDate(schedule, date);
-    const now = new Date();
-    const roundedMinutes = Math.floor((now.getHours() * 60 + now.getMinutes()) / 30) * 30;
-    if (config.enabled && config.slots.length) {
-      const firstSlot = [...config.slots].sort((a, b) => a.sortOrder - b.sortOrder)[0];
-      const firstStart = timeToMinutes(firstSlot.start);
-      return minutesToTime(Math.max(firstStart, roundedMinutes));
-    }
-    return minutesToTime(roundedMinutes);
-  }
-
   const config = dayConfigForDate(schedule, date);
   if (!config.enabled || !config.slots.length) return "00:00";
-  return [...config.slots].sort((a, b) => a.sortOrder - b.sortOrder)[0].start;
+  const firstSlot = [...config.slots].sort((a, b) => a.sortOrder - b.sortOrder)[0];
+  return minutesToTime(Math.max(0, timeToMinutes(firstSlot.start) - 4 * 60));
 }
 
 function scheduleRangeForDate(schedule: ScheduleRecord | null | undefined, value: string) {
@@ -3328,7 +3315,7 @@ function calendarScrollTargetTime(availability: AppState["availability"], date: 
 
   const [, isOpen, openStart] = availabilityForDate(availability, date);
   if (!isOpen) return "00:00";
-  return openStart;
+  return minutesToTime(Math.max(0, timeToMinutes(openStart) - 4 * 60));
 }
 
 function bookingTimesOverlap(
@@ -6083,12 +6070,12 @@ export default function BookingAdminApp({
         className={[
           "grid min-h-screen grid-cols-1 bg-white",
           "pb-[76px] lg:pb-0",
-          isSettingsView ? "" : "lg:grid-cols-[280px_minmax(0,1fr)]",
+          isSettingsView ? "" : "lg:grid-cols-[228px_minmax(0,1fr)]",
         ].join(" ")}
       >
         {!isSettingsView ? (
-          <aside className="hidden bg-[#f5f5f5] p-3 lg:flex lg:min-h-screen lg:flex-col lg:px-6 lg:py-6">
-            <div className="-mx-6 -mt-6 mb-6 hidden items-center justify-between border-b border-white/10 bg-black px-6 py-4 shadow-[0_1px_4px_rgba(0,0,0,0.28)] lg:flex">
+          <aside className="hidden bg-[#f5f5f5] p-3 lg:flex lg:min-h-screen lg:flex-col lg:px-5 lg:py-5">
+            <div className="-mx-5 -mt-5 mb-5 hidden items-center justify-between border-b border-white/10 bg-black px-5 py-3 shadow-[0_1px_4px_rgba(0,0,0,0.28)] lg:flex">
               <AdminBrandLogo size="desktop" />
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-black/20 text-white">
                 <Icon name="user" className="h-5 w-5" />
@@ -6102,7 +6089,7 @@ export default function BookingAdminApp({
                     href={bookingAdminRouteByView[item.key]}
                     title={item.label}
                     className={[
-                      "flex h-10 items-center gap-3 rounded-lg px-3 text-left text-lg transition lg:w-full",
+                      "flex h-9 items-center gap-3 rounded-lg px-3 text-left text-[16px] transition lg:w-full",
                       activeMainView === item.key ? "bg-[#eeeeee] font-bold" : "hover:bg-black/5",
                     ].join(" ")}
                   >
@@ -6117,7 +6104,7 @@ export default function BookingAdminApp({
                           key={sectionItem.key}
                           href={getServiceSectionBasePath(sectionItem.key)}
                           className={[
-                            "flex h-10 w-full items-center gap-3 rounded-lg px-4 text-left text-[18px] leading-none transition",
+                            "flex h-9 w-full items-center gap-3 rounded-lg px-4 text-left text-[15px] leading-none transition",
                             serviceSection === sectionItem.key ? "bg-[#eeeeee] font-semibold text-black" : "text-black hover:bg-black/5",
                           ].join(" ")}
                         >
@@ -6148,7 +6135,7 @@ export default function BookingAdminApp({
                       showToast(`${label} is ready for the next pass.`);
                     }
                   }}
-                  className="flex h-10 w-full items-center gap-3 rounded-lg text-left text-lg hover:bg-black/5"
+                  className="flex h-9 w-full items-center gap-3 rounded-lg text-left text-[16px] hover:bg-black/5"
                 >
                   <Icon name={icon as IconName} />
                   {label}
@@ -8458,7 +8445,7 @@ function CalendarView({
       : defaultSchedule;
   const { isOpen, openStart, openEnd } = scheduleRangeForDate(selectedScheduleForMobile, activeDate);
   const slots = useMemo(() => Array.from({ length: 48 }, (_, index) => minutesToTime(index * 30)), []);
-  const slotHeight = 50;
+  const slotHeight = 40;
   const mobileSlotHeight = 46;
   const columnHeight = slots.length * slotHeight;
   const activeCalendarBookings = useMemo(
@@ -8869,7 +8856,7 @@ function CalendarView({
 
   return (
     <section className="min-h-screen px-6 py-8 lg:px-7">
-      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div className="mb-1 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex shrink-0 flex-nowrap items-center gap-2">
           <CalendarToolbarButton label="Today" onClick={() => onDateChange(isoDate(new Date()))} />
           <CalendarToolbarButton label="Back" onClick={() => onDateChange(shiftDate(activeDate, calendarMode === "week" ? -7 : -1))} />
@@ -8888,7 +8875,7 @@ function CalendarView({
           <button
             type="button"
             onClick={openDatePicker}
-            className="inline-flex min-h-10 shrink-0 items-center gap-3 whitespace-nowrap rounded-lg border border-black/15 bg-[#f3f3f3] px-4 text-[16px] font-semibold text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
+            className="inline-flex min-h-8 shrink-0 items-center gap-3 whitespace-nowrap rounded-[4px] border border-black/15 bg-[#f3f3f3] px-4 text-[14px] font-semibold text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
           >
             <span>{formatCalendarHeading(activeDate)}</span>
             <Icon name="chevron" className="h-4 w-4 rotate-90 text-black/60" />
@@ -9191,12 +9178,15 @@ function CalendarView({
 
             <div className="hidden overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm lg:block">
           <div
-            className="grid min-w-[980px] border-b border-black/10 bg-[#f6f7f9]"
-            style={{ gridTemplateColumns: `96px repeat(${resources.length}, minmax(220px, 1fr))` }}
+            className="grid border-b border-black/10 bg-[#f6f7f9]"
+            style={{
+              gridTemplateColumns: `78px repeat(${resources.length}, 164px)`,
+              minWidth: `${78 + resources.length * 164}px`,
+            }}
           >
-              <div className="border-r border-black/10 px-4 py-4" />
+              <div className="h-16 border-r border-black/10 px-3 py-1.5" />
               {resources.map((resource) => (
-                <div key={resource} className="border-r border-black/10 px-4 py-4 text-center text-[15px] font-bold last:border-r-0">
+                <div key={resource} className="h-16 border-r border-black/10 px-3 py-1.5 text-center text-[15px] font-bold last:border-r-0">
                   {resource}
                 </div>
               ))}
@@ -9208,15 +9198,18 @@ function CalendarView({
               style={{ maxHeight: "calc(100vh - 270px)" }}
             >
               <div
-                className="grid min-w-[980px]"
-                style={{ gridTemplateColumns: `96px repeat(${resources.length}, minmax(220px, 1fr))` }}
+                className="grid"
+                style={{
+                  gridTemplateColumns: `78px repeat(${resources.length}, 164px)`,
+                  minWidth: `${78 + resources.length * 164}px`,
+                }}
               >
                 <div className="relative border-r border-black/10 bg-white">
                   {slots.map((slot, index) => (
                       <div
                         key={slot}
                         ref={slot === scrollTargetTime ? desktopDayTimeTargetRef : undefined}
-                        className="flex items-start justify-end border-b border-black/10 px-4 text-right text-[15px] font-medium text-black/90"
+                        className="flex items-start justify-end border-b border-black/10 px-2 text-right text-[16px] font-normal text-black"
                         style={{ height: slotHeight }}
                       >
                         <div className={`w-full ${index === 0 ? "pt-1" : "pt-0.5"}`}>{timeLabel(slot)}</div>
@@ -9565,7 +9558,7 @@ function CalendarToolbarButton({
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[4px] border border-black/15 bg-white px-4 text-[16px] font-semibold text-black shadow-[0_1px_0_rgba(255,255,255,0.9)] hover:bg-black/[0.02] ${className}`.trim()}
+      className={`inline-flex min-h-8 shrink-0 items-center gap-2 whitespace-nowrap rounded-[4px] border border-black/15 bg-white px-4 text-[14px] font-semibold text-black shadow-[0_1px_0_rgba(255,255,255,0.9)] hover:bg-black/[0.02] ${className}`.trim()}
     >
       {icon ? <Icon name={icon} className="h-4 w-4" /> : null}
       <span>{label}</span>
@@ -9587,7 +9580,7 @@ function CalendarSegmentButton({
       type="button"
       onClick={onClick}
       className={[
-        "inline-flex min-h-10 shrink-0 items-center whitespace-nowrap rounded-[4px] border px-4 text-[16px] font-semibold shadow-[0_1px_0_rgba(255,255,255,0.9)]",
+        "inline-flex min-h-8 shrink-0 items-center whitespace-nowrap rounded-[4px] border px-4 text-[14px] font-semibold shadow-[0_1px_0_rgba(255,255,255,0.9)]",
         active
           ? "border-black/15 bg-[#ececec] text-black"
           : "border-black/15 bg-white text-black/75 hover:bg-black/[0.02]",
@@ -9634,7 +9627,7 @@ function AvailabilityView({
     current: number;
   } | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const slotHeight = 50;
+  const slotHeight = 40;
   const slots = useMemo(() => Array.from({ length: 48 }, (_, index) => minutesToTime(index * 30)), []);
   const visibleDates = useMemo(() => (calendarMode === "week" ? weekDates(activeDate) : [activeDate]), [activeDate, calendarMode]);
   const staffById = useMemo(() => new Map(staff.map((member) => [member.id, member])), [staff]);
@@ -9979,7 +9972,7 @@ function AvailabilityView({
 
   return (
     <section className="min-h-screen px-6 py-8 lg:px-7">
-      <div className="mb-3 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="mb-1 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex shrink-0 items-center gap-2">
           <CalendarToolbarButton label="Today" onClick={() => setActiveDate(today)} />
           <CalendarToolbarButton label="Back" onClick={() => shiftAvailabilityDate(calendarMode === "week" ? -7 : -1)} />
@@ -9989,7 +9982,7 @@ function AvailabilityView({
         <div className="flex min-w-0 items-center gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <button
             type="button"
-            className="inline-flex min-h-10 shrink-0 items-center gap-3 whitespace-nowrap rounded-lg border border-black/15 bg-white px-6 text-[16px] font-medium text-black shadow-[0_1px_0_rgba(255,255,255,0.9)]"
+            className="inline-flex min-h-8 shrink-0 items-center gap-3 whitespace-nowrap rounded-[4px] border border-black/15 bg-white px-4 text-[14px] font-semibold text-black shadow-[0_1px_0_rgba(255,255,255,0.9)]"
           >
             <span>{calendarMode === "week" ? formatAvailabilityWeekHeading() : formatCalendarHeading(activeDate)}</span>
             <Icon name="chevron" className="h-4 w-4 rotate-90 text-black/60" />
@@ -10008,10 +10001,13 @@ function AvailabilityView({
 
       <div className="overflow-hidden rounded-lg border border-black/10 bg-white shadow-sm">
         <div
-          className="grid min-w-[1533px] border-b border-black/10 bg-white"
-          style={{ gridTemplateColumns: `98px repeat(${visibleDates.length}, minmax(205px, 1fr))` }}
+          className="grid border-b border-black/10 bg-white"
+          style={{
+            gridTemplateColumns: `78px repeat(${visibleDates.length}, 164px)`,
+            minWidth: `${78 + visibleDates.length * 164}px`,
+          }}
         >
-          <div className="h-[80px] border-r border-black/10 px-4 py-1.5" />
+          <div className="h-16 border-r border-black/10 px-3 py-1.5" />
           {visibleDates.map((date) => {
             const dateObject = parseLocalDate(date);
             const headerLabel =
@@ -10022,7 +10018,7 @@ function AvailabilityView({
               <div
                 key={`availability-header-${date}`}
                 className={[
-                  "h-[80px] border-r border-black/10 px-4 py-1.5 text-center text-[15px] font-bold last:border-r-0",
+                  "h-16 border-r border-black/10 px-3 py-1.5 text-center text-[15px] font-bold last:border-r-0",
                   date === today ? "bg-[#eaf6ff]" : "bg-white",
                 ].join(" ")}
               >
@@ -10034,14 +10030,17 @@ function AvailabilityView({
 
         <div ref={scrollRef} className="overflow-auto" style={{ maxHeight: "calc(100vh - 260px)" }}>
           <div
-            className="grid min-w-[1533px]"
-            style={{ gridTemplateColumns: `98px repeat(${visibleDates.length}, minmax(205px, 1fr))` }}
+            className="grid"
+            style={{
+              gridTemplateColumns: `78px repeat(${visibleDates.length}, 164px)`,
+              minWidth: `${78 + visibleDates.length * 164}px`,
+            }}
           >
             <div className="relative border-r border-black/10 bg-white">
               {slots.map((slot, index) => (
                 <div
                   key={`availability-time-${slot}`}
-                  className="flex items-start justify-end border-b border-black/10 px-2 text-right text-[20px] font-normal text-black"
+                  className="flex items-start justify-end border-b border-black/10 px-2 text-right text-[16px] font-normal text-black"
                   style={{ height: slotHeight }}
                 >
                   <div className={`w-full ${index === 0 ? "pt-1" : "pt-0.5"}`}>{timeLabel(slot)}</div>
