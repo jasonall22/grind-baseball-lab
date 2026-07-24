@@ -9837,8 +9837,10 @@ function AvailabilityView({
                 }
               }}
               className={[
-                "absolute left-[5px] right-[5px] block cursor-pointer appearance-none rounded-[4px] border border-black/20 text-left text-white shadow-sm",
-                selected ? "z-30 overflow-visible ring-2 ring-white/90" : "z-10 overflow-hidden",
+                "group absolute left-[5px] right-[5px] block cursor-pointer appearance-none rounded-[4px] border border-black/20 text-left text-white shadow-sm transition-[filter,box-shadow]",
+                selected
+                  ? "z-30 overflow-visible ring-2 ring-white/90 brightness-105"
+                  : "z-10 overflow-hidden hover:ring-2 hover:ring-white/80 hover:brightness-105",
               ].join(" ")}
               style={{ top, height, backgroundColor: entry.color }}
             >
@@ -9894,6 +9896,19 @@ function AvailabilityView({
                     {initials || "ST"}
                   </div>
                 </>
+              ) : null}
+              {height >= 86 ? (
+                <div
+                  className={[
+                    "absolute bottom-[10px] left-[30px] grid gap-[2px] transition-opacity",
+                    selected ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+                  ].join(" ")}
+                  aria-hidden="true"
+                >
+                  <span className="block h-px w-[13px] rounded-full bg-white/95" />
+                  <span className="block h-px w-[13px] rounded-full bg-white/95" />
+                  <span className="block h-px w-[13px] rounded-full bg-white/95" />
+                </div>
               ) : null}
             </div>
           );
