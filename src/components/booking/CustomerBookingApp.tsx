@@ -42,6 +42,10 @@ type AccountForm = {
   playerLastName: string;
   playerAge: string;
 };
+type SignInForm = {
+  email: string;
+  password: string;
+};
 
 const categoryOrder: PublicBookingCategory[] = ["rentals", "lessons", "camps", "classes", "memberships", "packages"];
 const emptyAccountForm: AccountForm = {
@@ -272,10 +276,12 @@ function LogoPanel({ compact = false }: { compact?: boolean }) {
 function BookingHero({
   settings,
   onSelectCategory,
+  onSignIn,
   showSignIn = false,
 }: {
   settings: PublicBookingData["settings"];
   onSelectCategory: (category: PublicBookingCategory) => void;
+  onSignIn: () => void;
   showSignIn?: boolean;
 }) {
   return (
@@ -306,12 +312,13 @@ function BookingHero({
           </div>
           <div className="flex flex-wrap gap-3 lg:justify-end">
             {showSignIn ? (
-              <a
-                href="/login?next=/book"
+              <button
+                type="button"
+                onClick={onSignIn}
                 className="rounded-[6px] border border-[#1784bd]/25 bg-[#eef8fc] px-5 py-3 text-[15px] font-semibold text-[#0b6f9f] transition hover:-translate-y-0.5 hover:bg-[#e3f3fa]"
               >
                 Sign in
-              </a>
+              </button>
             ) : null}
             <button
               type="button"
@@ -540,6 +547,70 @@ function ParentAccountModal({
   );
 }
 
+function SignInModal({
+  form,
+  setForm,
+  busy,
+  status,
+  onClose,
+  onSubmit,
+}: {
+  form: SignInForm;
+  setForm: Dispatch<SetStateAction<SignInForm>>;
+  busy: boolean;
+  status: string;
+  onClose: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/55 px-4 py-10">
+      <form
+        onSubmit={onSubmit}
+        className="flex w-full max-w-[500px] flex-col overflow-hidden rounded-[5px] bg-white shadow-[0_20px_48px_rgba(0,0,0,0.36)]"
+      >
+        <div className="flex h-[76px] shrink-0 items-center border-b border-black/10 px-7">
+          <div className="text-[22px] font-semibold">Sign In</div>
+          <button type="button" onClick={onClose} className="ml-auto text-[32px] leading-none text-black/45">
+            x
+          </button>
+        </div>
+        <div className="px-7 py-6">
+          <p className="text-[15px] leading-6 text-black/60">Sign in to your family account and continue this booking.</p>
+          <div className="mt-6 grid gap-4">
+            <label className="grid gap-2 text-[14px] font-medium">
+              Email
+              <input
+                type="email"
+                value={form.email}
+                onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+                className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
+              />
+            </label>
+            <label className="grid gap-2 text-[14px] font-medium">
+              Password
+              <input
+                type="password"
+                value={form.password}
+                onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+                className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
+              />
+            </label>
+          </div>
+          {status ? <div className="mt-5 rounded-[6px] bg-red-50 px-4 py-3 text-sm text-red-700">{status}</div> : null}
+        </div>
+        <div className="flex shrink-0 justify-end gap-3 border-t border-black/10 px-7 py-5">
+          <button type="button" onClick={onClose} className="h-12 rounded-[6px] border border-black/15 px-7 text-[16px] font-semibold">
+            Cancel
+          </button>
+          <button type="submit" disabled={busy} className="h-12 rounded-[6px] bg-black px-8 text-[16px] font-semibold text-white disabled:opacity-55">
+            {busy ? "Signing in..." : "Sign in"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export default function CustomerBookingApp() {
   const [data, setData] = useState<PublicBookingData>(fallbackPublicBookingData);
   const [loading, setLoading] = useState(true);
@@ -556,6 +627,10 @@ export default function CustomerBookingApp() {
   const [accountForm, setAccountForm] = useState<AccountForm>(emptyAccountForm);
   const [accountBusy, setAccountBusy] = useState(false);
   const [accountStatus, setAccountStatus] = useState("");
+  const [showSignInModal, setShowSignInModal] = useState(false);
+  const [signInForm, setSignInForm] = useState<SignInForm>({ email: "", password: "" });
+  const [signInBusy, setSignInBusy] = useState(false);
+  const [signInStatus, setSignInStatus] = useState("");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [discountCode, setDiscountCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -588,24 +663,10 @@ export default function CustomerBookingApp() {
       const token = sessionResult.data.session?.access_token;
       if (!token) return;
 
-      const response = await fetch("/api/book/customers", {
-        cache: "no-store",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) return;
-
-      const payload = await response.json();
-      const account = payload.customer as ParentAccount | null;
+      const account = await loadParentAccount(token);
       if (!mounted || !account) return;
 
-      setParentAccount(account);
-      setSelectedPlayer(account.playerName || "Yourself");
-      setForm({
-        parentName: account.parentName,
-        playerName: account.playerName || "",
-        email: account.email,
-        phone: account.phone,
-      });
+      applyParentAccount(account);
     }
 
     void loadAccount();
@@ -687,12 +748,79 @@ export default function CustomerBookingApp() {
     setShowAccountModal(true);
   }
 
+  function openSignInModal() {
+    setSignInStatus("");
+    setSignInForm((current) => ({
+      email: current.email || form.email || accountForm.email,
+      password: "",
+    }));
+    setShowSignInModal(true);
+  }
+
+  async function loadParentAccount(token: string) {
+    const response = await fetch("/api/book/customers", {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) return null;
+
+    const payload = await response.json();
+    return payload.customer as ParentAccount | null;
+  }
+
+  function applyParentAccount(account: ParentAccount) {
+    const playerName = account.playerName || "Yourself";
+    setParentAccount(account);
+    setSelectedPlayer(playerName);
+    setForm({
+      parentName: account.parentName,
+      playerName,
+      email: account.email,
+      phone: account.phone,
+    });
+  }
+
   async function signOut() {
     setAccountMenuOpen(false);
     await supabase.auth.signOut();
     setParentAccount(null);
     setSelectedPlayer("Yourself");
     setForm({ parentName: "", playerName: "Yourself", email: "", phone: "" });
+  }
+
+  async function signInParentAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (signInBusy) return;
+
+    const email = signInForm.email.trim().toLowerCase();
+    if (!email || !signInForm.password) {
+      setSignInStatus("Please enter your email and password.");
+      return;
+    }
+
+    setSignInBusy(true);
+    setSignInStatus("");
+    try {
+      const signInResult = await supabase.auth.signInWithPassword({
+        email,
+        password: signInForm.password,
+      });
+      if (signInResult.error) throw signInResult.error;
+
+      const token = signInResult.data.session?.access_token ?? (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) throw new Error("Could not load your account session.");
+
+      const account = await loadParentAccount(token);
+      if (!account) throw new Error("Signed in, but could not load your family account.");
+
+      applyParentAccount(account);
+      setSignInForm({ email: account.email || email, password: "" });
+      setShowSignInModal(false);
+    } catch (error) {
+      setSignInStatus(error instanceof Error ? error.message : "Could not sign in.");
+    } finally {
+      setSignInBusy(false);
+    }
   }
 
   async function createParentAccount(event: FormEvent<HTMLFormElement>) {
@@ -830,9 +958,9 @@ export default function CustomerBookingApp() {
               </div>
             ) : (
               <>
-                <a href="/login?next=/book" className="whitespace-nowrap rounded-[6px] px-2 py-1.5 text-[14px] font-semibold transition hover:bg-black/[0.04]">
+                <button type="button" onClick={openSignInModal} className="whitespace-nowrap rounded-[6px] px-2 py-1.5 text-[14px] font-semibold transition hover:bg-black/[0.04]">
                   Sign In
-                </a>
+                </button>
                 <button
                   type="button"
                   onClick={openAccountModal}
@@ -846,7 +974,7 @@ export default function CustomerBookingApp() {
         </div>
       </header>
 
-      <BookingHero settings={data.settings} onSelectCategory={setSelectedCategory} showSignIn={!parentAccount} />
+      <BookingHero settings={data.settings} onSelectCategory={setSelectedCategory} onSignIn={openSignInModal} showSignIn={!parentAccount} />
 
       <section className="mx-auto grid max-w-[1240px] gap-8 px-5 py-10 lg:grid-cols-[minmax(0,1fr)_370px] lg:px-8">
         <div className="min-w-0">
@@ -1045,9 +1173,9 @@ export default function CustomerBookingApp() {
               <div className="flex flex-col gap-3 rounded-[4px] bg-[#dfe8fb] px-6 py-4 text-[16px] text-[#365b97] sm:flex-row sm:items-center sm:justify-between">
                 <span>Account: create a parent account or sign in to use saved family details.</span>
                 {!parentAccount ? (
-                  <a href="/login?next=/book" className="shrink-0 font-semibold text-[#244b86] underline underline-offset-4">
+                  <button type="button" onClick={openSignInModal} className="shrink-0 font-semibold text-[#244b86] underline underline-offset-4">
                     Sign in
-                  </a>
+                  </button>
                 ) : null}
               </div>
               {needsCoach ? (
@@ -1110,8 +1238,9 @@ export default function CustomerBookingApp() {
                   </button>
                 ) : (
                   <>
-                    <a
-                      href="/login?next=/book"
+                    <button
+                      type="button"
+                      onClick={openSignInModal}
                       className="flex h-[310px] w-[190px] flex-col items-center justify-center rounded-[8px] border border-black/15 bg-white px-5 py-7 text-center transition hover:border-black hover:shadow-[0_12px_24px_rgba(0,0,0,0.08)]"
                     >
                       <span className="relative flex h-[80px] w-[80px] items-center justify-center rounded-full bg-[#1f1b1b]">
@@ -1120,7 +1249,7 @@ export default function CustomerBookingApp() {
                       </span>
                       <span className="mt-5 block text-[18px] font-semibold">Sign in</span>
                       <span className="mt-4 block text-[14px] leading-5 text-black/55">Use your existing family account.</span>
-                    </a>
+                    </button>
                     <button
                       type="button"
                       onClick={openAccountModal}
@@ -1289,6 +1418,17 @@ export default function CustomerBookingApp() {
           status={accountStatus}
           onClose={() => setShowAccountModal(false)}
           onSubmit={createParentAccount}
+        />
+      ) : null}
+
+      {showSignInModal ? (
+        <SignInModal
+          form={signInForm}
+          setForm={setSignInForm}
+          busy={signInBusy}
+          status={signInStatus}
+          onClose={() => setShowSignInModal(false)}
+          onSubmit={signInParentAccount}
         />
       ) : null}
     </main>
