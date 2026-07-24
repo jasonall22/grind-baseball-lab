@@ -159,6 +159,7 @@ type StaffAvailabilityEntry = {
 };
 
 type StaffAvailabilityRecurrenceFrequency = "daily" | "weekly" | "custom";
+type StaffAvailabilityDeleteScope = "this" | "future" | "all";
 
 type StaffRoleSummary = {
   role: StaffRole;
@@ -5156,7 +5157,7 @@ export default function BookingAdminApp({
     }
   }
 
-  async function deleteStaffAvailabilityEntry(entryId: string) {
+  async function deleteStaffAvailabilityEntry(entryId: string, scope: StaffAvailabilityDeleteScope = "this") {
     const entry = state.staffAvailability.find((item) => item.id === entryId);
     if (!entry) {
       showToast("Availability block was not found.");
@@ -5168,9 +5169,15 @@ export default function BookingAdminApp({
       return false;
     }
 
+    const shouldDeleteEntry = (item: StaffAvailabilityEntry) => {
+      if (scope === "this" || !entry.recurrenceId) return item.id === entryId;
+      if (item.recurrenceId !== entry.recurrenceId) return false;
+      if (scope === "future") return item.date >= entry.date;
+      return true;
+    };
     const next = {
       ...state,
-      staffAvailability: state.staffAvailability.filter((item) => item.id !== entryId),
+      staffAvailability: state.staffAvailability.filter((item) => !shouldDeleteEntry(item)),
     };
 
     if (dataSource === "local") {
@@ -5183,7 +5190,17 @@ export default function BookingAdminApp({
     stateToStorage(next);
 
     try {
-      const { error } = await supabase.from("booking_staff_availability").delete().eq("id", entryId);
+      const deleteQuery =
+        scope === "this" || !entry.recurrenceId
+          ? supabase.from("booking_staff_availability").delete().eq("id", entryId)
+          : scope === "future"
+            ? supabase
+                .from("booking_staff_availability")
+                .delete()
+                .eq("recurrence_id", entry.recurrenceId)
+                .gte("availability_date", entry.date)
+            : supabase.from("booking_staff_availability").delete().eq("recurrence_id", entry.recurrenceId);
+      const { error } = await deleteQuery;
       if (error) throw error;
       showToast("Availability deleted.");
       return true;
@@ -9562,13 +9579,15 @@ function AvailabilityView({
   onChange: (rows: AppState["availability"]) => void;
   onSave: () => void;
   onSaveEntry: (entry: StaffAvailabilityEntry) => Promise<boolean>;
-  onDeleteEntry: (entryId: string) => Promise<boolean>;
+  onDeleteEntry: (entryId: string, scope?: StaffAvailabilityDeleteScope) => Promise<boolean>;
 }) {
   const [activeDate, setActiveDate] = useState(isoDate(new Date()));
   const [calendarMode, setCalendarMode] = useState<"day" | "week">("week");
   const [editorOpen, setEditorOpen] = useState(false);
   const [draft, setDraft] = useState<StaffAvailabilityEntry | null>(null);
   const [selectedAvailabilityId, setSelectedAvailabilityId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<StaffAvailabilityEntry | null>(null);
+  const [deleteScope, setDeleteScope] = useState<StaffAvailabilityDeleteScope>("this");
   const [dragSelection, setDragSelection] = useState<{
     date: string;
     start: number;
@@ -9726,19 +9745,34 @@ function AvailabilityView({
     }
   }
 
+  function openAvailabilityDeleteDialog(entry: StaffAvailabilityEntry) {
+    if (!canManageAny && entry.staffId !== currentStaffId) return;
+    setDeleteScope("this");
+    setSelectedAvailabilityId(null);
+    setDeleteTarget(entry);
+  }
+
+  async function confirmAvailabilityDelete() {
+    if (!deleteTarget) return;
+    const deleted = await onDeleteEntry(deleteTarget.id, deleteScope);
+    if (deleted) {
+      setSelectedAvailabilityId(null);
+      setDeleteTarget(null);
+      if (draft?.id === deleteTarget.id) setDraft(null);
+    }
+  }
+
   async function deleteDraft() {
     if (!draft) return;
-    const deleted = await onDeleteEntry(draft.id);
+    if (draft.recurring && draft.recurrenceId) {
+      openAvailabilityDeleteDialog(draft);
+      return;
+    }
+    const deleted = await onDeleteEntry(draft.id, "this");
     if (deleted) {
       setSelectedAvailabilityId(null);
       setDraft(null);
     }
-  }
-
-  async function deleteAvailabilityEntry(entry: StaffAvailabilityEntry) {
-    if (!canManageAny && entry.staffId !== currentStaffId) return;
-    const deleted = await onDeleteEntry(entry.id);
-    if (deleted) setSelectedAvailabilityId(null);
   }
 
   function renderAvailabilityBlocks(date: string) {
@@ -9823,7 +9857,7 @@ function AvailabilityView({
                   <button
                     type="button"
                     aria-label="Delete availability"
-                    onClick={() => void deleteAvailabilityEntry(entry)}
+                    onClick={() => openAvailabilityDeleteDialog(entry)}
                     className="group relative grid h-[50px] w-[50px] place-items-center rounded-b-md text-black/55 hover:bg-black/[0.04] hover:text-black"
                   >
                     <Icon name="trash" className="h-6 w-6" />
@@ -10337,6 +10371,75 @@ function AvailabilityView({
                   Save
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteTarget ? (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/55 p-4">
+          <div className="flex w-full max-w-3xl flex-col overflow-hidden rounded-md bg-white shadow-2xl">
+            <div className="border-b border-black/10 px-7 py-6">
+              <h2 className="text-[20px] font-semibold text-black">Delete Availability</h2>
+            </div>
+            <div className="grid gap-5 px-7 py-6">
+              <p className="text-[17px] text-black">
+                {deleteTarget.recurring && deleteTarget.recurrenceId
+                  ? `Delete recurring availability for ${deleteTarget.staffName}`
+                  : `Delete availability for ${deleteTarget.staffName}`}
+              </p>
+              {[
+                {
+                  value: "this" as const,
+                  label: "This availability",
+                },
+                ...(deleteTarget.recurring && deleteTarget.recurrenceId
+                  ? [
+                      {
+                        value: "future" as const,
+                        label:
+                          deleteTarget.recurrenceFrequency === "daily"
+                            ? `This and following availabilities at ${timeLabel(deleteTarget.start)}`
+                            : `This and following ${weekdayName(deleteTarget.date)}s at ${timeLabel(deleteTarget.start)}`,
+                      },
+                      {
+                        value: "all" as const,
+                        label:
+                          deleteTarget.recurrenceFrequency === "daily"
+                            ? `All availabilities at ${timeLabel(deleteTarget.start)}`
+                            : `All availabilities on ${weekdayName(deleteTarget.date)}s at ${timeLabel(deleteTarget.start)}`,
+                      },
+                    ]
+                  : []),
+              ].map((option) => (
+                <label key={option.value} className="flex min-h-8 items-center gap-4 text-[17px] text-black">
+                  <input
+                    type="radio"
+                    name="availability-delete-scope"
+                    value={option.value}
+                    checked={deleteScope === option.value}
+                    onChange={() => setDeleteScope(option.value)}
+                    className="h-6 w-6 accent-black"
+                  />
+                  <span>{option.label}</span>
+                </label>
+              ))}
+            </div>
+            <div className="flex justify-end gap-3 border-t border-black/10 bg-white px-3 py-3">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="rounded-md bg-black/[0.03] px-5 py-3 text-[15px] font-semibold text-black/70 hover:bg-black/[0.06]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmAvailabilityDelete()}
+                className="rounded-md bg-[#d63333] px-5 py-3 text-[15px] font-semibold text-white hover:bg-[#c22929]"
+              >
+                Delete
+              </button>
             </div>
           </div>
         </div>
