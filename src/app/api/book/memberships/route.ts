@@ -11,6 +11,7 @@ type PurchaseMembershipBody = {
   playerName?: string;
   email?: string;
   phone?: string;
+  setupIntentId?: string;
 };
 
 function badRequest(message: string, status = 400) {
@@ -149,51 +150,175 @@ export async function POST(req: Request) {
       const stripe = getStripe();
       const customer = await getBillingCustomerRecord(supabase, customerId);
       const stripeCustomerId = await ensureStripeCustomerForBookingCustomer(supabase, stripe, customer);
-      const origin = new URL(req.url).origin;
-      const lineItem = stripePriceId
-        ? { price: stripePriceId, quantity: 1 }
-        : {
-            price_data: {
-              currency: "usd",
-              unit_amount: priceCents,
-              recurring: { interval: stripeIntervalForBillingPeriod(billingPeriod) },
-              product_data: {
-                name: clean(service.name) || "Membership",
-                metadata: {
-                  local_membership_service_id: serviceId,
-                },
-              },
-            },
-            quantity: 1,
-          };
+      let effectiveStripePriceId = stripePriceId;
+      if (!effectiveStripePriceId) {
+        const product = await stripe.products.create({
+          name: clean(service.name) || "Membership",
+          metadata: {
+            local_membership_service_id: serviceId,
+          },
+        });
+        const price = await stripe.prices.create({
+          currency: "usd",
+          unit_amount: priceCents,
+          recurring: { interval: stripeIntervalForBillingPeriod(billingPeriod) },
+          product: product.id,
+          metadata: {
+            local_membership_service_id: serviceId,
+          },
+        });
+        effectiveStripePriceId = price.id;
 
-      const session = await stripe.checkout.sessions.create({
-        mode: "subscription",
-        customer: stripeCustomerId,
-        payment_method_types: ["card"],
-        line_items: [lineItem],
-        metadata: {
-          local_customer_id: customerId,
-          membership_service_id: serviceId,
-          membership_origin: "public_booking_page",
-        },
-        subscription_data: {
+        await supabase.from("booking_services").update({ stripe_price_id: effectiveStripePriceId }).eq("id", serviceId);
+      }
+
+      if (!body.setupIntentId) {
+        const setupIntent = await stripe.setupIntents.create({
+          customer: stripeCustomerId,
+          payment_method_types: ["card"],
+          usage: "off_session",
           metadata: {
             local_customer_id: customerId,
             membership_service_id: serviceId,
             membership_origin: "public_booking_page",
           },
+        });
+
+        if (!setupIntent.client_secret) {
+          throw new Error("Stripe did not return a client secret.");
+        }
+
+        return NextResponse.json({
+          ok: true,
+          requiresCard: true,
+          clientSecret: setupIntent.client_secret,
+          setupIntentId: setupIntent.id,
+          customerId,
+        });
+      }
+
+      const setupIntent = await stripe.setupIntents.retrieve(clean(body.setupIntentId));
+      if (setupIntent.status !== "succeeded") {
+        return badRequest("Card setup is not complete yet.", 409);
+      }
+      if (typeof setupIntent.customer === "string" && setupIntent.customer !== stripeCustomerId) {
+        return badRequest("That card setup does not belong to this customer.", 403);
+      }
+
+      const paymentMethodId =
+        typeof setupIntent.payment_method === "string" ? setupIntent.payment_method : setupIntent.payment_method?.id;
+      if (!paymentMethodId) {
+        return badRequest("Stripe did not return a saved payment method.", 409);
+      }
+
+      await stripe.customers.update(stripeCustomerId, {
+        invoice_settings: {
+          default_payment_method: paymentMethodId,
         },
-        success_url: `${origin}/book?membership=success`,
-        cancel_url: `${origin}/book?membership=cancelled`,
       });
 
-      if (!session.url) throw new Error("Stripe did not return a checkout URL.");
+      const savedCardResult = await supabase
+        .from("booking_customers")
+        .update({
+          stripe_customer_id: stripeCustomerId,
+          stripe_default_payment_method_id: paymentMethodId,
+        })
+        .eq("id", customerId);
+      if (savedCardResult.error) throw savedCardResult.error;
+
+      const subscription = await stripe.subscriptions.create({
+        customer: stripeCustomerId,
+        default_payment_method: paymentMethodId,
+        items: [{ price: effectiveStripePriceId, quantity: 1 }],
+        payment_behavior: "error_if_incomplete",
+        metadata: {
+          local_customer_id: customerId,
+          membership_service_id: serviceId,
+          membership_origin: "public_booking_page",
+        },
+        expand: ["latest_invoice.payment_intent.latest_charge"],
+      });
+
+      const subscriptionSource = subscription as unknown as { current_period_start?: number; current_period_end?: number };
+      const currentPeriodStart = subscriptionSource.current_period_start
+        ? new Date(subscriptionSource.current_period_start * 1000).toISOString()
+        : now;
+      const currentPeriodEnd = subscriptionSource.current_period_end
+        ? new Date(subscriptionSource.current_period_end * 1000).toISOString()
+        : addMembershipPeriod(currentPeriodStart, billingPeriod);
+      const subscriptionPriceId = subscription.items.data[0]?.price?.id ?? effectiveStripePriceId ?? null;
+
+      const membershipResult = await supabase
+        .from("booking_customer_memberships")
+        .insert({
+          customer_id: customerId,
+          membership_service_id: serviceId,
+          status: "Active",
+          billing_period: billingPeriod,
+          price_cents: priceCents,
+          credits_per_day: creditsPerDay,
+          credit_limit_period: creditLimitPeriod,
+          credit_scope: creditScope,
+          eligible_service_ids: eligibleServiceIds,
+          current_period_start: currentPeriodStart,
+          current_period_end: currentPeriodEnd,
+          stripe_subscription_id: subscription.id,
+          stripe_price_id: subscriptionPriceId,
+          auto_renew: true,
+          started_at: now,
+          cancelled_at: null,
+        })
+        .select("id")
+        .single();
+
+      if (membershipResult.error) throw membershipResult.error;
+
+      const latestInvoice = typeof subscription.latest_invoice === "object" ? subscription.latest_invoice : null;
+      const paymentIntent =
+        latestInvoice && "payment_intent" in latestInvoice && typeof latestInvoice.payment_intent === "object"
+          ? latestInvoice.payment_intent
+          : null;
+      const latestCharge =
+        paymentIntent && "latest_charge" in paymentIntent && typeof paymentIntent.latest_charge === "object"
+          ? paymentIntent.latest_charge
+          : null;
+      const paymentRecord = paymentIntent as {
+        id?: string;
+        amount_received?: number;
+        amount?: number;
+        currency?: string;
+      } | null;
+      const chargeRecord = latestCharge as {
+        payment_method_details?: { card?: { brand?: string | null; last4?: string | null } };
+        receipt_url?: string | null;
+      } | null;
+
+      if (paymentRecord?.id) {
+        const paymentResult = await supabase.from("booking_customer_payments").upsert(
+          {
+            customer_id: customerId,
+            booking_id: null,
+            stripe_payment_intent_id: paymentRecord.id,
+            amount_cents: paymentRecord.amount_received || paymentRecord.amount || priceCents,
+            currency: paymentRecord.currency || "usd",
+            status: "Succeeded",
+            description: `${clean(service.name) || "Membership"} membership`,
+            payment_method_brand: chargeRecord?.payment_method_details?.card?.brand ?? null,
+            payment_method_last4: chargeRecord?.payment_method_details?.card?.last4 ?? null,
+            receipt_url: chargeRecord?.receipt_url ?? null,
+            processed_at: now,
+          },
+          { onConflict: "stripe_payment_intent_id" }
+        );
+
+        if (paymentResult.error) throw paymentResult.error;
+      }
 
       return NextResponse.json({
         ok: true,
-        requiresCheckout: true,
-        url: session.url,
+        requiresCard: false,
+        membershipId: (membershipResult.data as { id: string }).id,
+        customerId,
       });
     }
 
@@ -224,7 +349,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
-      requiresCheckout: false,
+      requiresCard: false,
       membershipId: (membershipResult.data as { id: string }).id,
       customerId,
     });

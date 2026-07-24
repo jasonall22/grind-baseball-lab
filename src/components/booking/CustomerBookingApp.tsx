@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, type Dispatch, type FormEvent, type ReactNode, type SetStateAction } from "react";
 import Image from "next/image";
+import { CardElement, Elements, useElements, useStripe } from "@stripe/react-stripe-js";
+import { loadStripe } from "@stripe/stripe-js";
 
 import {
   calculatePublicTotals,
@@ -22,8 +24,12 @@ import {
 } from "@/lib/publicBooking";
 import { supabase } from "@/lib/supabaseClient";
 
+const stripePublishableKey = (process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || "").trim();
+const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : null;
+
 type BookingStep = "overview" | "player" | "time" | "summary" | "done";
 type TimeChoice = { start: string; end: string; resourceId: string; resourceName: string };
+type MembershipCardSetup = { clientSecret: string; setupIntentId: string; customerId: string };
 type ParentAccount = {
   id?: string;
   parentName: string;
@@ -640,6 +646,182 @@ function SignInModal({
   );
 }
 
+function MembershipCardModal({
+  service,
+  setup,
+  customerName,
+  email,
+  phone,
+  busy,
+  status,
+  onClose,
+  onConfirm,
+}: {
+  service: PublicBookingService;
+  setup: MembershipCardSetup;
+  customerName: string;
+  email: string;
+  phone: string;
+  busy: boolean;
+  status: string;
+  onClose: () => void;
+  onConfirm: (setupIntentId: string) => Promise<void>;
+}) {
+  if (!stripePromise) {
+    return (
+      <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/55 px-4 py-10">
+        <div className="w-full max-w-[520px] rounded-[5px] bg-white p-7 shadow-[0_20px_48px_rgba(0,0,0,0.36)]">
+          <div className="text-[22px] font-semibold">Card Payment</div>
+          <p className="mt-4 text-[15px] leading-6 text-black/60">Stripe card payments are not configured yet.</p>
+          <div className="mt-6 flex justify-end">
+            <button type="button" onClick={onClose} className="h-11 rounded-[6px] bg-black px-6 text-[15px] font-semibold text-white">
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/55 px-4 py-10">
+      <div className="w-full max-w-[560px] overflow-hidden rounded-[5px] bg-white shadow-[0_20px_48px_rgba(0,0,0,0.36)]">
+        <div className="flex h-[76px] shrink-0 items-center border-b border-black/10 px-7">
+          <div className="text-[22px] font-semibold">Card Payment</div>
+          <button type="button" onClick={onClose} className="ml-auto text-[32px] leading-none text-black/45">
+            x
+          </button>
+        </div>
+        <Elements stripe={stripePromise} options={{ clientSecret: setup.clientSecret }} key={setup.clientSecret}>
+          <MembershipCardForm
+            service={service}
+            clientSecret={setup.clientSecret}
+            customerName={customerName}
+            email={email}
+            phone={phone}
+            busy={busy}
+            status={status}
+            onClose={onClose}
+            onConfirm={onConfirm}
+          />
+        </Elements>
+      </div>
+    </div>
+  );
+}
+
+function MembershipCardForm({
+  service,
+  clientSecret,
+  customerName,
+  email,
+  phone,
+  busy,
+  status,
+  onClose,
+  onConfirm,
+}: {
+  service: PublicBookingService;
+  clientSecret: string;
+  customerName: string;
+  email: string;
+  phone: string;
+  busy: boolean;
+  status: string;
+  onClose: () => void;
+  onConfirm: (setupIntentId: string) => Promise<void>;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [cardholderName, setCardholderName] = useState(customerName);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!stripe || !elements || busy) return;
+
+    const cardElement = elements.getElement(CardElement);
+    if (!cardElement) {
+      setErrorMessage("Card form is not ready yet.");
+      return;
+    }
+
+    setErrorMessage("");
+    const result = await stripe.confirmCardSetup(clientSecret, {
+      payment_method: {
+        card: cardElement,
+        billing_details: {
+          name: cardholderName || customerName || undefined,
+          email: email || undefined,
+          phone: phone || undefined,
+        },
+      },
+    });
+
+    if (result.error) {
+      setErrorMessage(result.error.message || "Could not save card.");
+      return;
+    }
+
+    if (!result.setupIntent || result.setupIntent.status !== "succeeded") {
+      setErrorMessage("Card setup is not complete yet.");
+      return;
+    }
+
+    await onConfirm(result.setupIntent.id);
+  }
+
+  return (
+    <form onSubmit={(event) => void handleSubmit(event)}>
+      <div className="grid gap-5 px-7 py-6">
+        <div className="rounded-[10px] border border-black/10 bg-black/[0.02] px-5 py-4">
+          <div className="text-[17px] font-semibold">{service.name}</div>
+          <div className="mt-2 text-[15px] text-black/60">
+            {money(service.price)}/{membershipPeriodLabel(service.membershipBillingPeriod)} will be charged to this card.
+          </div>
+        </div>
+        <label className="grid gap-2 text-[14px] font-medium">
+          Cardholder name
+          <input
+            value={cardholderName}
+            onChange={(event) => setCardholderName(event.target.value)}
+            className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
+          />
+        </label>
+        <label className="grid gap-2 text-[14px] font-medium">
+          Card information
+          <div className="rounded-[5px] border border-black/20 px-4 py-3">
+            <CardElement
+              options={{
+                hidePostalCode: false,
+                style: {
+                  base: {
+                    fontSize: "16px",
+                    color: "#111111",
+                    "::placeholder": { color: "rgba(17,17,17,0.38)" },
+                  },
+                },
+              }}
+            />
+          </div>
+        </label>
+        <div className="rounded-[8px] bg-[#eef8fc] px-4 py-3 text-[13px] leading-5 text-[#0b6f9f]">
+          This saves the card and charges it for the membership. It will be the default card for future membership renewals.
+        </div>
+        {errorMessage || status ? <div className="rounded-[6px] bg-red-50 px-4 py-3 text-sm text-red-700">{errorMessage || status}</div> : null}
+      </div>
+      <div className="flex shrink-0 justify-end gap-3 border-t border-black/10 px-7 py-5">
+        <button type="button" onClick={onClose} className="h-12 rounded-[6px] border border-black/15 px-7 text-[16px] font-semibold">
+          Cancel
+        </button>
+        <button type="submit" disabled={!stripe || busy} className="h-12 rounded-[6px] bg-black px-8 text-[16px] font-semibold text-white disabled:opacity-55">
+          {busy ? "Charging..." : "Save card & pay"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export default function CustomerBookingApp() {
   const [data, setData] = useState<PublicBookingData>(fallbackPublicBookingData);
   const [loading, setLoading] = useState(true);
@@ -664,6 +846,8 @@ export default function CustomerBookingApp() {
   const [discountCode, setDiscountCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [membershipCardSetup, setMembershipCardSetup] = useState<MembershipCardSetup | null>(null);
+  const [membershipCardStatus, setMembershipCardStatus] = useState("");
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -755,12 +939,14 @@ export default function CustomerBookingApp() {
     setSelectedServiceId(null);
     setStep("overview");
     setSubmitError("");
+    setMembershipCardSetup(null);
+    setMembershipCardStatus("");
   }
 
   function goBack() {
     if (step === "player") setStep("overview");
     if (step === "time") setStep("player");
-    if (step === "summary") setStep("time");
+    if (step === "summary") setStep(isMembership ? "player" : "time");
   }
 
   function openAccountModal() {
@@ -947,11 +1133,12 @@ export default function CustomerBookingApp() {
     }
   }
 
-  async function submitMembershipPurchase() {
+  async function submitMembershipPurchase(setupIntentId?: string) {
     if (!selectedService || selectedService.category !== "memberships") return;
 
     setSubmitting(true);
     setSubmitError("");
+    setMembershipCardStatus("");
     try {
       const response = await fetch("/api/book/memberships", {
         method: "POST",
@@ -963,6 +1150,7 @@ export default function CustomerBookingApp() {
           playerName: form.playerName || selectedPlayer,
           email: form.email,
           phone: form.phone,
+          setupIntentId,
         }),
       });
 
@@ -979,14 +1167,24 @@ export default function CustomerBookingApp() {
         });
       }
 
-      if (payload.requiresCheckout && payload.url) {
-        window.location.href = payload.url;
+      if (payload.requiresCard && payload.clientSecret && payload.setupIntentId && payload.customerId) {
+        setMembershipCardSetup({
+          clientSecret: payload.clientSecret,
+          setupIntentId: payload.setupIntentId,
+          customerId: payload.customerId,
+        });
         return;
       }
 
+      setMembershipCardSetup(null);
       setStep("done");
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : "Could not start membership purchase.");
+      const message = error instanceof Error ? error.message : "Could not start membership purchase.";
+      if (setupIntentId) {
+        setMembershipCardStatus(message);
+      } else {
+        setSubmitError(message);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -1197,10 +1395,10 @@ export default function CustomerBookingApp() {
                 <button
                   type="button"
                   disabled={submitting}
-                  onClick={submitMembershipPurchase}
+                  onClick={() => submitMembershipPurchase()}
                   className="w-full rounded-[10px] bg-[#3a3432] py-4 text-[18px] font-semibold text-white disabled:opacity-60"
                 >
-                  {submitting ? "Opening checkout..." : selectedService.price > 0 ? "Pay with credit card" : "Start membership"}
+                  {submitting ? "Saving..." : selectedService.price > 0 ? "Pay with credit card" : "Start membership"}
                 </button>
               ) : (
                 <div className="grid gap-3">
@@ -1561,6 +1759,23 @@ export default function CustomerBookingApp() {
           status={signInStatus}
           onClose={() => setShowSignInModal(false)}
           onSubmit={signInParentAccount}
+        />
+      ) : null}
+
+      {membershipCardSetup && selectedService?.category === "memberships" ? (
+        <MembershipCardModal
+          service={selectedService}
+          setup={membershipCardSetup}
+          customerName={form.parentName}
+          email={form.email}
+          phone={form.phone}
+          busy={submitting}
+          status={membershipCardStatus}
+          onClose={() => {
+            setMembershipCardSetup(null);
+            setMembershipCardStatus("");
+          }}
+          onConfirm={(setupIntentId) => submitMembershipPurchase(setupIntentId)}
         />
       ) : null}
     </main>
