@@ -279,37 +279,15 @@ function BookingHero({
   return (
     <section className="bg-white px-4 py-5 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-[1240px] overflow-hidden rounded-[10px] border border-black/10 bg-white shadow-[0_18px_45px_rgba(0,0,0,0.12)]">
-        <div className="relative overflow-hidden bg-black px-6 py-8 text-white sm:px-10 sm:py-11">
-          <div className="absolute inset-x-0 bottom-0 h-[6px] bg-[#1784bd]" />
-          <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-center">
-            <div className="min-w-0">
-              <div className="inline-flex items-center rounded-[6px] bg-white px-4 py-2">
-                <Image src="/logo.png" alt="The Grind Baseball Lab" width={178} height={69} className="h-9 w-auto" priority />
-              </div>
-              <div className="mt-6 text-[12px] font-bold uppercase tracking-[0.18em] text-[#5fc5f2]">Memberships</div>
-              <h1 className="mt-3 max-w-[760px] text-[36px] font-semibold leading-[1.05] tracking-normal sm:text-[52px]">
-                More reps. More swings. More progress.
-              </h1>
-              <p className="mt-4 max-w-[720px] text-[16px] leading-7 text-white/70 sm:text-[17px]">
-                Get monthly training credits for cage time and lessons so your player can stay consistent all season.
-              </p>
-            </div>
-            <div className="rounded-[8px] border border-white/10 bg-white/[0.06] p-5">
-              <div className="text-[13px] font-bold uppercase tracking-[0.14em] text-white/55">Member Benefits</div>
-              <div className="mt-4 grid gap-3 text-[15px] font-semibold">
-                <div className="rounded-[6px] bg-white/[0.08] px-4 py-3">Monthly booking credits</div>
-                <div className="rounded-[6px] bg-white/[0.08] px-4 py-3">Use for cages or lessons</div>
-                <div className="rounded-[6px] bg-white/[0.08] px-4 py-3">Simple online scheduling</div>
-              </div>
-              <button
-                type="button"
-                onClick={() => onSelectCategory("memberships")}
-                className="mt-5 w-full rounded-[6px] bg-[#1784bd] px-5 py-3 text-[15px] font-semibold text-white shadow-[0_10px_24px_rgba(23,132,189,0.26)] transition hover:-translate-y-0.5 hover:bg-[#0f76ac]"
-              >
-                View memberships
-              </button>
-            </div>
-          </div>
+        <div className="overflow-hidden bg-black">
+          <Image
+            src="/membership-marketing-banner.png"
+            alt="Memberships: More reps. More swings. Monthly credits for cages, lessons, and consistent player development."
+            width={1240}
+            height={310}
+            className="h-auto w-full"
+            priority
+          />
         </div>
 
         <div className="grid gap-5 border-t border-black/10 px-5 py-5 sm:px-7 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
