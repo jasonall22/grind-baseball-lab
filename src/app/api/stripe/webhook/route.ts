@@ -160,6 +160,7 @@ async function activateMembershipFromCheckout(
   const currentPeriodEnd = subscriptionSource.current_period_end
     ? new Date(subscriptionSource.current_period_end * 1000).toISOString()
     : addMembershipPeriod(currentPeriodStart, billingPeriod);
+  const subscriptionPriceId = subscription.items.data[0]?.price?.id ?? null;
 
   const membershipResult = await admin.from("booking_customer_memberships").insert({
     customer_id: localCustomerId,
@@ -174,7 +175,7 @@ async function activateMembershipFromCheckout(
     current_period_start: currentPeriodStart,
     current_period_end: currentPeriodEnd,
     stripe_subscription_id: stripeSubscriptionId,
-    stripe_price_id: typeof service.stripe_price_id === "string" ? service.stripe_price_id : null,
+    stripe_price_id: subscriptionPriceId || (typeof service.stripe_price_id === "string" ? service.stripe_price_id : null),
     auto_renew: true,
     started_at: now,
     cancelled_at: null,

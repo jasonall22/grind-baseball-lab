@@ -1200,7 +1200,7 @@ export default function CustomerBookingApp() {
                   onClick={submitMembershipPurchase}
                   className="w-full rounded-[10px] bg-[#3a3432] py-4 text-[18px] font-semibold text-white disabled:opacity-60"
                 >
-                  {submitting ? "Starting..." : "Purchase membership"}
+                  {submitting ? "Opening checkout..." : selectedService.price > 0 ? "Pay with credit card" : "Start membership"}
                 </button>
               ) : (
                 <div className="grid gap-3">
@@ -1465,7 +1465,7 @@ export default function CustomerBookingApp() {
                     </div>
                     <div className="flex justify-between gap-6">
                       <span>Renewal</span>
-                      <span className="text-right text-black">{selectedService.stripePriceId ? "Auto renews after purchase" : "Manual setup"}</span>
+                      <span className="text-right text-black">{selectedService.price > 0 ? "Auto renews after card purchase" : "No card payment required"}</span>
                     </div>
                   </div>
                 </div>
@@ -1496,7 +1496,7 @@ export default function CustomerBookingApp() {
                       <span>{money(selectedService.price)}/{membershipPeriodLabel(selectedService.membershipBillingPeriod)}</span>
                     </div>
                     <div className="flex justify-between text-[20px] font-semibold text-black">
-                      <span>Due today</span>
+                      <span>{selectedService.price > 0 ? "Due by card today" : "Due today"}</span>
                       <span>{money(selectedService.price)}</span>
                     </div>
                   </div>

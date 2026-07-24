@@ -41,6 +41,12 @@ function addMembershipPeriod(startIso: string, billingPeriod: string) {
   return date.toISOString();
 }
 
+function stripeIntervalForBillingPeriod(billingPeriod: string): "week" | "month" | "year" {
+  if (billingPeriod === "Weekly") return "week";
+  if (billingPeriod === "Yearly") return "year";
+  return "month";
+}
+
 function stringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
 }
@@ -139,17 +145,33 @@ export async function POST(req: Request) {
     const eligibleServiceIds = stringArray(service.membership_eligible_service_ids);
     const stripePriceId = clean(service.stripe_price_id);
 
-    if (stripePriceId) {
+    if (priceCents > 0) {
       const stripe = getStripe();
       const customer = await getBillingCustomerRecord(supabase, customerId);
       const stripeCustomerId = await ensureStripeCustomerForBookingCustomer(supabase, stripe, customer);
       const origin = new URL(req.url).origin;
+      const lineItem = stripePriceId
+        ? { price: stripePriceId, quantity: 1 }
+        : {
+            price_data: {
+              currency: "usd",
+              unit_amount: priceCents,
+              recurring: { interval: stripeIntervalForBillingPeriod(billingPeriod) },
+              product_data: {
+                name: clean(service.name) || "Membership",
+                metadata: {
+                  local_membership_service_id: serviceId,
+                },
+              },
+            },
+            quantity: 1,
+          };
 
       const session = await stripe.checkout.sessions.create({
         mode: "subscription",
         customer: stripeCustomerId,
         payment_method_types: ["card"],
-        line_items: [{ price: stripePriceId, quantity: 1 }],
+        line_items: [lineItem],
         metadata: {
           local_customer_id: customerId,
           membership_service_id: serviceId,
