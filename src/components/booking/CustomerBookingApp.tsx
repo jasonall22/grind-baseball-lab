@@ -272,9 +272,11 @@ function LogoPanel({ compact = false }: { compact?: boolean }) {
 function BookingHero({
   settings,
   onSelectCategory,
+  showSignIn = false,
 }: {
   settings: PublicBookingData["settings"];
   onSelectCategory: (category: PublicBookingCategory) => void;
+  showSignIn?: boolean;
 }) {
   return (
     <section className="bg-white px-4 py-5 sm:px-6 lg:px-8">
@@ -303,6 +305,14 @@ function BookingHero({
             </div>
           </div>
           <div className="flex flex-wrap gap-3 lg:justify-end">
+            {showSignIn ? (
+              <a
+                href="/login?next=/book"
+                className="rounded-[6px] border border-[#1784bd]/25 bg-[#eef8fc] px-5 py-3 text-[15px] font-semibold text-[#0b6f9f] transition hover:-translate-y-0.5 hover:bg-[#e3f3fa]"
+              >
+                Sign in
+              </a>
+            ) : null}
             <button
               type="button"
               onClick={() => onSelectCategory("rentals")}
@@ -836,7 +846,7 @@ export default function CustomerBookingApp() {
         </div>
       </header>
 
-      <BookingHero settings={data.settings} onSelectCategory={setSelectedCategory} />
+      <BookingHero settings={data.settings} onSelectCategory={setSelectedCategory} showSignIn={!parentAccount} />
 
       <section className="mx-auto grid max-w-[1240px] gap-8 px-5 py-10 lg:grid-cols-[minmax(0,1fr)_370px] lg:px-8">
         <div className="min-w-0">
