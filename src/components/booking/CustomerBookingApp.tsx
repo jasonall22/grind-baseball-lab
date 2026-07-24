@@ -890,9 +890,23 @@ export default function CustomerBookingApp() {
         <InfoCard settings={data.settings} />
       </section>
 
-      <footer className="mt-6 flex h-14 items-center justify-center gap-4 bg-[#111] text-white">
-        <span>powered by</span>
-        <span className="font-semibold">Swift</span>
+      <footer className="mt-6 border-t border-white/10 bg-black text-white">
+        <div className="mx-auto flex max-w-[1240px] flex-col gap-6 px-5 py-8 sm:flex-row sm:items-center sm:justify-between lg:px-8">
+          <div className="flex items-center gap-4">
+            <span className="inline-flex h-12 items-center rounded-[6px] bg-white px-4">
+              <Image src="/logo.png" alt="The Grind Baseball Lab" width={118} height={46} className="h-8 w-auto" />
+            </span>
+            <div>
+              <div className="text-[17px] font-semibold">{data.settings.facilityName}</div>
+              <div className="mt-1 text-[13px] text-white/55">Baseball and softball training in Venice, Florida</div>
+            </div>
+          </div>
+          <div className="grid gap-1 text-[14px] text-white/65 sm:text-right">
+            <div>{data.settings.address}</div>
+            <div>{data.settings.phone}</div>
+            <div className="text-white/40">Copyright {new Date().getFullYear()} {data.settings.facilityName}</div>
+          </div>
+        </div>
       </footer>
 
       {selectedService ? (
