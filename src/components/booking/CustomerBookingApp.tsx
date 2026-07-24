@@ -1042,8 +1042,13 @@ export default function CustomerBookingApp() {
 
           {step === "player" ? (
             <div>
-              <div className="rounded-[4px] bg-[#dfe8fb] px-6 py-4 text-[16px] text-[#365b97]">
-                Account: create a parent account to save family details for future bookings.
+              <div className="flex flex-col gap-3 rounded-[4px] bg-[#dfe8fb] px-6 py-4 text-[16px] text-[#365b97] sm:flex-row sm:items-center sm:justify-between">
+                <span>Account: create a parent account or sign in to use saved family details.</span>
+                {!parentAccount ? (
+                  <a href="/login?next=/book" className="shrink-0 font-semibold text-[#244b86] underline underline-offset-4">
+                    Sign in
+                  </a>
+                ) : null}
               </div>
               {needsCoach ? (
                 <div className="mt-8">
@@ -1104,15 +1109,28 @@ export default function CustomerBookingApp() {
                     {parentAccount.playerAge ? <span className="mt-6 block text-[14px]">{parentAccount.playerAge} years old</span> : null}
                   </button>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={openAccountModal}
-                    className="flex h-[310px] w-[190px] flex-col items-center justify-center rounded-[8px] border border-dashed border-black/25 px-5 py-7 text-center hover:border-black"
-                  >
-                    <span className="flex h-[80px] w-[80px] items-center justify-center rounded-full bg-black text-[34px] text-white">+</span>
-                    <span className="mt-5 block text-[18px] font-semibold">Create account</span>
-                    <span className="mt-4 block text-[14px] leading-5 text-black/55">Save parent and player details.</span>
-                  </button>
+                  <>
+                    <a
+                      href="/login?next=/book"
+                      className="flex h-[310px] w-[190px] flex-col items-center justify-center rounded-[8px] border border-black/15 bg-white px-5 py-7 text-center transition hover:border-black hover:shadow-[0_12px_24px_rgba(0,0,0,0.08)]"
+                    >
+                      <span className="relative flex h-[80px] w-[80px] items-center justify-center rounded-full bg-[#1f1b1b]">
+                        <span className="absolute left-1/2 top-[19px] h-[18px] w-[18px] -translate-x-1/2 rounded-full border-[3px] border-white" />
+                        <span className="absolute bottom-[17px] left-1/2 h-[22px] w-[38px] -translate-x-1/2 rounded-t-full border-[3px] border-white border-b-0" />
+                      </span>
+                      <span className="mt-5 block text-[18px] font-semibold">Sign in</span>
+                      <span className="mt-4 block text-[14px] leading-5 text-black/55">Use your existing family account.</span>
+                    </a>
+                    <button
+                      type="button"
+                      onClick={openAccountModal}
+                      className="flex h-[310px] w-[190px] flex-col items-center justify-center rounded-[8px] border border-dashed border-black/25 px-5 py-7 text-center hover:border-black"
+                    >
+                      <span className="flex h-[80px] w-[80px] items-center justify-center rounded-full bg-black text-[34px] text-white">+</span>
+                      <span className="mt-5 block text-[18px] font-semibold">Create account</span>
+                      <span className="mt-4 block text-[14px] leading-5 text-black/55">Save parent and player details.</span>
+                    </button>
+                  </>
                 )}
               </div>
               <div className="mt-8 grid gap-4 sm:grid-cols-2">
