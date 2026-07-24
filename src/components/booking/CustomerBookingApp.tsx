@@ -782,7 +782,7 @@ export default function CustomerBookingApp() {
 
   return (
     <main className="min-h-screen bg-[#f6f7f9] text-black">
-      <header className="sticky top-0 z-30 border-b border-black/10 bg-white/95 backdrop-blur">
+      <header className="sticky top-0 z-30 border-b border-black/10 bg-white">
         <div className="mx-auto grid min-h-[186px] max-w-[1240px] grid-cols-1 items-center gap-4 px-5 py-5 sm:grid-cols-[1fr_auto_1fr] sm:gap-5 lg:px-8">
           <div className="hidden sm:block" />
           <span className="inline-flex items-center justify-self-center">
