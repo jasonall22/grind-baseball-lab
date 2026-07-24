@@ -787,7 +787,7 @@ export default function CustomerBookingApp() {
           <span className="inline-flex items-center justify-self-center">
             <Image src="/booking-header-logo.png" alt="The Grind Baseball Lab" width={920} height={408} className="h-40 w-auto sm:h-48" priority />
           </span>
-          <div className="flex items-center justify-center gap-3 justify-self-center pb-1 sm:justify-self-end sm:gap-5">
+          <div className="flex items-center justify-center gap-2 justify-self-center pb-1 sm:justify-self-end sm:gap-3">
             {parentAccount ? (
               <div ref={accountMenuRef} className="relative">
                 <button
@@ -820,13 +820,13 @@ export default function CustomerBookingApp() {
               </div>
             ) : (
               <>
-                <a href="/login?next=/book" className="whitespace-nowrap rounded-[6px] px-3 py-2 text-[16px] font-semibold transition hover:bg-black/[0.04]">
+                <a href="/login?next=/book" className="whitespace-nowrap rounded-[6px] px-2 py-1.5 text-[14px] font-semibold transition hover:bg-black/[0.04]">
                   Sign In
                 </a>
                 <button
                   type="button"
                   onClick={openAccountModal}
-                  className="whitespace-nowrap rounded-[6px] bg-[#1f1b1b] px-5 py-3 text-[16px] font-semibold text-white shadow-[0_8px_20px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:bg-black"
+                  className="whitespace-nowrap rounded-[6px] bg-[#1f1b1b] px-3 py-2 text-[14px] font-semibold text-white shadow-[0_6px_14px_rgba(0,0,0,0.16)] transition hover:-translate-y-0.5 hover:bg-black"
                 >
                   Create Account
                 </button>
