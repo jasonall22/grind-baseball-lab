@@ -1534,7 +1534,7 @@ const defaultState: AppState = {
     ["Tuesday", true, "16:00", "20:00"],
     ["Wednesday", true, "16:00", "20:00"],
     ["Thursday", true, "16:00", "20:00"],
-    ["Friday", true, "16:00", "18:00"],
+    ["Friday", true, "16:00", "20:30"],
     ["Saturday", false, "09:00", "15:00"],
     ["Sunday", false, "10:00", "14:00"],
   ],
@@ -1552,7 +1552,7 @@ const defaultState: AppState = {
         { day: "Tuesday", weekday: 2, enabled: true, slots: [{ id: "slot-tue-1", start: "16:00", end: "20:00", sortOrder: 1 }] },
         { day: "Wednesday", weekday: 3, enabled: true, slots: [{ id: "slot-wed-1", start: "16:00", end: "20:00", sortOrder: 1 }] },
         { day: "Thursday", weekday: 4, enabled: true, slots: [{ id: "slot-thu-1", start: "16:00", end: "20:00", sortOrder: 1 }] },
-        { day: "Friday", weekday: 5, enabled: true, slots: [{ id: "slot-fri-1", start: "16:00", end: "18:00", sortOrder: 1 }] },
+        { day: "Friday", weekday: 5, enabled: true, slots: [{ id: "slot-fri-1", start: "16:00", end: "20:30", sortOrder: 1 }] },
         { day: "Saturday", weekday: 6, enabled: false, slots: [] },
         { day: "Sunday", weekday: 0, enabled: false, slots: [] },
       ],
@@ -8499,10 +8499,7 @@ function CalendarView({
     }
 
     const start = Math.max(0, Math.floor((Math.min(...starts) - 60) / 30) * 30);
-    const paddedEnd = Math.min(24 * 60, Math.ceil((Math.max(...ends) + 90) / 30) * 30);
-    const end = Math.min(24 * 60, Math.max(paddedEnd, start + 4 * 60));
-
-    return { start, end };
+    return { start, end: 24 * 60 };
   }, [activeDate, defaultSchedule, resources, scheduleByResource, visibleDayBookings]);
   const slots = useMemo(
     () =>
