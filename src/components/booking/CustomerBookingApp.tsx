@@ -256,13 +256,13 @@ function MonthCalendar({ value, onChange }: { value: string; onChange: (value: s
 
 function LogoPanel({ compact = false }: { compact?: boolean }) {
   return (
-    <div className={`flex items-center justify-center overflow-hidden bg-black ${compact ? "h-full min-h-[92px]" : "min-h-[300px]"}`}>
+    <div className={`relative flex items-center justify-center overflow-hidden bg-black ${compact ? "h-full min-h-[108px]" : "min-h-[300px] sm:min-h-[340px]"}`}>
       <Image
         src="/logo.png"
         alt="The Grind Baseball Lab"
         width={compact ? 180 : 620}
         height={compact ? 70 : 241}
-        className={`${compact ? "w-[180px]" : "w-[620px] max-w-[78%]"} h-auto`}
+        className={`relative ${compact ? "w-[142px] sm:w-[160px]" : "w-[620px] max-w-[78%]"} h-auto`}
         priority={!compact}
       />
     </div>
@@ -270,30 +270,42 @@ function LogoPanel({ compact = false }: { compact?: boolean }) {
 }
 
 function InfoCard({ settings }: { settings: PublicBookingData["settings"] }) {
-  const iconClass = "mt-1 block h-5 w-5 shrink-0 rounded-full border-2 border-black/45";
+  const iconClass = "mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full border border-black/10 bg-white text-[14px] font-bold text-[#1784bd]";
   return (
-    <aside className="rounded-[6px] border border-black/10 p-7 text-[14px] leading-6">
-      <div className="grid gap-4">
+    <aside className="h-fit rounded-[10px] border border-black/10 bg-white p-6 text-[14px] leading-6 shadow-[0_10px_30px_rgba(15,23,42,0.06)] lg:sticky lg:top-[110px]">
+      <div className="text-[12px] font-bold uppercase tracking-[0.16em] text-black/40">Facility Info</div>
+      <div className="mt-5 grid gap-5">
         <div className="flex gap-4">
-          <span className={iconClass} />
-          <span>{settings.address}</span>
+          <span className={iconClass}>A</span>
+          <div>
+            <div className="text-[13px] font-semibold uppercase tracking-[0.1em] text-black/40">Address</div>
+            <div className="mt-1 text-[15px] text-black/75">{settings.address}</div>
+          </div>
         </div>
         <div className="flex gap-4">
-          <span className={iconClass} />
-          <span>{settings.phone}</span>
+          <span className={iconClass}>P</span>
+          <div>
+            <div className="text-[13px] font-semibold uppercase tracking-[0.1em] text-black/40">Phone</div>
+            <div className="mt-1 text-[15px] text-black/75">{settings.phone}</div>
+          </div>
         </div>
-        <div className="flex gap-4">
-          <span className={iconClass} />
-          <span>
-            <span className="text-[#d10018]">Closed</span> - Opens 4PM today
-          </span>
-          <span className="ml-auto text-black/55">v</span>
+        <div className="flex gap-4 rounded-[8px] border border-red-100 bg-red-50/70 px-4 py-3">
+          <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white text-[14px] font-bold text-[#d10018]">H</span>
+          <div className="min-w-0">
+            <div className="text-[13px] font-semibold uppercase tracking-[0.1em] text-black/40">Today</div>
+            <div className="mt-1 text-[15px] text-black/75">
+              <span className="font-semibold text-[#d10018]">Closed</span> - Opens 4PM today
+            </div>
+          </div>
+          <span className="ml-auto text-black/45">v</span>
         </div>
       </div>
-      <div className="mt-8 font-semibold">Follow us</div>
-      <div className="mt-3 flex gap-5 text-[22px] text-black/45">
-        <span className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-black/45 text-[12px]">w</span>
-        <span>f</span>
+      <div className="mt-7 border-t border-black/10 pt-6">
+        <div className="font-semibold">Follow us</div>
+        <div className="mt-4 flex gap-3 text-[15px] font-semibold text-black/60">
+          <span className="grid h-10 w-10 place-items-center rounded-full border border-black/10 bg-[#f7f8fa]">W</span>
+          <span className="grid h-10 w-10 place-items-center rounded-full border border-black/10 bg-[#f7f8fa]">F</span>
+        </div>
       </div>
     </aside>
   );
@@ -713,13 +725,13 @@ export default function CustomerBookingApp() {
   }
 
   return (
-    <main className="min-h-screen bg-white text-black">
-      <header className="sticky top-0 z-30 border-b border-black/10 bg-white">
-        <div className="mx-auto flex h-[102px] max-w-[1380px] items-center justify-between px-8">
-          <span>
-            <Image src="/logo.png" alt="The Grind Baseball Lab" width={72} height={28} className="h-8 w-auto opacity-75" priority />
+    <main className="min-h-screen bg-[#f6f7f9] text-black">
+      <header className="sticky top-0 z-30 border-b border-black/10 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex min-h-[86px] max-w-[1240px] items-center justify-between gap-5 px-5 py-4 lg:px-8">
+          <span className="inline-flex h-12 items-center rounded-[6px] bg-black px-4 shadow-sm">
+            <Image src="/logo.png" alt="The Grind Baseball Lab" width={118} height={46} className="h-8 w-auto" priority />
           </span>
-          <div className="flex items-center gap-7">
+          <div className="flex items-center gap-3 sm:gap-5">
             {parentAccount ? (
               <div ref={accountMenuRef} className="relative">
                 <button
@@ -752,13 +764,13 @@ export default function CustomerBookingApp() {
               </div>
             ) : (
               <>
-                <a href="/login?next=/book" className="text-[18px] font-semibold">
+                <a href="/login?next=/book" className="rounded-[6px] px-3 py-2 text-[16px] font-semibold transition hover:bg-black/[0.04]">
                   Sign In
                 </a>
                 <button
                   type="button"
                   onClick={openAccountModal}
-                  className="rounded-[4px] bg-[#272322] px-7 py-4 text-[18px] font-semibold text-white shadow-[0_3px_8px_rgba(0,0,0,0.24)]"
+                  className="rounded-[6px] bg-[#1f1b1b] px-5 py-3 text-[16px] font-semibold text-white shadow-[0_8px_20px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:bg-black"
                 >
                   Create Account
                 </button>
@@ -768,39 +780,60 @@ export default function CustomerBookingApp() {
         </div>
       </header>
 
-      <LogoPanel />
+      <section className="bg-white px-4 py-5 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-[1240px] overflow-hidden rounded-[10px] border border-black/10 bg-black shadow-[0_18px_45px_rgba(0,0,0,0.16)]">
+          <LogoPanel />
+        </div>
+      </section>
 
-      <section className="mx-auto grid max-w-[1380px] gap-16 px-8 py-14 lg:grid-cols-[1fr_440px]">
-        <div>
-          <h1 className="text-[36px] font-normal leading-tight">{data.settings.facilityName}</h1>
-          <p className="mt-9 max-w-[900px] text-center text-[18px] leading-[1.55]">
-            The Grind Baseball Lab prides itself on delivering exceptional training experiences designed to elevate players at every level.
-            With a focus on comprehensive development, our recent projects reflect innovative techniques and methodologies that promote both
-            physical and mental growth in athletes. Check out how we&apos;re making a real difference in the world of baseball and softball
-          </p>
-          <button type="button" className="mt-8 inline-flex items-center gap-3 text-[16px] font-semibold">
-            Read more <span className="text-[22px]">v</span>
-          </button>
+      <section className="mx-auto grid max-w-[1240px] gap-8 px-5 py-10 lg:grid-cols-[minmax(0,1fr)_370px] lg:px-8">
+        <div className="min-w-0">
+          <div className="rounded-[10px] border border-black/10 bg-white px-5 py-6 shadow-[0_10px_30px_rgba(15,23,42,0.06)] sm:px-8 sm:py-8">
+            <div className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#1784bd]">Book Online</div>
+            <h1 className="mt-3 text-[34px] font-semibold leading-tight tracking-normal sm:text-[42px]">{data.settings.facilityName}</h1>
+            <p className="mt-5 max-w-[850px] text-[17px] leading-8 text-black/65">
+              Reserve cage time, lessons, camps, and memberships with a smoother booking experience built for baseball and softball families.
+            </p>
+            <div className="mt-7 flex flex-wrap gap-3 text-[14px] font-semibold text-black/70">
+              <span className="rounded-full bg-[#e9f6fd] px-4 py-2 text-[#176d99]">Indoor training</span>
+              <span className="rounded-full bg-[#eef8ef] px-4 py-2 text-[#26723a]">Private lessons</span>
+              <span className="rounded-full bg-[#f3f4f6] px-4 py-2">Easy scheduling</span>
+            </div>
+          </div>
 
-          <div className="mt-10 flex items-center gap-3 text-[30px]">
+          <div className="mt-8 flex items-center gap-3">
             {selectedCategory ? (
-              <button type="button" onClick={() => setSelectedCategory(null)} className="text-[34px] text-black/35">
+              <button
+                type="button"
+                onClick={() => setSelectedCategory(null)}
+                className="grid h-10 w-10 place-items-center rounded-full border border-black/10 bg-white text-[26px] text-black/55 shadow-sm transition hover:border-black/25 hover:text-black"
+                aria-label="Back to services"
+              >
                 {"<"}
               </button>
             ) : null}
-            <h2 className="font-normal">{selectedCategory ? publicBookingCategoryLabels[selectedCategory].title : "Services"}</h2>
+            <div>
+              <h2 className="text-[28px] font-semibold leading-tight">
+                {selectedCategory ? publicBookingCategoryLabels[selectedCategory].title : "Services"}
+              </h2>
+              <p className="mt-1 text-[15px] text-black/55">
+                {selectedCategory
+                  ? publicBookingCategoryLabels[selectedCategory].description
+                  : "Choose what you want to book."}
+              </p>
+            </div>
           </div>
 
           {selectedCategory ? (
-            <div className="mt-12 grid gap-5">
+            <div className="mt-6 grid gap-4">
               <div className="flex justify-end">
-                <button type="button" className="rounded-full border border-black/15 px-5 py-2 text-[15px] text-black/55">
+                <button type="button" className="rounded-full border border-black/10 bg-white px-5 py-2 text-[14px] font-semibold text-black/60 shadow-sm transition hover:border-black/25 hover:text-black">
                   Filter
                 </button>
               </div>
               {loading
                 ? [1, 2, 3].map((item) => (
-                    <div key={item} className="h-[152px] rounded-[16px] border border-black/10 p-6">
+                    <div key={item} className="h-[152px] rounded-[10px] border border-black/10 bg-white p-6 shadow-sm">
                       <div className="h-8 w-40 rounded bg-black/5" />
                       <div className="mt-5 h-5 w-2/3 rounded bg-black/5" />
                     </div>
@@ -810,32 +843,44 @@ export default function CustomerBookingApp() {
                       key={service.id}
                       type="button"
                       onClick={() => openService(service)}
-                      className="grid min-h-[152px] grid-cols-[170px_1fr_auto] overflow-hidden rounded-[16px] border border-black/15 text-left hover:border-black"
+                      className="grid min-h-[150px] overflow-hidden rounded-[10px] border border-black/10 bg-white text-left shadow-[0_8px_24px_rgba(15,23,42,0.05)] transition hover:-translate-y-0.5 hover:border-black/20 hover:shadow-[0_16px_34px_rgba(15,23,42,0.11)] sm:grid-cols-[150px_1fr_auto]"
                     >
                       <LogoPanel compact />
-                      <div className="px-6 py-7">
-                        <div className="text-[22px] font-semibold">{service.name}</div>
-                        <div className="mt-4 text-[16px] text-black/55">
+                      <div className="px-5 py-6 sm:px-6">
+                        <div className="text-[20px] font-semibold leading-tight">{service.name}</div>
+                        <div className="mt-3 text-[15px] leading-6 text-black/60">
                           Book {durationLabel(service.duration).toLowerCase()} of{" "}
                           {service.category === "lessons" ? "private instruction" : serviceRooms(service, data.resources).join(", ")}.
                         </div>
-                        <span className="mt-5 inline-flex rounded-full bg-black/5 px-4 py-1 text-[14px]">{durationLabel(service.duration)}</span>
+                        <span className="mt-5 inline-flex rounded-full bg-[#eef4fb] px-4 py-1.5 text-[13px] font-semibold text-[#315f90]">
+                          {durationLabel(service.duration)}
+                        </span>
                       </div>
-                      <div className="px-7 py-7 text-[26px]">{money(service.price)}</div>
+                      <div className="flex items-center justify-between border-t border-black/10 px-5 py-4 sm:block sm:border-l sm:border-t-0 sm:px-7 sm:py-6">
+                        <div className="text-[24px] font-semibold">{money(service.price)}</div>
+                        <div className="mt-0 text-[13px] font-semibold text-[#1784bd] sm:mt-8">Book now</div>
+                      </div>
                     </button>
                   ))}
             </div>
           ) : (
-            <div className="mt-6 grid gap-5">
+            <div className="mt-6 grid gap-4 sm:grid-cols-2">
               {visibleCategories.map((category) => (
                 <button
                   key={category}
                   type="button"
                   onClick={() => setSelectedCategory(category)}
-                  className="rounded-[16px] border border-black/15 px-6 py-8 text-left hover:border-black"
+                  className="group rounded-[10px] border border-black/10 bg-white px-6 py-7 text-left shadow-[0_8px_24px_rgba(15,23,42,0.05)] transition hover:-translate-y-0.5 hover:border-black/20 hover:shadow-[0_16px_34px_rgba(15,23,42,0.1)]"
                 >
-                  <div className="text-[20px] font-semibold">{publicBookingCategoryLabels[category].title}</div>
-                  <div className="mt-5 text-[17px] text-black/55">{publicBookingCategoryLabels[category].description}</div>
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="text-[20px] font-semibold">{publicBookingCategoryLabels[category].title}</div>
+                      <div className="mt-3 text-[15px] leading-6 text-black/60">{publicBookingCategoryLabels[category].description}</div>
+                    </div>
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#eef4fb] text-[18px] font-semibold text-[#315f90] transition group-hover:bg-[#1784bd] group-hover:text-white">
+                      {">"}
+                    </span>
+                  </div>
                 </button>
               ))}
             </div>
