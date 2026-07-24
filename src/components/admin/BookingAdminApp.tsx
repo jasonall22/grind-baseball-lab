@@ -154,9 +154,11 @@ type StaffAvailabilityEntry = {
   color: string;
   recurring?: boolean;
   recurrenceId?: string;
-  recurrenceFrequency?: "weekly";
+  recurrenceFrequency?: StaffAvailabilityRecurrenceFrequency;
   recurrenceEndDate?: string;
 };
+
+type StaffAvailabilityRecurrenceFrequency = "daily" | "weekly" | "custom";
 
 type StaffRoleSummary = {
   role: StaffRole;
@@ -1925,7 +1927,22 @@ function isIsoDate(value: unknown): value is string {
 }
 
 function defaultStaffAvailabilityRecurrenceEndDate(date: string) {
-  return shiftDate(date, 26 * 7);
+  return shiftDate(date, 7);
+}
+
+function normalizeStaffAvailabilityRecurrenceFrequency(value: unknown): StaffAvailabilityRecurrenceFrequency {
+  if (value === "daily" || value === "weekly" || value === "custom") return value;
+  return "daily";
+}
+
+function formatStaffAvailabilityRecurrenceEnd(value: string) {
+  if (!isIsoDate(value)) return value;
+  return parseLocalDate(value).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function normalizeStaffAvailabilityEntry(value: unknown, staffById: Map<string, StaffMember>, fallbackIndex = 0): StaffAvailabilityEntry | null {
@@ -1962,7 +1979,7 @@ function normalizeStaffAvailabilityEntry(value: unknown, staffById: Map<string, 
         ? item.recurrenceId
         : makeId("recurrence")
       : undefined,
-    recurrenceFrequency: recurring ? "weekly" : undefined,
+    recurrenceFrequency: recurring ? normalizeStaffAvailabilityRecurrenceFrequency(item.recurrenceFrequency) : undefined,
     recurrenceEndDate,
   };
 }
@@ -1992,7 +2009,7 @@ function normalizeStaffAvailabilityRow(
       color: row.color ?? staffById.get(row.staff_member_id)?.calendarColor ?? staffAvailabilityColor(fallbackIndex),
       recurring: Boolean(row.is_recurring),
       recurrenceId: row.recurrence_id ?? undefined,
-      recurrenceFrequency: row.recurrence_frequency === "weekly" ? "weekly" : undefined,
+      recurrenceFrequency: normalizeStaffAvailabilityRecurrenceFrequency(row.recurrence_frequency),
       recurrenceEndDate: row.recurrence_end_date ?? undefined,
     },
     staffById,
@@ -2004,6 +2021,8 @@ function expandStaffAvailabilityRecurrence(entry: StaffAvailabilityEntry, startD
   if (!entry.recurring || !entry.recurrenceEndDate) return [entry];
 
   const recurrenceId = entry.recurrenceId ?? makeId("recurrence");
+  const recurrenceFrequency = normalizeStaffAvailabilityRecurrenceFrequency(entry.recurrenceFrequency);
+  const stepDays = recurrenceFrequency === "daily" ? 1 : 7;
   const entries: StaffAvailabilityEntry[] = [];
   let date = startDate;
   let index = 0;
@@ -2015,10 +2034,10 @@ function expandStaffAvailabilityRecurrence(entry: StaffAvailabilityEntry, startD
       date,
       recurring: true,
       recurrenceId,
-      recurrenceFrequency: "weekly",
+      recurrenceFrequency,
       recurrenceEndDate: entry.recurrenceEndDate,
     });
-    date = shiftDate(date, 7);
+    date = shiftDate(date, stepDays);
     index += 1;
   }
 
@@ -9978,7 +9997,7 @@ function AvailabilityView({
 
       {draft ? (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/45 p-4">
-          <div className="flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-black/10 px-6 py-5">
               <h2 className="text-[18px] font-semibold text-black">
                 {entries.some((entry) => entry.id === draft.id) ? "Edit Availability" : "Add Availability"}
@@ -9989,34 +10008,6 @@ function AvailabilityView({
             </div>
 
             <div className="grid gap-5 overflow-y-auto px-6 py-5">
-              <label className="grid gap-1.5">
-                <span className="text-sm font-semibold text-black/70">Staff</span>
-                <select
-                  value={draft.staffId}
-                  disabled={!canManageAny}
-                  onChange={(event) => {
-                    const staffMember = staffById.get(event.target.value);
-                    setDraft((current) =>
-                      current && staffMember
-                        ? {
-                            ...current,
-                            staffId: staffMember.id,
-                            staffName: staffMember.name,
-                            color: staffColorById.get(staffMember.id) ?? staffMember.calendarColor ?? current.color,
-                          }
-                        : current
-                    );
-                  }}
-                  className="min-h-12 rounded-lg border border-black/10 bg-white px-4 text-[15px] disabled:bg-black/[0.03]"
-                >
-                  {manageableStaff.map((member) => (
-                    <option key={member.id} value={member.id}>
-                      {member.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
               <div className="grid gap-4 sm:grid-cols-3">
                 <label className="grid gap-1.5">
                   <span className="text-sm font-semibold text-black/70">Date</span>
@@ -10041,7 +10032,7 @@ function AvailabilityView({
                   />
                 </label>
                 <label className="grid gap-1.5">
-                  <span className="text-sm font-semibold text-black/70">Start</span>
+                  <span className="text-sm font-semibold text-black/70">Start Time</span>
                   <input
                     type="time"
                     value={draft.start}
@@ -10050,7 +10041,7 @@ function AvailabilityView({
                   />
                 </label>
                 <label className="grid gap-1.5">
-                  <span className="text-sm font-semibold text-black/70">End</span>
+                  <span className="text-sm font-semibold text-black/70">End Time</span>
                   <input
                     type="time"
                     value={draft.end}
@@ -10060,7 +10051,7 @@ function AvailabilityView({
                 </label>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-[180px_1fr_180px] sm:items-end">
+              <div className="grid gap-4 sm:grid-cols-[150px_1fr_92px_180px] sm:items-start">
                 <div className="grid gap-1.5">
                   <span className="text-sm font-semibold text-black/70">Repeats</span>
                   <div className="inline-grid min-h-12 grid-cols-2 overflow-hidden rounded-lg border border-black/10 bg-white">
@@ -10095,7 +10086,7 @@ function AvailabilityView({
                                 ...current,
                                 recurring: true,
                                 recurrenceId: current.recurrenceId ?? makeId("recurrence"),
-                                recurrenceFrequency: "weekly",
+                                recurrenceFrequency: current.recurrenceFrequency ?? "daily",
                                 recurrenceEndDate: current.recurrenceEndDate ?? defaultStaffAvailabilityRecurrenceEndDate(current.date),
                               }
                             : current
@@ -10116,11 +10107,28 @@ function AvailabilityView({
                     <label className="grid gap-1.5">
                       <span className="text-sm font-semibold text-black/70">Frequency</span>
                       <select
-                        value="weekly"
-                        onChange={() => undefined}
+                        value={draft.recurrenceFrequency ?? "daily"}
+                        onChange={(event) =>
+                          setDraft((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  recurrenceFrequency: normalizeStaffAvailabilityRecurrenceFrequency(event.target.value),
+                                }
+                              : current
+                          )
+                        }
                         className="min-h-12 rounded-lg border border-black/10 bg-white px-4 text-[15px]"
                       >
+                        <option value="daily">Daily</option>
                         <option value="weekly">Weekly on {weekdayName(draft.date)}</option>
+                        <option value="custom">Custom</option>
+                      </select>
+                    </label>
+                    <label className="grid gap-1.5">
+                      <span className="text-sm font-semibold text-black/70">Ends</span>
+                      <select value="on" onChange={() => undefined} className="min-h-12 rounded-lg border border-black/10 bg-white px-4 text-[15px]">
+                        <option value="on">On</option>
                       </select>
                     </label>
                     <label className="grid gap-1.5">
@@ -10144,10 +10152,41 @@ function AvailabilityView({
                         }
                         className="min-h-12 rounded-lg border border-black/10 px-4 text-[15px]"
                       />
+                      <span className="px-4 text-xs text-black/65">
+                        (Ends: {formatStaffAvailabilityRecurrenceEnd(draft.recurrenceEndDate ?? defaultStaffAvailabilityRecurrenceEndDate(draft.date))})
+                      </span>
                     </label>
                   </>
                 ) : null}
               </div>
+
+              <label className="grid gap-1.5">
+                <span className="text-sm font-semibold text-black/70">Staff</span>
+                <select
+                  value={draft.staffId}
+                  disabled={!canManageAny}
+                  onChange={(event) => {
+                    const staffMember = staffById.get(event.target.value);
+                    setDraft((current) =>
+                      current && staffMember
+                        ? {
+                            ...current,
+                            staffId: staffMember.id,
+                            staffName: staffMember.name,
+                            color: staffColorById.get(staffMember.id) ?? staffMember.calendarColor ?? current.color,
+                          }
+                        : current
+                    );
+                  }}
+                  className="min-h-12 rounded-lg border border-black/10 bg-white px-4 text-[15px] disabled:bg-black/[0.03]"
+                >
+                  {manageableStaff.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
               <div className="grid gap-2">
                 <span className="text-sm font-semibold text-black/70">Rooms</span>
