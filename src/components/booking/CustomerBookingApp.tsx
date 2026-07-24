@@ -256,13 +256,13 @@ function MonthCalendar({ value, onChange }: { value: string; onChange: (value: s
 
 function LogoPanel({ compact = false }: { compact?: boolean }) {
   return (
-    <div className={`flex items-center justify-center overflow-hidden bg-[#f4f4f4] ${compact ? "h-full min-h-[92px]" : "min-h-[300px]"}`}>
+    <div className={`flex items-center justify-center overflow-hidden bg-black ${compact ? "h-full min-h-[92px]" : "min-h-[300px]"}`}>
       <Image
         src="/logo.png"
         alt="The Grind Baseball Lab"
         width={compact ? 180 : 620}
         height={compact ? 70 : 241}
-        className={`${compact ? "w-[180px]" : "w-[620px] max-w-[78%]"} h-auto opacity-75`}
+        className={`${compact ? "w-[180px]" : "w-[620px] max-w-[78%]"} h-auto`}
         priority={!compact}
       />
     </div>
