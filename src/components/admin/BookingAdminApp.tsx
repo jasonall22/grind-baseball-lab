@@ -15642,7 +15642,11 @@ function StaffSettingsView({
     setSaving(true);
     try {
       setDraft(nextStaff);
-      await onSave(nextStaff, "Staff member updated.");
+      const result = await onSave(nextStaff, "Staff member updated.");
+      if (result !== false) {
+        setSelectedStaffId(null);
+        setActiveDetailTab("profile");
+      }
     } finally {
       setSaving(false);
     }
