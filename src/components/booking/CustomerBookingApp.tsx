@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type Dispatch, type FormEvent, type ReactNode, type SetStateAction } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type FormEvent, type ReactNode, type SetStateAction } from "react";
 import Image from "next/image";
 
 import {
@@ -479,9 +479,11 @@ export default function CustomerBookingApp() {
   const [accountForm, setAccountForm] = useState<AccountForm>(emptyAccountForm);
   const [accountBusy, setAccountBusy] = useState(false);
   const [accountStatus, setAccountStatus] = useState("");
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [discountCode, setDiscountCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const accountMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -563,6 +565,17 @@ export default function CustomerBookingApp() {
     }
   }, [coachOptions, needsCoach, selectedCoachId]);
 
+  useEffect(() => {
+    function closeAccountMenu(event: MouseEvent) {
+      if (!accountMenuOpen) return;
+      if (accountMenuRef.current?.contains(event.target as Node)) return;
+      setAccountMenuOpen(false);
+    }
+
+    document.addEventListener("mousedown", closeAccountMenu);
+    return () => document.removeEventListener("mousedown", closeAccountMenu);
+  }, [accountMenuOpen]);
+
   function openService(service: PublicBookingService) {
     setSelectedServiceId(service.id);
     setSelectedTime(null);
@@ -598,6 +611,7 @@ export default function CustomerBookingApp() {
   }
 
   async function signOut() {
+    setAccountMenuOpen(false);
     await supabase.auth.signOut();
     setParentAccount(null);
     setSelectedPlayer("Yourself");
@@ -707,14 +721,35 @@ export default function CustomerBookingApp() {
           </span>
           <div className="flex items-center gap-7">
             {parentAccount ? (
-              <>
-                <button type="button" onClick={signOut} className="text-[18px] font-semibold">
-                  Sign Out
+              <div ref={accountMenuRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setAccountMenuOpen((current) => !current)}
+                  className="flex h-12 w-12 items-center justify-center rounded-full bg-black text-white shadow-[0_2px_8px_rgba(0,0,0,0.2)]"
+                  aria-label="Account menu"
+                >
+                  <span className="relative block h-7 w-7">
+                    <span className="absolute left-1/2 top-[3px] h-[10px] w-[10px] -translate-x-1/2 rounded-full border-2 border-white" />
+                    <span className="absolute bottom-[2px] left-1/2 h-[13px] w-[21px] -translate-x-1/2 rounded-t-full border-2 border-white border-b-0" />
+                  </span>
                 </button>
-                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#bdbdbd] text-[14px] font-semibold text-white">
-                  {initials(parentAccount.parentName)}
-                </div>
-              </>
+
+                {accountMenuOpen ? (
+                  <div className="absolute right-0 top-full z-40 mt-3 w-64 overflow-hidden rounded-[6px] border border-black/10 bg-white text-black shadow-[0_12px_30px_rgba(0,0,0,0.24)]">
+                    <div className="border-b border-black/10 px-4 py-3">
+                      <div className="text-[15px] font-semibold">{parentAccount.parentName}</div>
+                      <div className="mt-1 truncate text-[13px] text-black/55">{parentAccount.email}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={signOut}
+                      className="block w-full px-4 py-3 text-left text-[15px] font-semibold hover:bg-black/[0.04]"
+                    >
+                      Sign Out
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             ) : (
               <>
                 <a href="/login?next=/book" className="text-[18px] font-semibold">
