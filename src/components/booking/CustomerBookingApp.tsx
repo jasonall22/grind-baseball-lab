@@ -783,12 +783,12 @@ export default function CustomerBookingApp() {
   return (
     <main className="min-h-screen bg-[#f6f7f9] text-black">
       <header className="sticky top-0 z-30 border-b border-black/10 bg-white">
-        <div className="mx-auto grid min-h-[186px] max-w-[1240px] grid-cols-1 items-center gap-4 px-5 py-5 sm:grid-cols-[1fr_auto_1fr] sm:gap-5 lg:px-8">
+        <div className="mx-auto grid min-h-[128px] max-w-[1240px] grid-cols-1 items-end gap-4 px-5 pb-4 pt-5 sm:grid-cols-[1fr_auto_1fr] sm:gap-5 lg:px-8">
           <div className="hidden sm:block" />
           <span className="inline-flex items-center justify-self-center">
-            <Image src="/booking-header-logo.png" alt="The Grind Baseball Lab" width={690} height={306} className="h-28 w-auto sm:h-36" priority />
+            <Image src="/booking-header-logo.png" alt="The Grind Baseball Lab" width={460} height={204} className="h-20 w-auto sm:h-24" priority />
           </span>
-          <div className="flex items-center justify-center gap-3 justify-self-center sm:justify-self-end sm:gap-5">
+          <div className="flex items-center justify-center gap-3 justify-self-center pb-1 sm:justify-self-end sm:gap-5">
             {parentAccount ? (
               <div ref={accountMenuRef} className="relative">
                 <button
@@ -821,13 +821,13 @@ export default function CustomerBookingApp() {
               </div>
             ) : (
               <>
-                <a href="/login?next=/book" className="rounded-[6px] px-3 py-2 text-[16px] font-semibold transition hover:bg-black/[0.04]">
+                <a href="/login?next=/book" className="whitespace-nowrap rounded-[6px] px-3 py-2 text-[16px] font-semibold transition hover:bg-black/[0.04]">
                   Sign In
                 </a>
                 <button
                   type="button"
                   onClick={openAccountModal}
-                  className="rounded-[6px] bg-[#1f1b1b] px-5 py-3 text-[16px] font-semibold text-white shadow-[0_8px_20px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:bg-black"
+                  className="whitespace-nowrap rounded-[6px] bg-[#1f1b1b] px-5 py-3 text-[16px] font-semibold text-white shadow-[0_8px_20px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:bg-black"
                 >
                   Create Account
                 </button>
