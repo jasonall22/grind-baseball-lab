@@ -6258,6 +6258,7 @@ export default function BookingAdminApp({
           {view === "availability" ? (
             <AvailabilityView
               rows={state.availability}
+              schedules={state.schedules}
               staff={state.staff}
               resources={state.resources}
               entries={state.staffAvailability}
@@ -9646,6 +9647,7 @@ function CalendarSegmentButton({
 
 function AvailabilityView({
   rows,
+  schedules,
   staff,
   resources,
   entries,
@@ -9657,6 +9659,7 @@ function AvailabilityView({
   onDeleteEntry,
 }: {
   rows: AppState["availability"];
+  schedules: ScheduleRecord[];
   staff: StaffMember[];
   resources: string[];
   entries: StaffAvailabilityEntry[];
@@ -9683,6 +9686,11 @@ function AvailabilityView({
   const slotHeight = 40;
   const slots = useMemo(() => Array.from({ length: 48 }, (_, index) => minutesToTime(index * 30)), []);
   const visibleDates = useMemo(() => (calendarMode === "week" ? weekDates(activeDate) : [activeDate]), [activeDate, calendarMode]);
+  const scheduleCollection = schedules.length ? schedules : defaultState.schedules;
+  const workingSchedule =
+    scheduleCollection.find((schedule) => schedule.isDefault || schedule.slug === "working-hours") ??
+    scheduleCollection[0] ??
+    null;
   const staffById = useMemo(() => new Map(staff.map((member) => [member.id, member])), [staff]);
   const manageableStaff = useMemo(() => {
     const activeStaff = staff.filter((member) => member.active);
@@ -9702,10 +9710,14 @@ function AvailabilityView({
   }, [staff]);
   const today = isoDate(new Date());
   const scrollStartMinutes = useMemo(() => {
-    const openStarts = rows.filter(([, open]) => open).map(([, , start]) => timeToMinutes(start));
+    const openStarts = visibleDates.flatMap((date) =>
+      workingSchedule
+        ? scheduleOpenSlotsForDate(workingSchedule, date).map((slot) => timeToMinutes(slot.start))
+        : rows.filter(([, open]) => open).map(([, , start]) => timeToMinutes(start))
+    );
     if (!openStarts.length) return 12 * 60;
     return Math.max(0, Math.min(...openStarts) - 4 * 60);
-  }, [rows]);
+  }, [rows, visibleDates, workingSchedule]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -9859,7 +9871,9 @@ function AvailabilityView({
   }
 
   function renderAvailabilityBlocks(date: string) {
-    const closedBlocks = closedBlocksForDate(rows, date);
+    const closedBlocks = workingSchedule
+      ? closedBlocksForSchedule(workingSchedule, date)
+      : closedBlocksForDate(rows, date);
     const dayEntries = visibleEntries.filter((entry) => entry.date === date);
 
     return (
