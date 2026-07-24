@@ -51,6 +51,7 @@ export type PublicBookingExisting = {
   start: string;
   end: string;
   resourceId: string | null;
+  staffId: string | null;
 };
 
 export type PublicBookingStaff = {
@@ -58,6 +59,16 @@ export type PublicBookingStaff = {
   name: string;
   email: string;
   role: string;
+  calendarColor: string;
+};
+
+export type PublicBookingStaffAvailability = {
+  id: string;
+  staffId: string;
+  date: string;
+  start: string;
+  end: string;
+  resourceNames: string[];
 };
 
 export type PublicBookingData = {
@@ -67,6 +78,7 @@ export type PublicBookingData = {
   schedules: PublicBookingSchedule[];
   bookings: PublicBookingExisting[];
   staff: PublicBookingStaff[];
+  staffAvailability: PublicBookingStaffAvailability[];
 };
 
 export const publicBookingCategoryLabels: Record<PublicBookingCategory, { title: string; description: string }> = {
@@ -168,9 +180,10 @@ export const fallbackPublicBookingData: PublicBookingData = {
   ],
   bookings: [],
   staff: [
-    { id: "staff-jason", name: "Jason Allaire", email: "info@grindbaseballlab.com", role: "Owner" },
-    { id: "staff-august", name: "August Backman", email: "august.baseball19@gmail.com", role: "Instructor" },
+    { id: "staff-jason", name: "Jason Allaire", email: "info@grindbaseballlab.com", role: "Owner", calendarColor: "#249b41" },
+    { id: "staff-august", name: "August Backman", email: "august.baseball19@gmail.com", role: "Instructor", calendarColor: "#e89bef" },
   ],
+  staffAvailability: [],
 };
 
 export function normalizeClock(value: string | null | undefined) {

@@ -79,19 +79,60 @@ function formatLongDate(value: string) {
 function isConflict(choice: TimeChoice, date: string, bookings: PublicBookingData["bookings"]) {
   return bookings.some(
     (booking) =>
+      booking.date === date &&
       booking.resourceId === choice.resourceId &&
+      timeToMinutes(choice.start) < timeToMinutes(booking.end) &&
+      timeToMinutes(choice.end) > timeToMinutes(booking.start)
+  );
+}
+
+function isCoachConflict(choice: TimeChoice, date: string, staffId: string, bookings: PublicBookingData["bookings"]) {
+  return bookings.some(
+    (booking) =>
+      booking.staffId === staffId &&
       booking.date === date &&
       timeToMinutes(choice.start) < timeToMinutes(booking.end) &&
       timeToMinutes(choice.end) > timeToMinutes(booking.start)
   );
 }
 
+function staffAvailabilityCovers(data: PublicBookingData, choice: TimeChoice, date: string, staffId: string) {
+  return data.staffAvailability.some(
+    (entry) =>
+      entry.staffId === staffId &&
+      entry.date === date &&
+      timeToMinutes(choice.start) >= timeToMinutes(entry.start) &&
+      timeToMinutes(choice.end) <= timeToMinutes(entry.end) &&
+      (!entry.resourceNames.length || entry.resourceNames.includes(choice.resourceName))
+  );
+}
+
+function coachOptionsForService(data: PublicBookingData, service: PublicBookingService | null) {
+  if (!service || service.category !== "lessons") return [];
+  const assignedNames = new Set(service.instructors.map((name) => name.trim().toLowerCase()).filter(Boolean));
+  const staff = assignedNames.size
+    ? data.staff.filter((member) => assignedNames.has(member.name.trim().toLowerCase()))
+    : data.staff.filter((member) => ["instructor", "owner", "admin"].includes(member.role.trim().toLowerCase()));
+
+  return staff.length
+    ? staff
+    : service.instructors.map((name) => ({
+        id: `coach-${name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+        name,
+        email: "",
+        role: "Instructor",
+        calendarColor: "#249b41",
+      }));
+}
+
 function getAvailableSlots(
   data: PublicBookingData,
   service: PublicBookingService | null,
-  date: string
+  date: string,
+  staffId?: string
 ): TimeChoice[] {
   if (!service) return [];
+  if (service.category === "lessons" && !staffId) return [];
   const schedulesById = new Map(data.schedules.map((schedule) => [schedule.id, schedule]));
   const resourcesByName = new Map(data.resources.map((resource) => [resource.name, resource]));
   const defaultSchedule = data.schedules.find((schedule) => schedule.isDefault) ?? data.schedules[0];
@@ -119,7 +160,10 @@ function getAvailableSlots(
           resourceName: resource.name,
         };
         if (isToday && start <= currentMinutes) continue;
-        if (!isConflict(choice, date, data.bookings)) choices.push(choice);
+        if (isConflict(choice, date, data.bookings)) continue;
+        if (service.category === "lessons" && staffId && !staffAvailabilityCovers(data, choice, date, staffId)) continue;
+        if (service.category === "lessons" && staffId && isCoachConflict(choice, date, staffId, data.bookings)) continue;
+        choices.push(choice);
       }
     }
   }
@@ -418,6 +462,7 @@ export default function CustomerBookingApp() {
   const [step, setStep] = useState<BookingStep>("overview");
   const [selectedDate, setSelectedDate] = useState(todayIso());
   const [selectedTime, setSelectedTime] = useState<TimeChoice | null>(null);
+  const [selectedCoachId, setSelectedCoachId] = useState("");
   const [selectedPlayer, setSelectedPlayer] = useState("Yourself");
   const [form, setForm] = useState({ parentName: "", playerName: "Yourself", email: "", phone: "" });
   const [parentAccount, setParentAccount] = useState<ParentAccount | null>(null);
@@ -488,14 +533,31 @@ export default function CustomerBookingApp() {
   );
   const visibleCategories = categoryOrder.filter((category) => data.services.some((service) => service.category === category));
   const servicesForCategory = selectedCategory ? data.services.filter((service) => service.category === selectedCategory) : [];
-  const availableTimes = useMemo(() => getAvailableSlots(data, selectedService, selectedDate), [data, selectedDate, selectedService]);
-  const selectedInstructor = selectedService?.instructors[0] || data.staff[0]?.name || "";
+  const coachOptions = useMemo(() => coachOptionsForService(data, selectedService), [data, selectedService]);
+  const selectedCoach = coachOptions.find((coach) => coach.id === selectedCoachId) ?? null;
+  const selectedCoachName = selectedCoach?.name ?? "";
+  const needsCoach = selectedService?.category === "lessons";
+  const availableTimes = useMemo(
+    () => getAvailableSlots(data, selectedService, selectedDate, needsCoach ? selectedCoachId : undefined),
+    [data, needsCoach, selectedCoachId, selectedDate, selectedService]
+  );
   const onlineTotals = selectedService ? calculatePublicTotals(selectedService, data.settings, "online") : null;
   const inPersonTotals = selectedService ? calculatePublicTotals(selectedService, data.settings, "in-person") : null;
+
+  useEffect(() => {
+    if (!needsCoach) {
+      if (selectedCoachId) setSelectedCoachId("");
+      return;
+    }
+    if (selectedCoachId && !coachOptions.some((coach) => coach.id === selectedCoachId)) {
+      setSelectedCoachId("");
+    }
+  }, [coachOptions, needsCoach, selectedCoachId]);
 
   function openService(service: PublicBookingService) {
     setSelectedServiceId(service.id);
     setSelectedTime(null);
+    setSelectedCoachId("");
     setStep("overview");
   }
 
@@ -594,6 +656,7 @@ export default function CustomerBookingApp() {
           date: selectedDate,
           start: selectedTime.start,
           resourceId: selectedTime.resourceId,
+          staffMemberId: needsCoach ? selectedCoachId : undefined,
           customerId: parentAccount?.id,
           parentName: form.parentName,
           playerName: form.playerName || selectedPlayer,
@@ -614,6 +677,7 @@ export default function CustomerBookingApp() {
             start: selectedTime.start,
             end: selectedTime.end,
             resourceId: selectedTime.resourceId,
+            staffId: needsCoach ? selectedCoachId : null,
           },
         ],
       }));
@@ -756,7 +820,7 @@ export default function CustomerBookingApp() {
             ) : step === "player" ? (
               <button
                 type="button"
-                disabled={!form.parentName || !form.playerName || !form.email}
+                disabled={!form.parentName || !form.playerName || !form.email || (needsCoach && !selectedCoachId)}
                 onClick={() => setStep("time")}
                 className="w-full rounded-[10px] bg-[#272322] py-4 text-[18px] font-semibold text-white disabled:bg-black/12 disabled:text-black/30"
               >
@@ -803,10 +867,15 @@ export default function CustomerBookingApp() {
               <div className="mt-10">
                 <h3 className="text-[28px] font-normal">{selectedService.name}</h3>
                 <div className="mt-5 flex flex-wrap items-center gap-2 text-[14px] text-black/70">
-                  {selectedService.instructors.map((name) => (
-                    <span key={name} className="inline-flex items-center gap-2 rounded-full bg-black/6 px-3 py-1">
-                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-black/15 text-[11px]">{initials(name)}</span>
-                      {name}
+                  {(needsCoach ? coachOptions : selectedService.instructors.map((name) => ({ id: name, name, calendarColor: "#000000" }))).map((coach) => (
+                    <span key={coach.id} className="inline-flex items-center gap-2 rounded-full bg-black/6 px-3 py-1">
+                      <span
+                        className="flex h-6 w-6 items-center justify-center rounded-full text-[11px] text-white"
+                        style={{ backgroundColor: coach.calendarColor }}
+                      >
+                        {initials(coach.name)}
+                      </span>
+                      {coach.name}
                     </span>
                   ))}
                 </div>
@@ -824,6 +893,42 @@ export default function CustomerBookingApp() {
               <div className="rounded-[4px] bg-[#dfe8fb] px-6 py-4 text-[16px] text-[#365b97]">
                 Account: create a parent account to save family details for future bookings.
               </div>
+              {needsCoach ? (
+                <div className="mt-8">
+                  <div className="text-[15px]">Hitting Coach</div>
+                  <div className="mt-4 text-[16px]">Who would you like to schedule this lesson with?</div>
+                  <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                    {coachOptions.length ? (
+                      coachOptions.map((coach) => (
+                        <button
+                          key={coach.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedCoachId(coach.id);
+                            setSelectedTime(null);
+                          }}
+                          className={`flex items-center gap-4 rounded-[8px] border px-5 py-4 text-left ${
+                            selectedCoachId === coach.id ? "border-black shadow-[inset_0_0_0_1px_black]" : "border-black/15"
+                          }`}
+                        >
+                          <span
+                            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-[14px] font-semibold text-white"
+                            style={{ backgroundColor: coach.calendarColor }}
+                          >
+                            {initials(coach.name)}
+                          </span>
+                          <span>
+                            <span className="block text-[17px] font-semibold">{coach.name}</span>
+                            <span className="mt-1 block text-[14px] text-black/55">{coach.role || "Instructor"}</span>
+                          </span>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="rounded-[8px] bg-black/5 px-5 py-4 text-black/55">No hitting coaches are assigned to this lesson yet.</div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
               <div className="mt-8 text-[15px]">Players in Family Account</div>
               <div className="mt-4 text-[16px]">Who is the player attending this booking?</div>
               <div className="mt-6 flex flex-wrap gap-4">
@@ -916,8 +1021,12 @@ export default function CustomerBookingApp() {
                         {timeLabel(choice.start)} - {timeLabel(choice.end)}
                       </button>
                     ))
+                  ) : needsCoach && !selectedCoachId ? (
+                    <div className="rounded-[8px] bg-black/5 px-5 py-4 text-black/55">Choose a hitting coach before selecting a time.</div>
                   ) : (
-                    <div className="rounded-[8px] bg-black/5 px-5 py-4 text-black/55">No times are available for this date.</div>
+                    <div className="rounded-[8px] bg-black/5 px-5 py-4 text-black/55">
+                      No times are available for {selectedCoachName || "this coach"} on this date.
+                    </div>
                   )}
                 </div>
               </div>
@@ -933,10 +1042,15 @@ export default function CustomerBookingApp() {
                 <div>
                   <div className="text-[13px] text-black/45">{selectedService.category.slice(0, -1) || "Booking"}</div>
                   <div className="mt-2 text-[18px]">{selectedService.name}</div>
-                  {selectedInstructor ? (
+                  {selectedCoachName ? (
                     <span className="mt-4 inline-flex items-center gap-2 rounded-full bg-black/7 px-3 py-1 text-[12px]">
-                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-black/15">{initials(selectedInstructor)}</span>
-                      {selectedInstructor}
+                      <span
+                        className="flex h-6 w-6 items-center justify-center rounded-full text-white"
+                        style={{ backgroundColor: selectedCoach?.calendarColor ?? "#000000" }}
+                      >
+                        {initials(selectedCoachName)}
+                      </span>
+                      {selectedCoachName}
                     </span>
                   ) : null}
                 </div>
@@ -950,6 +1064,7 @@ export default function CustomerBookingApp() {
                       {timeLabel(selectedTime.start)} - {timeLabel(selectedTime.end)}
                     </div>
                     <div className="mt-2 text-black/55">{selectedTime.resourceName}</div>
+                    {selectedCoachName ? <div className="mt-2 text-black/55">Coach: {selectedCoachName}</div> : null}
                   </div>
                   <button type="button" onClick={() => setStep("time")} className="font-semibold underline">
                     Edit

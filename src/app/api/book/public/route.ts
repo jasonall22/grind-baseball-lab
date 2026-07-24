@@ -70,6 +70,7 @@ export async function GET() {
       overridesResult,
       bookingsResult,
       staffResult,
+      staffAvailabilityResult,
     ] = await Promise.all([
       supabase.from("booking_settings").select("*").eq("key", "default").maybeSingle(),
       supabase.from("booking_resources").select("id,name,sort_order,is_active,schedule_id").eq("is_active", true).order("sort_order"),
@@ -79,11 +80,22 @@ export async function GET() {
       supabase.from("booking_schedule_overrides").select("schedule_id,override_date,is_closed,start_time,end_time,sort_order").order("override_date").order("sort_order"),
       supabase
         .from("booking_bookings")
-        .select("id,booking_date,start_time,end_time,resource_id,status")
+        .select("id,booking_date,start_time,end_time,resource_id,staff_member_id,status")
         .gte("booking_date", fromDate)
         .lte("booking_date", throughDate.toISOString().slice(0, 10))
         .neq("status", "Cancelled"),
-      supabase.from("booking_staff_members").select("id,full_name,email,role,is_active,sort_order").eq("is_active", true).order("sort_order"),
+      supabase
+        .from("booking_staff_members")
+        .select("id,full_name,email,role,is_active,sort_order,calendar_color")
+        .eq("is_active", true)
+        .order("sort_order"),
+      supabase
+        .from("booking_staff_availability")
+        .select("id,staff_member_id,availability_date,start_time,end_time,resource_names")
+        .gte("availability_date", fromDate)
+        .lte("availability_date", throughDate.toISOString().slice(0, 10))
+        .order("availability_date")
+        .order("start_time"),
     ]);
 
     const failed = [
@@ -95,6 +107,7 @@ export async function GET() {
       overridesResult,
       bookingsResult,
       staffResult,
+      staffAvailabilityResult,
     ].find((result) => result.error);
 
     if (failed?.error) throw failed.error;
@@ -210,12 +223,22 @@ export async function GET() {
         start: normalizeClock(String(booking.start_time)),
         end: normalizeClock(String(booking.end_time)),
         resourceId: typeof booking.resource_id === "string" ? booking.resource_id : null,
+        staffId: typeof booking.staff_member_id === "string" ? booking.staff_member_id : null,
       })),
       staff: ((staffResult.data ?? []) as Array<Record<string, unknown>>).map((member) => ({
         id: String(member.id),
         name: String(member.full_name ?? ""),
         email: String(member.email ?? ""),
         role: String(member.role ?? "Staff"),
+        calendarColor: String(member.calendar_color ?? "#249b41"),
+      })),
+      staffAvailability: ((staffAvailabilityResult.data ?? []) as Array<Record<string, unknown>>).map((entry) => ({
+        id: String(entry.id),
+        staffId: String(entry.staff_member_id ?? ""),
+        date: String(entry.availability_date),
+        start: normalizeClock(String(entry.start_time)),
+        end: normalizeClock(String(entry.end_time)),
+        resourceNames: stringArray(entry.resource_names),
       })),
     };
 

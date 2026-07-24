@@ -30,6 +30,7 @@ type CreateBookingBody = {
   date?: string;
   start?: string;
   resourceId?: string;
+  staffMemberId?: string;
   customerId?: string;
   parentName?: string;
   playerName?: string;
@@ -44,6 +45,30 @@ function badRequest(message: string, status = 400) {
 
 function overlaps(startA: string, endA: string, startB: string, endB: string) {
   return timeToMinutes(startA) < timeToMinutes(endB) && timeToMinutes(endA) > timeToMinutes(startB);
+}
+
+function lessonCoachOptions(data: PublicBookingData, service: PublicBookingData["services"][number]) {
+  const assignedNames = new Set(service.instructors.map((name) => name.trim().toLowerCase()).filter(Boolean));
+  if (assignedNames.size) return data.staff.filter((member) => assignedNames.has(member.name.trim().toLowerCase()));
+  return data.staff.filter((member) => ["instructor", "owner", "admin"].includes(member.role.trim().toLowerCase()));
+}
+
+function coachAvailabilityCovers(
+  data: PublicBookingData,
+  staffMemberId: string,
+  date: string,
+  start: string,
+  end: string,
+  resourceName: string
+) {
+  return data.staffAvailability.some(
+    (entry) =>
+      entry.staffId === staffMemberId &&
+      entry.date === date &&
+      timeToMinutes(start) >= timeToMinutes(entry.start) &&
+      timeToMinutes(end) <= timeToMinutes(entry.end) &&
+      (!entry.resourceNames.length || entry.resourceNames.includes(resourceName))
+  );
 }
 
 async function loadPublicData(origin: string): Promise<PublicBookingData> {
@@ -62,6 +87,7 @@ export async function POST(req: Request) {
     const date = String(body.date ?? "");
     const start = normalizeClock(body.start);
     const resourceId = String(body.resourceId ?? "");
+    const staffMemberId = String(body.staffMemberId ?? "").trim();
     const submittedCustomerId = String(body.customerId ?? "").trim();
     const parentName = String(body.parentName ?? "").trim();
     const playerName = String(body.playerName ?? "").trim();
@@ -87,11 +113,32 @@ export async function POST(req: Request) {
 
     if (!fitsOpenSlot) return badRequest("That time is outside the current booking hours.", 409);
 
+    if (service.category === "lessons") {
+      if (!staffMemberId) return badRequest("Choose a hitting coach for this lesson.", 400);
+
+      const coachOptions = lessonCoachOptions(data, service);
+      if (!coachOptions.some((coach) => coach.id === staffMemberId)) {
+        return badRequest("That coach is not available for this lesson.", 409);
+      }
+
+      if (!coachAvailabilityCovers(data, staffMemberId, date, start, end, resource.name)) {
+        return badRequest("That coach is not available at this time.", 409);
+      }
+    }
+
     const conflict = data.bookings.some(
       (booking) => booking.date === date && booking.resourceId === resourceId && overlaps(start, end, booking.start, booking.end)
     );
 
     if (conflict) return badRequest("That room is already booked for that time.", 409);
+
+    const coachConflict =
+      service.category === "lessons" &&
+      data.bookings.some(
+        (booking) => booking.date === date && booking.staffId === staffMemberId && overlaps(start, end, booking.start, booking.end)
+      );
+
+    if (coachConflict) return badRequest("That coach already has a booking for that time.", 409);
 
     const supabase = getSupabaseAdmin() as unknown as PublicSupabaseClient;
     const existingCustomer = submittedCustomerId
@@ -135,6 +182,7 @@ export async function POST(req: Request) {
         player_name: playerName,
         service_id: service.id,
         resource_id: resource.id,
+        staff_member_id: service.category === "lessons" ? staffMemberId : null,
         status: "Pending",
         paid: false,
         notes: `Public booking. Payment selected: ${body.paymentMethod === "online" ? "online" : "in person"}.`,
