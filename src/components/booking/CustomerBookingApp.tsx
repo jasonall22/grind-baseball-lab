@@ -291,23 +291,36 @@ function BookingHero({
           />
         </div>
 
-        <div className="grid gap-5 border-t border-black/10 px-5 py-5 sm:px-7 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+        <div className="grid gap-6 border-t border-black/10 px-5 py-7 sm:px-7 lg:grid-cols-[minmax(0,1fr)_330px] lg:items-center">
           <div className="min-w-0">
-            <div className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#1784bd]">Book Online</div>
-            <h1 className="mt-2 text-[30px] font-semibold leading-tight tracking-normal sm:text-[38px]">{settings.facilityName}</h1>
-            <div className="mt-4 flex flex-wrap gap-2 text-[14px] font-semibold text-black/65">
-              <span className="rounded-full border border-black/10 bg-[#f7f8fa] px-4 py-2">{settings.address}</span>
-              <span className="rounded-full border border-black/10 bg-[#f7f8fa] px-4 py-2">{settings.phone}</span>
+            <div className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#1784bd]">Memberships</div>
+            <h1 className="mt-2 max-w-[760px] text-[30px] font-semibold leading-tight tracking-normal sm:text-[40px]">
+              Train more often with member credits.
+            </h1>
+            <p className="mt-3 max-w-[800px] text-[16px] leading-7 text-black/65">
+              Get predictable monthly training access for cage rentals and lessons at {settings.facilityName}. Members can use credits to book faster, stay consistent, and keep reps on the calendar.
+            </p>
+            <div className="mt-5 flex flex-wrap gap-2 text-[14px] font-semibold text-black/65">
+              <span className="rounded-full border border-black/10 bg-[#f7f8fa] px-4 py-2">Monthly credits</span>
+              <span className="rounded-full border border-black/10 bg-[#f7f8fa] px-4 py-2">Cages and lessons</span>
+              <span className="rounded-full border border-black/10 bg-[#f7f8fa] px-4 py-2">Easy online booking</span>
               <span className="rounded-full border border-red-100 bg-red-50 px-4 py-2">
                 <span className="text-[#d10018]">Closed</span> - Opens 4PM today
               </span>
             </div>
           </div>
-          <div className="flex flex-wrap gap-3 lg:justify-end">
+          <div className="grid gap-3">
+            <button
+              type="button"
+              onClick={() => onSelectCategory("memberships")}
+              className="rounded-[6px] bg-black px-5 py-3 text-[15px] font-semibold text-white shadow-[0_10px_24px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:bg-[#1f1f1f]"
+            >
+              View memberships
+            </button>
             <button
               type="button"
               onClick={() => onSelectCategory("rentals")}
-              className="rounded-[6px] bg-black px-5 py-3 text-[15px] font-semibold text-white shadow-[0_10px_24px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:bg-[#1f1f1f]"
+              className="rounded-[6px] border border-black/15 bg-white px-5 py-3 text-[15px] font-semibold text-black transition hover:-translate-y-0.5 hover:bg-[#f5f6f7]"
             >
               Book cage time
             </button>
