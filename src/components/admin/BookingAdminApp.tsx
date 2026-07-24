@@ -6772,7 +6772,7 @@ function AdminAccountMenu({
 
     setIsSigningOut(true);
     await supabase.auth.signOut();
-    router.replace("/login");
+    router.replace("/book");
     router.refresh();
   }
 
