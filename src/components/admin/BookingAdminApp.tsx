@@ -9820,6 +9820,8 @@ function AvailabilityView({
               role="button"
               tabIndex={0}
               onMouseDown={(event) => event.stopPropagation()}
+              onMouseMove={(event) => event.stopPropagation()}
+              onMouseUp={(event) => event.stopPropagation()}
               onClick={(event) => {
                 event.stopPropagation();
                 setSelectedAvailabilityId((current) => (current === entry.id ? null : entry.id));
@@ -9841,6 +9843,8 @@ function AvailabilityView({
                 <div
                   className="absolute left-[10px] top-[28px] z-40 grid w-[50px] overflow-visible rounded-md bg-white text-black shadow-[0_8px_18px_rgba(0,0,0,0.28)]"
                   onMouseDown={(event) => event.stopPropagation()}
+                  onMouseMove={(event) => event.stopPropagation()}
+                  onMouseUp={(event) => event.stopPropagation()}
                   onClick={(event) => event.stopPropagation()}
                 >
                   <button
