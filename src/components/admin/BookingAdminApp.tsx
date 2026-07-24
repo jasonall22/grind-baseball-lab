@@ -9813,12 +9813,15 @@ function AvailabilityView({
             .slice(0, 2);
 
           const selected = selectedAvailabilityId === entry.id;
+          const availabilityTooltip = `${timeLabel(entry.start)} - ${timeLabel(entry.end)}: Available`;
 
           return (
             <div
               key={entry.id}
               role="button"
               tabIndex={0}
+              title={availabilityTooltip}
+              aria-label={availabilityTooltip}
               onMouseDown={(event) => event.stopPropagation()}
               onMouseMove={(event) => event.stopPropagation()}
               onMouseUp={(event) => event.stopPropagation()}
