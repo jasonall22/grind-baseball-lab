@@ -279,48 +279,56 @@ function BookingHero({
   return (
     <section className="bg-white px-4 py-5 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-[1240px] overflow-hidden rounded-[10px] border border-black/10 bg-white shadow-[0_18px_45px_rgba(0,0,0,0.12)]">
-        <div className="relative flex min-h-[250px] items-center justify-center overflow-hidden bg-black px-6 py-10 sm:min-h-[310px]">
+        <div className="relative overflow-hidden bg-black px-6 py-8 text-white sm:px-10 sm:py-11">
           <div className="absolute inset-x-0 bottom-0 h-[6px] bg-[#1784bd]" />
-          <Image
-            src="/logo.png"
-            alt="The Grind Baseball Lab"
-            width={620}
-            height={241}
-            className="relative h-auto w-[620px] max-w-[78%]"
-            priority
-          />
+          <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-center">
+            <div className="min-w-0">
+              <div className="inline-flex items-center rounded-[6px] bg-white px-4 py-2">
+                <Image src="/logo.png" alt="The Grind Baseball Lab" width={178} height={69} className="h-9 w-auto" priority />
+              </div>
+              <div className="mt-6 text-[12px] font-bold uppercase tracking-[0.18em] text-[#5fc5f2]">Memberships</div>
+              <h1 className="mt-3 max-w-[760px] text-[36px] font-semibold leading-[1.05] tracking-normal sm:text-[52px]">
+                More reps. More swings. More progress.
+              </h1>
+              <p className="mt-4 max-w-[720px] text-[16px] leading-7 text-white/70 sm:text-[17px]">
+                Get monthly training credits for cage time and lessons so your player can stay consistent all season.
+              </p>
+            </div>
+            <div className="rounded-[8px] border border-white/10 bg-white/[0.06] p-5">
+              <div className="text-[13px] font-bold uppercase tracking-[0.14em] text-white/55">Member Benefits</div>
+              <div className="mt-4 grid gap-3 text-[15px] font-semibold">
+                <div className="rounded-[6px] bg-white/[0.08] px-4 py-3">Monthly booking credits</div>
+                <div className="rounded-[6px] bg-white/[0.08] px-4 py-3">Use for cages or lessons</div>
+                <div className="rounded-[6px] bg-white/[0.08] px-4 py-3">Simple online scheduling</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onSelectCategory("memberships")}
+                className="mt-5 w-full rounded-[6px] bg-[#1784bd] px-5 py-3 text-[15px] font-semibold text-white shadow-[0_10px_24px_rgba(23,132,189,0.26)] transition hover:-translate-y-0.5 hover:bg-[#0f76ac]"
+              >
+                View memberships
+              </button>
+            </div>
+          </div>
         </div>
 
-        <div className="grid gap-6 border-t border-black/10 px-5 py-7 sm:px-7 lg:grid-cols-[minmax(0,1fr)_330px] lg:items-center">
+        <div className="grid gap-5 border-t border-black/10 px-5 py-5 sm:px-7 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
           <div className="min-w-0">
-            <div className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#1784bd]">Memberships</div>
-            <h1 className="mt-2 max-w-[760px] text-[30px] font-semibold leading-tight tracking-normal sm:text-[40px]">
-              Train more often with member credits.
-            </h1>
-            <p className="mt-3 max-w-[800px] text-[16px] leading-7 text-black/65">
-              Get predictable monthly training access for cage rentals and lessons at {settings.facilityName}. Members can use credits to book faster, stay consistent, and keep reps on the calendar.
-            </p>
-            <div className="mt-5 flex flex-wrap gap-2 text-[14px] font-semibold text-black/65">
-              <span className="rounded-full border border-black/10 bg-[#f7f8fa] px-4 py-2">Monthly credits</span>
-              <span className="rounded-full border border-black/10 bg-[#f7f8fa] px-4 py-2">Cages and lessons</span>
-              <span className="rounded-full border border-black/10 bg-[#f7f8fa] px-4 py-2">Easy online booking</span>
+            <div className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#1784bd]">Book Online</div>
+            <h2 className="mt-2 text-[30px] font-semibold leading-tight tracking-normal sm:text-[38px]">{settings.facilityName}</h2>
+            <div className="mt-4 flex flex-wrap gap-2 text-[14px] font-semibold text-black/65">
+              <span className="rounded-full border border-black/10 bg-[#f7f8fa] px-4 py-2">{settings.address}</span>
+              <span className="rounded-full border border-black/10 bg-[#f7f8fa] px-4 py-2">{settings.phone}</span>
               <span className="rounded-full border border-red-100 bg-red-50 px-4 py-2">
                 <span className="text-[#d10018]">Closed</span> - Opens 4PM today
               </span>
             </div>
           </div>
-          <div className="grid gap-3">
-            <button
-              type="button"
-              onClick={() => onSelectCategory("memberships")}
-              className="rounded-[6px] bg-black px-5 py-3 text-[15px] font-semibold text-white shadow-[0_10px_24px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:bg-[#1f1f1f]"
-            >
-              View memberships
-            </button>
+          <div className="flex flex-wrap gap-3 lg:justify-end">
             <button
               type="button"
               onClick={() => onSelectCategory("rentals")}
-              className="rounded-[6px] border border-black/15 bg-white px-5 py-3 text-[15px] font-semibold text-black transition hover:-translate-y-0.5 hover:bg-[#f5f6f7]"
+              className="rounded-[6px] bg-black px-5 py-3 text-[15px] font-semibold text-white shadow-[0_10px_24px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:bg-[#1f1f1f]"
             >
               Book cage time
             </button>
