@@ -30,6 +30,7 @@ type CreateBookingBody = {
   date?: string;
   start?: string;
   resourceId?: string;
+  customerId?: string;
   parentName?: string;
   playerName?: string;
   email?: string;
@@ -61,6 +62,7 @@ export async function POST(req: Request) {
     const date = String(body.date ?? "");
     const start = normalizeClock(body.start);
     const resourceId = String(body.resourceId ?? "");
+    const submittedCustomerId = String(body.customerId ?? "").trim();
     const parentName = String(body.parentName ?? "").trim();
     const playerName = String(body.playerName ?? "").trim();
     const email = String(body.email ?? "").trim().toLowerCase();
@@ -92,13 +94,15 @@ export async function POST(req: Request) {
     if (conflict) return badRequest("That room is already booked for that time.", 409);
 
     const supabase = getSupabaseAdmin() as unknown as PublicSupabaseClient;
-    const existingCustomer = await supabase
-      .from("booking_customers")
-      .select("id")
-      .eq("email", email)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const existingCustomer = submittedCustomerId
+      ? await supabase.from("booking_customers").select("id").eq("id", submittedCustomerId).maybeSingle()
+      : await supabase
+          .from("booking_customers")
+          .select("id")
+          .eq("email", email)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
     if (existingCustomer.error) throw existingCustomer.error;
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type Dispatch, type FormEvent, type ReactNode, type SetStateAction } from "react";
 import Image from "next/image";
 
 import {
@@ -23,11 +23,43 @@ import {
 
 type BookingStep = "overview" | "player" | "time" | "summary" | "done";
 type TimeChoice = { start: string; end: string; resourceId: string; resourceName: string };
+type ParentAccount = {
+  id: string;
+  parentName: string;
+  playerName: string;
+  playerAge?: string;
+  email: string;
+  phone: string;
+};
+type AccountForm = {
+  parentFirstName: string;
+  parentLastName: string;
+  email: string;
+  phone: string;
+  password: string;
+  playerFirstName: string;
+  playerLastName: string;
+  playerAge: string;
+};
 
 const categoryOrder: PublicBookingCategory[] = ["rentals", "lessons", "camps", "classes", "memberships", "packages"];
+const emptyAccountForm: AccountForm = {
+  parentFirstName: "",
+  parentLastName: "",
+  email: "",
+  phone: "",
+  password: "",
+  playerFirstName: "",
+  playerLastName: "",
+  playerAge: "",
+};
 
 function todayIso() {
   return isoDate(new Date());
+}
+
+function fullName(firstName: string, lastName: string) {
+  return [firstName, lastName].map((value) => value.trim()).filter(Boolean).join(" ");
 }
 
 function durationLabel(minutes: number) {
@@ -122,7 +154,7 @@ function MonthCalendar({ value, onChange }: { value: string; onChange: (value: s
     <div className="w-full max-w-[400px] rounded-[3px] bg-white p-6 shadow-[0_8px_22px_rgba(0,0,0,0.22)]">
       <div className="mb-7 flex items-center justify-between text-[18px] font-semibold">
         <button type="button" onClick={() => moveMonth(-1)} className="rounded-full p-1 text-black/45 hover:bg-black/5">
-          ‹
+          {"<"}
         </button>
         <span>
           {selected.toLocaleDateString("en-US", {
@@ -131,7 +163,7 @@ function MonthCalendar({ value, onChange }: { value: string; onChange: (value: s
           })}
         </span>
         <button type="button" onClick={() => moveMonth(1)} className="rounded-full p-1 text-black/45 hover:bg-black/5">
-          ›
+          {">"}
         </button>
       </div>
       <div className="grid grid-cols-7 gap-2 text-center text-[14px] text-black/45">
@@ -201,7 +233,7 @@ function InfoCard({ settings }: { settings: PublicBookingData["settings"] }) {
           <span>
             <span className="text-[#d10018]">Closed</span> - Opens 4PM today
           </span>
-          <span className="ml-auto text-black/55">⌄</span>
+          <span className="ml-auto text-black/55">v</span>
         </div>
       </div>
       <div className="mt-8 font-semibold">Follow us</div>
@@ -241,12 +273,12 @@ function ModalShell({
       <div className="flex h-[min(83vh,795px)] w-full max-w-[752px] flex-col overflow-hidden rounded-[4px] bg-white shadow-[0_18px_40px_rgba(0,0,0,0.34)]">
         <div className="flex h-[90px] shrink-0 items-center border-b border-black/10 px-8">
           <button type="button" onClick={onBack} className="text-[34px] text-black/45 disabled:opacity-25" disabled={step === "overview" || step === "done"}>
-            ‹
+            {"<"}
           </button>
           <div className="flex-1 text-center text-[20px] font-semibold">{titles[step]}</div>
           {avatar ? <div className="mr-6 flex h-11 w-11 items-center justify-center rounded-full bg-[#bdbdbd] text-white">{avatar}</div> : null}
           <button type="button" onClick={onClose} className="text-[34px] leading-none text-black/45">
-            ×
+            x
           </button>
         </div>
         <div key={step} className="min-h-0 flex-1 overflow-y-auto px-8 py-7">
@@ -254,6 +286,125 @@ function ModalShell({
         </div>
         <div className="shrink-0 border-t border-black/10 px-4 py-4">{footer}</div>
       </div>
+    </div>
+  );
+}
+
+function ParentAccountModal({
+  form,
+  setForm,
+  busy,
+  status,
+  onClose,
+  onSubmit,
+}: {
+  form: AccountForm;
+  setForm: Dispatch<SetStateAction<AccountForm>>;
+  busy: boolean;
+  status: string;
+  onClose: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/55 px-4 py-8">
+      <form
+        onSubmit={onSubmit}
+        className="flex max-h-[calc(100vh-64px)] w-full max-w-[720px] flex-col overflow-hidden rounded-[5px] bg-white shadow-[0_20px_48px_rgba(0,0,0,0.36)]"
+      >
+        <div className="flex h-[76px] shrink-0 items-center border-b border-black/10 px-7">
+          <div className="text-[22px] font-semibold">Create Parent Account</div>
+          <button type="button" onClick={onClose} className="ml-auto text-[32px] leading-none text-black/45">
+            x
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-7 py-6">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="grid gap-2 text-[14px] font-medium">
+              Parent first name
+              <input
+                value={form.parentFirstName}
+                onChange={(event) => setForm((current) => ({ ...current, parentFirstName: event.target.value }))}
+                className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
+              />
+            </label>
+            <label className="grid gap-2 text-[14px] font-medium">
+              Parent last name
+              <input
+                value={form.parentLastName}
+                onChange={(event) => setForm((current) => ({ ...current, parentLastName: event.target.value }))}
+                className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
+              />
+            </label>
+            <label className="grid gap-2 text-[14px] font-medium">
+              Email
+              <input
+                type="email"
+                value={form.email}
+                onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+                className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
+              />
+            </label>
+            <label className="grid gap-2 text-[14px] font-medium">
+              Phone
+              <input
+                value={form.phone}
+                onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
+                className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
+              />
+            </label>
+            <label className="grid gap-2 text-[14px] font-medium sm:col-span-2">
+              Password
+              <input
+                type="password"
+                value={form.password}
+                onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+                className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
+              />
+            </label>
+          </div>
+
+          <div className="mt-8 border-t border-black/10 pt-6">
+            <div className="text-[18px] font-semibold">Player</div>
+            <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_1fr_120px]">
+              <label className="grid gap-2 text-[14px] font-medium">
+                First name
+                <input
+                  value={form.playerFirstName}
+                  onChange={(event) => setForm((current) => ({ ...current, playerFirstName: event.target.value }))}
+                  className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
+                />
+              </label>
+              <label className="grid gap-2 text-[14px] font-medium">
+                Last name
+                <input
+                  value={form.playerLastName}
+                  onChange={(event) => setForm((current) => ({ ...current, playerLastName: event.target.value }))}
+                  className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
+                />
+              </label>
+              <label className="grid gap-2 text-[14px] font-medium">
+                Age
+                <input
+                  inputMode="numeric"
+                  value={form.playerAge}
+                  onChange={(event) => setForm((current) => ({ ...current, playerAge: event.target.value.replace(/\D/g, "") }))}
+                  className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
+                />
+              </label>
+            </div>
+          </div>
+
+          {status ? <div className="mt-5 rounded-[6px] bg-red-50 px-4 py-3 text-sm text-red-700">{status}</div> : null}
+        </div>
+        <div className="flex shrink-0 justify-end gap-3 border-t border-black/10 px-7 py-5">
+          <button type="button" onClick={onClose} className="h-12 rounded-[6px] border border-black/15 px-7 text-[16px] font-semibold">
+            Cancel
+          </button>
+          <button type="submit" disabled={busy} className="h-12 rounded-[6px] bg-black px-8 text-[16px] font-semibold text-white disabled:opacity-55">
+            {busy ? "Creating..." : "Create account"}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
@@ -268,6 +419,11 @@ export default function CustomerBookingApp() {
   const [selectedTime, setSelectedTime] = useState<TimeChoice | null>(null);
   const [selectedPlayer, setSelectedPlayer] = useState("Yourself");
   const [form, setForm] = useState({ parentName: "", playerName: "Yourself", email: "", phone: "" });
+  const [parentAccount, setParentAccount] = useState<ParentAccount | null>(null);
+  const [showAccountModal, setShowAccountModal] = useState(false);
+  const [accountForm, setAccountForm] = useState<AccountForm>(emptyAccountForm);
+  const [accountBusy, setAccountBusy] = useState(false);
+  const [accountStatus, setAccountStatus] = useState("");
   const [discountCode, setDiscountCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
@@ -319,6 +475,60 @@ export default function CustomerBookingApp() {
     if (step === "summary") setStep("time");
   }
 
+  function openAccountModal() {
+    setAccountStatus("");
+    const playerName = form.playerName === "Yourself" ? "" : form.playerName;
+    setAccountForm((current) => ({
+      ...current,
+      parentFirstName: current.parentFirstName || form.parentName.split(" ")[0] || "",
+      parentLastName: current.parentLastName || form.parentName.split(" ").slice(1).join(" "),
+      email: current.email || form.email,
+      phone: current.phone || form.phone,
+      playerFirstName: current.playerFirstName || playerName.split(" ")[0] || "",
+      playerLastName: current.playerLastName || playerName.split(" ").slice(1).join(" "),
+    }));
+    setShowAccountModal(true);
+  }
+
+  async function createParentAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (accountBusy) return;
+
+    setAccountBusy(true);
+    setAccountStatus("");
+    try {
+      const parentName = fullName(accountForm.parentFirstName, accountForm.parentLastName);
+      const playerName = fullName(accountForm.playerFirstName, accountForm.playerLastName);
+      const response = await fetch("/api/book/customers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...accountForm,
+          parentName,
+          playerName,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Could not create parent account.");
+
+      const account = payload.customer as ParentAccount;
+      setParentAccount(account);
+      setSelectedPlayer(account.playerName);
+      setForm({
+        parentName: account.parentName,
+        playerName: account.playerName,
+        email: account.email,
+        phone: account.phone,
+      });
+      setAccountForm((current) => ({ ...current, password: "" }));
+      setShowAccountModal(false);
+    } catch (error) {
+      setAccountStatus(error instanceof Error ? error.message : "Could not create parent account.");
+    } finally {
+      setAccountBusy(false);
+    }
+  }
+
   async function submitBooking(paymentMethod: "online" | "in-person") {
     if (!selectedService || !selectedTime) return;
     setSubmitting(true);
@@ -332,6 +542,7 @@ export default function CustomerBookingApp() {
           date: selectedDate,
           start: selectedTime.start,
           resourceId: selectedTime.resourceId,
+          customerId: parentAccount?.id,
           parentName: form.parentName,
           playerName: form.playerName || selectedPlayer,
           email: form.email,
@@ -366,10 +577,30 @@ export default function CustomerBookingApp() {
     <main className="min-h-screen bg-white text-black">
       <header className="sticky top-0 z-30 border-b border-black/10 bg-white">
         <div className="mx-auto flex h-[102px] max-w-[1380px] items-center justify-between px-8">
-          <span className="rounded-[2px] bg-black px-3 py-2">
-            <Image src="/logo.png" alt="The Grind Baseball Lab" width={82} height={32} className="h-8 w-auto" priority />
+          <span>
+            <Image src="/logo.png" alt="The Grind Baseball Lab" width={72} height={28} className="h-8 w-auto opacity-75" priority />
           </span>
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#bdbdbd] text-white">JA</div>
+          <div className="flex items-center gap-7">
+            <a href="/login?next=/book" className="text-[18px] font-semibold">
+              Sign In
+            </a>
+            <button
+              type="button"
+              onClick={openAccountModal}
+              className="rounded-[4px] bg-[#272322] px-7 py-4 text-[18px] font-semibold text-white shadow-[0_3px_8px_rgba(0,0,0,0.24)]"
+            >
+              Create Account
+            </button>
+            {parentAccount ? (
+              <button
+                type="button"
+                onClick={openAccountModal}
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-[#bdbdbd] text-[14px] font-semibold text-white"
+              >
+                {initials(parentAccount.parentName)}
+              </button>
+            ) : null}
+          </div>
         </div>
       </header>
 
@@ -384,13 +615,13 @@ export default function CustomerBookingApp() {
             physical and mental growth in athletes. Check out how we&apos;re making a real difference in the world of baseball and softball
           </p>
           <button type="button" className="mt-8 inline-flex items-center gap-3 text-[16px] font-semibold">
-            Read more <span className="text-[22px]">⌄</span>
+            Read more <span className="text-[22px]">v</span>
           </button>
 
           <div className="mt-10 flex items-center gap-3 text-[30px]">
             {selectedCategory ? (
               <button type="button" onClick={() => setSelectedCategory(null)} className="text-[34px] text-black/35">
-                ‹
+                {"<"}
               </button>
             ) : null}
             <h2 className="font-normal">{selectedCategory ? publicBookingCategoryLabels[selectedCategory].title : "Services"}</h2>
@@ -400,7 +631,7 @@ export default function CustomerBookingApp() {
             <div className="mt-12 grid gap-5">
               <div className="flex justify-end">
                 <button type="button" className="rounded-full border border-black/15 px-5 py-2 text-[15px] text-black/55">
-                  ☷ Filters
+                  Filter
                 </button>
               </div>
               {loading
@@ -523,7 +754,7 @@ export default function CustomerBookingApp() {
                     </span>
                   ))}
                 </div>
-                <div className="mt-7 flex items-center gap-3 text-[16px] text-black/55">☑ No age restrictions</div>
+                <div className="mt-7 flex items-center gap-3 text-[16px] text-black/55">No age restrictions</div>
                 <div className="mt-9 border-t border-black/10 pt-5">
                   <div className="text-[15px] font-semibold uppercase tracking-[0.12em] text-black/45">Pricing</div>
                   <div className="mt-3 text-[20px]">{money(selectedService.price)}</div>
@@ -535,30 +766,39 @@ export default function CustomerBookingApp() {
           {step === "player" ? (
             <div>
               <div className="rounded-[4px] bg-[#dfe8fb] px-6 py-4 text-[16px] text-[#365b97]">
-                ⓘ To add or edit family members, go to the <span className="underline">account settings page</span>
+                Account: create a parent account to save family details for future bookings.
               </div>
               <div className="mt-8 text-[15px]">Players in Family Account</div>
               <div className="mt-4 text-[16px]">Who is the player attending this booking?</div>
               <div className="mt-6 flex flex-wrap gap-4">
-                {["Yourself", "Zachary Allaire"].map((name) => (
+                {parentAccount ? (
                   <button
-                    key={name}
                     type="button"
                     onClick={() => {
-                      setSelectedPlayer(name);
-                      setForm((current) => ({ ...current, playerName: name }));
+                      setSelectedPlayer(parentAccount.playerName);
+                      setForm((current) => ({ ...current, playerName: parentAccount.playerName }));
                     }}
                     className={`h-[310px] w-[190px] rounded-[8px] border px-5 py-7 text-center ${
-                      selectedPlayer === name ? "border-black shadow-[inset_0_0_0_1px_black]" : "border-black/15"
+                      selectedPlayer === parentAccount.playerName ? "border-black shadow-[inset_0_0_0_1px_black]" : "border-black/15"
                     }`}
                   >
                     <span className="mx-auto flex h-[126px] w-[126px] items-center justify-center rounded-full bg-[#bebebe] text-[26px] text-white">
-                      {initials(name)}
+                      {initials(parentAccount.playerName)}
                     </span>
-                    <span className="mt-5 block text-[18px]">{name}</span>
-                    <span className="mt-6 block text-[14px]">{name === "Yourself" ? "47" : "18"} years old</span>
+                    <span className="mt-5 block text-[18px]">{parentAccount.playerName}</span>
+                    {parentAccount.playerAge ? <span className="mt-6 block text-[14px]">{parentAccount.playerAge} years old</span> : null}
                   </button>
-                ))}
+                ) : (
+                  <button
+                    type="button"
+                    onClick={openAccountModal}
+                    className="flex h-[310px] w-[190px] flex-col items-center justify-center rounded-[8px] border border-dashed border-black/25 px-5 py-7 text-center hover:border-black"
+                  >
+                    <span className="flex h-[80px] w-[80px] items-center justify-center rounded-full bg-black text-[34px] text-white">+</span>
+                    <span className="mt-5 block text-[18px] font-semibold">Create account</span>
+                    <span className="mt-4 block text-[14px] leading-5 text-black/55">Save parent and player details.</span>
+                  </button>
+                )}
               </div>
               <div className="mt-8 grid gap-4 sm:grid-cols-2">
                 <label className="grid gap-2 text-[14px] font-medium">
@@ -688,7 +928,7 @@ export default function CustomerBookingApp() {
 
           {step === "done" ? (
             <div className="flex min-h-[520px] flex-col items-center justify-center text-center">
-              <div className="flex h-[122px] w-[122px] items-center justify-center rounded-full bg-[#7ad33d] text-[80px] text-white">✓</div>
+              <div className="flex h-[122px] w-[122px] items-center justify-center rounded-full bg-[#7ad33d] text-[32px] font-semibold text-white">Done</div>
               <div className="mt-12 text-[22px] font-semibold">{selectedService.name} - Booking Confirmed</div>
               <p className="mt-5 max-w-[630px] text-[20px] leading-[1.55]">
                 Looking forward to seeing you at The Grind Baseball Lab! You will receive a confirmation email with your booking details shortly.
@@ -696,6 +936,17 @@ export default function CustomerBookingApp() {
             </div>
           ) : null}
         </ModalShell>
+      ) : null}
+
+      {showAccountModal ? (
+        <ParentAccountModal
+          form={accountForm}
+          setForm={setAccountForm}
+          busy={accountBusy}
+          status={accountStatus}
+          onClose={() => setShowAccountModal(false)}
+          onSubmit={createParentAccount}
+        />
       ) : null}
     </main>
   );
