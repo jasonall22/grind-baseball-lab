@@ -6083,7 +6083,7 @@ export default function BookingAdminApp({
         className={[
           "grid min-h-screen grid-cols-1 bg-white",
           "pb-[76px] lg:pb-0",
-          isSettingsView ? "" : "lg:grid-cols-[284px_minmax(0,1fr)]",
+          isSettingsView ? "" : "lg:grid-cols-[280px_minmax(0,1fr)]",
         ].join(" ")}
       >
         {!isSettingsView ? (
@@ -9565,7 +9565,7 @@ function CalendarToolbarButton({
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-black/15 bg-white px-4 text-[15px] font-medium text-black shadow-[0_1px_0_rgba(255,255,255,0.9)] hover:bg-black/[0.02] ${className}`.trim()}
+      className={`inline-flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[4px] border border-black/15 bg-white px-4 text-[16px] font-semibold text-black shadow-[0_1px_0_rgba(255,255,255,0.9)] hover:bg-black/[0.02] ${className}`.trim()}
     >
       {icon ? <Icon name={icon} className="h-4 w-4" /> : null}
       <span>{label}</span>
@@ -9587,7 +9587,7 @@ function CalendarSegmentButton({
       type="button"
       onClick={onClick}
       className={[
-        "inline-flex min-h-10 shrink-0 items-center whitespace-nowrap rounded-lg border px-4 text-[15px] font-medium shadow-[0_1px_0_rgba(255,255,255,0.9)]",
+        "inline-flex min-h-10 shrink-0 items-center whitespace-nowrap rounded-[4px] border px-4 text-[16px] font-semibold shadow-[0_1px_0_rgba(255,255,255,0.9)]",
         active
           ? "border-black/15 bg-[#ececec] text-black"
           : "border-black/15 bg-white text-black/75 hover:bg-black/[0.02]",
@@ -9657,8 +9657,8 @@ function AvailabilityView({
   const today = isoDate(new Date());
   const scrollStartMinutes = useMemo(() => {
     const openStarts = rows.filter(([, open]) => open).map(([, , start]) => timeToMinutes(start));
-    if (!openStarts.length) return 15 * 60;
-    return Math.max(0, Math.min(...openStarts) - 60);
+    if (!openStarts.length) return 12 * 60;
+    return Math.max(0, Math.min(...openStarts) - 4 * 60);
   }, [rows]);
 
   useEffect(() => {
@@ -9979,7 +9979,7 @@ function AvailabilityView({
 
   return (
     <section className="min-h-screen px-6 py-8 lg:px-7">
-      <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="mb-3 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex shrink-0 items-center gap-2">
           <CalendarToolbarButton label="Today" onClick={() => setActiveDate(today)} />
           <CalendarToolbarButton label="Back" onClick={() => shiftAvailabilityDate(calendarMode === "week" ? -7 : -1)} />
@@ -10008,10 +10008,10 @@ function AvailabilityView({
 
       <div className="overflow-hidden rounded-lg border border-black/10 bg-white shadow-sm">
         <div
-          className="grid min-w-[980px] border-b border-black/10 bg-white"
-          style={{ gridTemplateColumns: `96px repeat(${visibleDates.length}, minmax(160px, 1fr))` }}
+          className="grid min-w-[1533px] border-b border-black/10 bg-white"
+          style={{ gridTemplateColumns: `98px repeat(${visibleDates.length}, minmax(205px, 1fr))` }}
         >
-          <div className="border-r border-black/10 px-4 py-4" />
+          <div className="h-[80px] border-r border-black/10 px-4 py-1.5" />
           {visibleDates.map((date) => {
             const dateObject = parseLocalDate(date);
             const headerLabel =
@@ -10022,7 +10022,7 @@ function AvailabilityView({
               <div
                 key={`availability-header-${date}`}
                 className={[
-                  "border-r border-black/10 px-4 py-4 text-center text-[15px] font-bold last:border-r-0",
+                  "h-[80px] border-r border-black/10 px-4 py-1.5 text-center text-[15px] font-bold last:border-r-0",
                   date === today ? "bg-[#eaf6ff]" : "bg-white",
                 ].join(" ")}
               >
@@ -10034,14 +10034,14 @@ function AvailabilityView({
 
         <div ref={scrollRef} className="overflow-auto" style={{ maxHeight: "calc(100vh - 260px)" }}>
           <div
-            className="grid min-w-[980px]"
-            style={{ gridTemplateColumns: `96px repeat(${visibleDates.length}, minmax(160px, 1fr))` }}
+            className="grid min-w-[1533px]"
+            style={{ gridTemplateColumns: `98px repeat(${visibleDates.length}, minmax(205px, 1fr))` }}
           >
             <div className="relative border-r border-black/10 bg-white">
               {slots.map((slot, index) => (
                 <div
                   key={`availability-time-${slot}`}
-                  className="flex items-start justify-end border-b border-black/10 px-3 text-right text-[15px] font-medium text-black/90"
+                  className="flex items-start justify-end border-b border-black/10 px-2 text-right text-[20px] font-normal text-black"
                   style={{ height: slotHeight }}
                 >
                   <div className={`w-full ${index === 0 ? "pt-1" : "pt-0.5"}`}>{timeLabel(slot)}</div>
