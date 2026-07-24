@@ -3193,11 +3193,28 @@ function dayConfigForDate(schedule: ScheduleRecord | null | undefined, value: st
   );
 }
 
-function closedBlocksForSchedule(schedule: ScheduleRecord | null | undefined, value: string) {
-  const config = dayConfigForDate(schedule, value);
-  const orderedSlots = [...config.slots].sort((a, b) => a.sortOrder - b.sortOrder);
+function scheduleOpenSlotsForDate(schedule: ScheduleRecord | null | undefined, value: string) {
+  const override = schedule?.overrides.find((item) => item.date === value);
+  if (override) {
+    return override.isClosed
+      ? []
+      : [...override.slots]
+          .filter((slot) => timeToMinutes(slot.end) > timeToMinutes(slot.start))
+          .sort((a, b) => a.sortOrder - b.sortOrder);
+  }
 
-  if (!config.enabled || !orderedSlots.length) {
+  const config = dayConfigForDate(schedule, value);
+  return config.enabled
+    ? [...config.slots]
+        .filter((slot) => timeToMinutes(slot.end) > timeToMinutes(slot.start))
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+    : [];
+}
+
+function closedBlocksForSchedule(schedule: ScheduleRecord | null | undefined, value: string) {
+  const orderedSlots = scheduleOpenSlotsForDate(schedule, value);
+
+  if (!orderedSlots.length) {
     return [{ start: 0, end: 1439 }];
   }
 
@@ -3260,9 +3277,8 @@ function scheduleAllowsRange(
 }
 
 function scheduleScrollTargetTime(schedule: ScheduleRecord | null | undefined, date: string) {
-  const config = dayConfigForDate(schedule, date);
-  if (!config.enabled || !config.slots.length) return "00:00";
-  const firstSlot = [...config.slots].sort((a, b) => a.sortOrder - b.sortOrder)[0];
+  const firstSlot = scheduleOpenSlotsForDate(schedule, date)[0];
+  if (!firstSlot) return "00:00";
   return minutesToTime(Math.max(0, timeToMinutes(firstSlot.start) - 4 * 60));
 }
 
@@ -8444,10 +8460,8 @@ function CalendarView({
       ? scheduleByResource.get(mobileResource) ?? defaultSchedule
       : defaultSchedule;
   const { isOpen, openStart, openEnd } = scheduleRangeForDate(selectedScheduleForMobile, activeDate);
-  const slots = useMemo(() => Array.from({ length: 48 }, (_, index) => minutesToTime(index * 30)), []);
   const slotHeight = 40;
   const mobileSlotHeight = 46;
-  const columnHeight = slots.length * slotHeight;
   const activeCalendarBookings = useMemo(
     () => bookings.filter((booking) => booking.status !== "Cancelled"),
     [bookings]
@@ -8463,6 +8477,42 @@ function CalendarView({
       ),
     [activeDate, activeCalendarBookings]
   );
+  const visibleCalendarRange = useMemo(() => {
+    const starts: number[] = [];
+    const ends: number[] = [];
+
+    for (const resource of resources) {
+      const schedule = scheduleByResource.get(resource) ?? defaultSchedule;
+      openBlocksForSchedule(schedule, activeDate).forEach((block) => {
+        starts.push(block.start);
+        ends.push(block.end);
+      });
+    }
+
+    visibleDayBookings.forEach((booking) => {
+      starts.push(timeToMinutes(booking.start));
+      ends.push(timeToMinutes(booking.end));
+    });
+
+    if (!starts.length || !ends.length) {
+      return { start: 0, end: 24 * 60 };
+    }
+
+    const start = Math.max(0, Math.floor((Math.min(...starts) - 60) / 30) * 30);
+    const paddedEnd = Math.min(24 * 60, Math.ceil((Math.max(...ends) + 90) / 30) * 30);
+    const end = Math.min(24 * 60, Math.max(paddedEnd, start + 4 * 60));
+
+    return { start, end };
+  }, [activeDate, defaultSchedule, resources, scheduleByResource, visibleDayBookings]);
+  const slots = useMemo(
+    () =>
+      Array.from(
+        { length: Math.max(1, Math.ceil((visibleCalendarRange.end - visibleCalendarRange.start) / 30)) },
+        (_, index) => minutesToTime(visibleCalendarRange.start + index * 30)
+      ),
+    [visibleCalendarRange]
+  );
+  const columnHeight = Math.max(slotHeight, ((visibleCalendarRange.end - visibleCalendarRange.start) / 30) * slotHeight);
   const closedBlocks = useMemo(
     () => closedBlocksForSchedule(selectedScheduleForMobile, activeDate),
     [activeDate, selectedScheduleForMobile]
@@ -9052,8 +9102,11 @@ function CalendarView({
                         ))}
 
                         {timeline.map((segment, index) => {
-                          const top = (segment.start / 30) * mobileSlotHeight + 1;
-                          const height = Math.max(mobileSlotHeight - 2, ((segment.end - segment.start) / 30) * mobileSlotHeight - 2);
+                          const renderedStart = Math.max(segment.start, visibleCalendarRange.start);
+                          const renderedEnd = Math.min(segment.end, visibleCalendarRange.end);
+                          if (renderedEnd <= renderedStart) return null;
+                          const top = ((renderedStart - visibleCalendarRange.start) / 30) * mobileSlotHeight + 1;
+                          const height = Math.max(mobileSlotHeight - 2, ((renderedEnd - renderedStart) / 30) * mobileSlotHeight - 2);
 
                           if (segment.type === "closed") {
                             return (
@@ -9063,7 +9116,7 @@ function CalendarView({
                                 style={{ top, height }}
                               >
                                 <div className="text-[9px] font-semibold leading-none text-white/80">
-                                  {timeLabel(minutesToTime(segment.start))} - {timeLabel(minutesToTime(segment.end))}
+                                  {timeLabel(minutesToTime(renderedStart))} - {timeLabel(minutesToTime(renderedEnd))}
                                 </div>
                                 <div className="mt-1 text-[18px] font-semibold leading-none">Closed</div>
                               </div>
@@ -9071,7 +9124,7 @@ function CalendarView({
                           }
 
                           if (segment.type === "available") {
-                            const slotKey = calendarDropSlotKey(resource, segment.start);
+                            const slotKey = calendarDropSlotKey(resource, renderedStart);
                             const isDragTarget = dragOverSlotKey === slotKey;
                             const isSelectionTarget = isSlotSelectionTarget(resource, segment.start, segment.end);
 
@@ -9079,14 +9132,14 @@ function CalendarView({
                               <button
                                 key={`${resource}-mobile-open-block-${index}`}
                                 type="button"
-                                onClick={(event) => void handleOpenSlotClick(event, resource, segment.start, segment.end)}
-                                onPointerDown={(event) => startSlotSelection(event, resource, segment.start, segment.end)}
-                                onPointerMove={(event) => updateSlotSelection(event, resource, segment.start, segment.end)}
-                                onPointerEnter={(event) => updateSlotSelection(event, resource, segment.start, segment.end)}
-                                onPointerUp={(event) => finishSlotSelection(event, resource, segment.start, segment.end)}
-                                onDragOver={(event) => handleSlotDragOver(event, resource, segment.start)}
-                                onDragLeave={() => handleSlotDragLeave(resource, segment.start)}
-                                onDrop={(event) => void handleSlotDrop(event, resource, segment.start, segment.end)}
+                                onClick={(event) => void handleOpenSlotClick(event, resource, renderedStart, renderedEnd)}
+                                onPointerDown={(event) => startSlotSelection(event, resource, renderedStart, renderedEnd)}
+                                onPointerMove={(event) => updateSlotSelection(event, resource, renderedStart, renderedEnd)}
+                                onPointerEnter={(event) => updateSlotSelection(event, resource, renderedStart, renderedEnd)}
+                                onPointerUp={(event) => finishSlotSelection(event, resource, renderedStart, renderedEnd)}
+                                onDragOver={(event) => handleSlotDragOver(event, resource, renderedStart)}
+                                onDragLeave={() => handleSlotDragLeave(resource, renderedStart)}
+                                onDrop={(event) => void handleSlotDrop(event, resource, renderedStart, renderedEnd)}
                                 className={`absolute left-[2px] right-[2px] overflow-hidden rounded-md border px-2 py-1 text-left shadow-sm transition select-none ${
                                   isDragTarget || isSelectionTarget
                                     ? "border-black bg-[#d7f4e5] text-black ring-2 ring-black/30"
@@ -9095,7 +9148,7 @@ function CalendarView({
                                 style={{ top, height }}
                               >
                                 <div className="text-[9px] font-semibold leading-none text-[#15835d]/75">
-                                  {timeLabel(minutesToTime(segment.start))}
+                                  {timeLabel(minutesToTime(renderedStart))}
                                 </div>
                                 <div className="mt-1 text-[16px] font-semibold leading-none">Open</div>
                               </button>
@@ -9228,8 +9281,11 @@ function CalendarView({
                       ))}
 
                       {resourceTimeline.map((segment, index) => {
-                        const top = (segment.start / 30) * slotHeight + 1;
-                        const height = Math.max(slotHeight - 2, ((segment.end - segment.start) / 30) * slotHeight - 2);
+                        const renderedStart = Math.max(segment.start, visibleCalendarRange.start);
+                        const renderedEnd = Math.min(segment.end, visibleCalendarRange.end);
+                        if (renderedEnd <= renderedStart) return null;
+                        const top = ((renderedStart - visibleCalendarRange.start) / 30) * slotHeight + 1;
+                        const height = Math.max(slotHeight - 2, ((renderedEnd - renderedStart) / 30) * slotHeight - 2);
 
                         if (segment.type === "closed") {
                           return (
@@ -9240,7 +9296,7 @@ function CalendarView({
                             >
                               <div className="px-3 py-2 text-left">
                                 <div className="text-[10px] font-semibold leading-none text-white/80">
-                                  {timeLabel(minutesToTime(segment.start))} - {timeLabel(minutesToTime(segment.end))}
+                                  {timeLabel(minutesToTime(renderedStart))} - {timeLabel(minutesToTime(renderedEnd))}
                                 </div>
                                 <div className="mt-1 text-[16px] font-semibold leading-none">Closed</div>
                               </div>
@@ -9249,7 +9305,7 @@ function CalendarView({
                         }
 
                         if (segment.type === "available") {
-                          const slotKey = calendarDropSlotKey(resource, segment.start);
+                          const slotKey = calendarDropSlotKey(resource, renderedStart);
                           const isDragTarget = dragOverSlotKey === slotKey;
                           const isSelectionTarget = isSlotSelectionTarget(resource, segment.start, segment.end);
 
@@ -9257,15 +9313,15 @@ function CalendarView({
                             <button
                               key={`${resource}-available-${index}`}
                               type="button"
-                              onClick={(event) => void handleOpenSlotClick(event, resource, segment.start, segment.end)}
-                              onPointerDown={(event) => startSlotSelection(event, resource, segment.start, segment.end)}
-                              onPointerMove={(event) => updateSlotSelection(event, resource, segment.start, segment.end)}
-                              onPointerEnter={(event) => updateSlotSelection(event, resource, segment.start, segment.end)}
-                              onPointerUp={(event) => finishSlotSelection(event, resource, segment.start, segment.end)}
-                              onDragOver={(event) => handleSlotDragOver(event, resource, segment.start)}
-                              onDragLeave={() => handleSlotDragLeave(resource, segment.start)}
-                              onDrop={(event) => void handleSlotDrop(event, resource, segment.start, segment.end)}
-                              aria-label={`Book ${resource} from ${timeLabel(minutesToTime(segment.start))} to ${timeLabel(minutesToTime(segment.end))}`}
+                              onClick={(event) => void handleOpenSlotClick(event, resource, renderedStart, renderedEnd)}
+                              onPointerDown={(event) => startSlotSelection(event, resource, renderedStart, renderedEnd)}
+                              onPointerMove={(event) => updateSlotSelection(event, resource, renderedStart, renderedEnd)}
+                              onPointerEnter={(event) => updateSlotSelection(event, resource, renderedStart, renderedEnd)}
+                              onPointerUp={(event) => finishSlotSelection(event, resource, renderedStart, renderedEnd)}
+                              onDragOver={(event) => handleSlotDragOver(event, resource, renderedStart)}
+                              onDragLeave={() => handleSlotDragLeave(resource, renderedStart)}
+                              onDrop={(event) => void handleSlotDrop(event, resource, renderedStart, renderedEnd)}
+                              aria-label={`Book ${resource} from ${timeLabel(minutesToTime(renderedStart))} to ${timeLabel(minutesToTime(renderedEnd))}`}
                               className={`absolute left-0 right-0 overflow-hidden border text-left transition select-none ${
                                 isDragTarget || isSelectionTarget
                                   ? "border-black/30 bg-[#c8e9ff] ring-2 ring-black/25"
@@ -9276,7 +9332,7 @@ function CalendarView({
                               style={{ top, height }}
                             >
                               <span className="sr-only">
-                                Available {timeLabel(minutesToTime(segment.start))} - {timeLabel(minutesToTime(segment.end))}
+                                Available {timeLabel(minutesToTime(renderedStart))} - {timeLabel(minutesToTime(renderedEnd))}
                               </span>
                             </button>
                           );
