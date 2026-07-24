@@ -18,9 +18,14 @@ type AuthAdminResult = {
   data: { user?: { id: string } | null };
   error: QueryError;
 };
+type AuthUserResult = {
+  data: { user?: { id: string; email?: string; user_metadata?: Record<string, unknown> } | null };
+  error: QueryError;
+};
 type CustomerSupabaseClient = {
   from(table: string): QueryBuilder;
   auth: {
+    getUser(jwt: string): Promise<AuthUserResult>;
     admin: {
       createUser(args: {
         email: string;
@@ -56,6 +61,51 @@ function badRequest(message: string, status = 400) {
 function isExistingUserError(error: QueryError) {
   const message = String(error?.message ?? "").toLowerCase();
   return message.includes("already registered") || message.includes("already been registered") || message.includes("already exists");
+}
+
+export async function GET(req: Request) {
+  try {
+    const authHeader = req.headers.get("authorization") ?? "";
+    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+    if (!token) return badRequest("Sign in to load your account.", 401);
+
+    const supabase = getSupabaseAdmin() as unknown as CustomerSupabaseClient;
+    const userResult = await supabase.auth.getUser(token);
+    if (userResult.error || !userResult.data.user) return badRequest("Sign in to load your account.", 401);
+
+    const user = userResult.data.user;
+    const email = clean(user.email).toLowerCase();
+    const customerResult = await supabase
+      .from("booking_customers")
+      .select("id,parent_name,player_name,email,phone,age")
+      .eq("email", email)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (customerResult.error) throw customerResult.error;
+
+    const customer = customerResult.data as
+      | { id?: string; parent_name?: string; player_name?: string; email?: string; phone?: string; age?: number | null }
+      | null;
+    const metadata = user.user_metadata ?? {};
+    const metadataName = clean(metadata.full_name);
+
+    return NextResponse.json({
+      ok: true,
+      customer: {
+        id: customer?.id ?? "",
+        parentName: clean(customer?.parent_name) || metadataName || email,
+        playerName: clean(customer?.player_name),
+        playerAge: customer?.age === null || customer?.age === undefined ? "" : String(customer.age),
+        email,
+        phone: clean(customer?.phone),
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    return badRequest(error instanceof Error ? error.message : "Could not load parent account.", 500);
+  }
 }
 
 export async function POST(req: Request) {

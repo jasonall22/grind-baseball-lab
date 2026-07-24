@@ -20,11 +20,12 @@ import {
   type PublicBookingData,
   type PublicBookingService,
 } from "@/lib/publicBooking";
+import { supabase } from "@/lib/supabaseClient";
 
 type BookingStep = "overview" | "player" | "time" | "summary" | "done";
 type TimeChoice = { start: string; end: string; resourceId: string; resourceName: string };
 type ParentAccount = {
-  id: string;
+  id?: string;
   parentName: string;
   playerName: string;
   playerAge?: string;
@@ -446,6 +447,41 @@ export default function CustomerBookingApp() {
     };
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadAccount() {
+      const sessionResult = await supabase.auth.getSession();
+      const token = sessionResult.data.session?.access_token;
+      if (!token) return;
+
+      const response = await fetch("/api/book/customers", {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) return;
+
+      const payload = await response.json();
+      const account = payload.customer as ParentAccount | null;
+      if (!mounted || !account) return;
+
+      setParentAccount(account);
+      setSelectedPlayer(account.playerName || "Yourself");
+      setForm({
+        parentName: account.parentName,
+        playerName: account.playerName || "",
+        email: account.email,
+        phone: account.phone,
+      });
+    }
+
+    void loadAccount();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const selectedService = useMemo(
     () => data.services.find((service) => service.id === selectedServiceId) ?? null,
     [data.services, selectedServiceId]
@@ -490,6 +526,13 @@ export default function CustomerBookingApp() {
     setShowAccountModal(true);
   }
 
+  async function signOut() {
+    await supabase.auth.signOut();
+    setParentAccount(null);
+    setSelectedPlayer("Yourself");
+    setForm({ parentName: "", playerName: "Yourself", email: "", phone: "" });
+  }
+
   async function createParentAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (accountBusy) return;
@@ -512,6 +555,15 @@ export default function CustomerBookingApp() {
       if (!response.ok) throw new Error(payload.error || "Could not create parent account.");
 
       const account = payload.customer as ParentAccount;
+      const signInResult = await supabase.auth.signInWithPassword({
+        email: account.email,
+        password: accountForm.password,
+      });
+      if (signInResult.error) {
+        setAccountStatus(`Account created, but sign in failed: ${signInResult.error.message}`);
+        return;
+      }
+
       setParentAccount(account);
       setSelectedPlayer(account.playerName);
       setForm({
@@ -581,25 +633,29 @@ export default function CustomerBookingApp() {
             <Image src="/logo.png" alt="The Grind Baseball Lab" width={72} height={28} className="h-8 w-auto opacity-75" priority />
           </span>
           <div className="flex items-center gap-7">
-            <a href="/login?next=/book" className="text-[18px] font-semibold">
-              Sign In
-            </a>
-            <button
-              type="button"
-              onClick={openAccountModal}
-              className="rounded-[4px] bg-[#272322] px-7 py-4 text-[18px] font-semibold text-white shadow-[0_3px_8px_rgba(0,0,0,0.24)]"
-            >
-              Create Account
-            </button>
             {parentAccount ? (
-              <button
-                type="button"
-                onClick={openAccountModal}
-                className="flex h-11 w-11 items-center justify-center rounded-full bg-[#bdbdbd] text-[14px] font-semibold text-white"
-              >
-                {initials(parentAccount.parentName)}
-              </button>
-            ) : null}
+              <>
+                <button type="button" onClick={signOut} className="text-[18px] font-semibold">
+                  Sign Out
+                </button>
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#bdbdbd] text-[14px] font-semibold text-white">
+                  {initials(parentAccount.parentName)}
+                </div>
+              </>
+            ) : (
+              <>
+                <a href="/login?next=/book" className="text-[18px] font-semibold">
+                  Sign In
+                </a>
+                <button
+                  type="button"
+                  onClick={openAccountModal}
+                  className="rounded-[4px] bg-[#272322] px-7 py-4 text-[18px] font-semibold text-white shadow-[0_3px_8px_rgba(0,0,0,0.24)]"
+                >
+                  Create Account
+                </button>
+              </>
+            )}
           </div>
         </div>
       </header>
