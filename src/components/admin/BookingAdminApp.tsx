@@ -1603,7 +1603,8 @@ type IconName =
   | "x"
   | "arrow-left"
   | "repeat"
-  | "refresh";
+  | "refresh"
+  | "logout";
 
 const iconPaths: Record<IconName, string[]> = {
   home: ["m3 11 9-8 9 8", "M5 10v10h14V10", "M10 20v-6h4v6"],
@@ -1641,6 +1642,7 @@ const iconPaths: Record<IconName, string[]> = {
   "arrow-left": ["m12 19-7-7 7-7", "M19 12H5"],
   repeat: ["m17 2 4 4-4 4", "M3 11V9a4 4 0 0 1 4-4h14", "m7 22-4-4 4-4", "M21 13v2a4 4 0 0 1-4 4H3"],
   refresh: ["M21 12a9 9 0 1 1-2.64-6.36", "M21 3v6h-6"],
+  logout: ["M10 17l5-5-5-5", "M15 12H3", "M21 19V5a2 2 0 0 0-2-2h-5", "M14 21h5a2 2 0 0 0 2-2"],
 };
 
 function Icon({ name, className = "h-5 w-5" }: { name: IconName; className?: string }) {
@@ -6081,7 +6083,7 @@ export default function BookingAdminApp({
 
   return (
     <div className="min-h-screen bg-white text-black">
-      <MobileAdminHeader variant={view === "more" ? "light" : "dark"} />
+      <MobileAdminHeader currentAuthEmail={currentAuthEmail} variant={view === "more" ? "light" : "dark"} />
       <div
         className={[
           "grid min-h-screen grid-cols-1 bg-white",
@@ -6093,9 +6095,7 @@ export default function BookingAdminApp({
           <aside className="hidden bg-[#f5f5f5] p-3 lg:flex lg:min-h-screen lg:flex-col lg:px-5 lg:py-5">
             <div className="-mx-5 -mt-5 mb-5 hidden items-center justify-between border-b border-white/10 bg-black px-5 py-3 shadow-[0_1px_4px_rgba(0,0,0,0.28)] lg:flex">
               <AdminBrandLogo size="desktop" />
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-black/20 text-white">
-                <Icon name="user" className="h-5 w-5" />
-              </div>
+              <AdminAccountMenu currentAuthEmail={currentAuthEmail} />
             </div>
 
             <nav className="flex w-full gap-1 overflow-x-auto lg:mt-8 lg:grid lg:overflow-visible">
@@ -6727,7 +6727,101 @@ function AdminBrandLogo({ size = "desktop" }: { size?: "desktop" | "mobile" }) {
   );
 }
 
-function MobileAdminHeader({ variant = "dark" }: { variant?: "dark" | "light" }) {
+function AdminAccountMenu({
+  currentAuthEmail,
+  size = "compact",
+  variant = "dark",
+}: {
+  currentAuthEmail?: string;
+  size?: "compact" | "large";
+  variant?: "dark" | "light";
+}) {
+  const router = useRouter();
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const isLight = variant === "light";
+  const isLarge = size === "large";
+  const displayEmail = currentAuthEmail?.trim();
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function closeOnOutsideClick(event: MouseEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isOpen]);
+
+  async function logOut() {
+    if (isSigningOut) return;
+
+    setIsSigningOut(true);
+    await supabase.auth.signOut();
+    router.replace("/login");
+    router.refresh();
+  }
+
+  return (
+    <div ref={menuRef} className="relative">
+      <button
+        type="button"
+        aria-expanded={isOpen}
+        aria-label="Account menu"
+        onClick={() => setIsOpen((current) => !current)}
+        className={[
+          "grid place-items-center rounded-full transition",
+          isLarge ? "h-12 w-12" : "h-8 w-8",
+          isLight
+            ? "bg-black/5 text-black hover:bg-black/10"
+            : "bg-black/20 text-white hover:bg-white/15",
+        ].join(" ")}
+      >
+        <Icon name="user" className={isLarge ? "h-7 w-7" : "h-5 w-5"} />
+      </button>
+
+      {isOpen ? (
+        <div className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-xl border border-black/10 bg-white py-2 text-black shadow-[0_12px_28px_rgba(0,0,0,0.18)]">
+          <div className="border-b border-black/10 px-4 pb-2 pt-1">
+            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-black/45">Signed in</div>
+            <div className="mt-1 truncate text-sm font-semibold">{displayEmail || "Admin account"}</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => void logOut()}
+            disabled={isSigningOut}
+            className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold text-black transition hover:bg-black/[0.04] disabled:cursor-wait disabled:text-black/45"
+          >
+            <Icon name="logout" className="h-4 w-4" />
+            {isSigningOut ? "Logging out..." : "Log out"}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function MobileAdminHeader({
+  currentAuthEmail,
+  variant = "dark",
+}: {
+  currentAuthEmail?: string;
+  variant?: "dark" | "light";
+}) {
   const isLight = variant === "light";
 
   return (
@@ -6740,9 +6834,7 @@ function MobileAdminHeader({ variant = "dark" }: { variant?: "dark" | "light" })
       ].join(" ")}
     >
       <AdminBrandLogo size="mobile" />
-      <div className="grid h-12 w-12 place-items-center rounded-full bg-black/20 text-white">
-        <Icon name="user" className="h-7 w-7" />
-      </div>
+      <AdminAccountMenu currentAuthEmail={currentAuthEmail} size="large" variant={isLight ? "light" : "dark"} />
     </header>
   );
 }
