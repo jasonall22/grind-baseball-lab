@@ -2078,6 +2078,22 @@ function normalizeBookings(bookings: Booking[], services: Service[]) {
   });
 }
 
+function coachOptionsForAdminLesson(service: Service | null | undefined, staff: StaffMember[]) {
+  if (!service || service.category !== "lessons") return [];
+
+  const assignedNames = new Set((service.instructors ?? []).map((name) => name.trim().toLowerCase()).filter(Boolean));
+  const activeStaff = staff.filter((member) => member.active);
+  const matchedStaff = assignedNames.size
+    ? activeStaff.filter((member) => assignedNames.has(member.name.trim().toLowerCase()))
+    : [];
+
+  if (matchedStaff.length) return matchedStaff;
+
+  return activeStaff.filter((member) =>
+    ["owner", "admin", "instructor"].includes(member.role.trim().toLowerCase())
+  );
+}
+
 function slugifyFileNameStem(fileName: string) {
   const stem = fileName.replace(/\.[^.]+$/, "").toLowerCase();
   const slug = stem
@@ -20347,6 +20363,7 @@ function EditorModal({
           serviceName: "",
           calendarColor: DEFAULT_SERVICE_CALENDAR_COLOR,
           resource: modal.seed?.resource ?? state.resources[0] ?? "",
+          staffId: modal.seed?.staffId ?? null,
           status: modal.seed?.status ?? ("Confirmed" as const),
           paid: modal.seed?.paid ?? false,
           paidByMembershipCredit: modal.seed?.paidByMembershipCredit ?? false,
@@ -20456,6 +20473,13 @@ function EditorModal({
   const selectedBookingService =
     bookingDraft ? state.services.find((item) => item.id === bookingDraft.serviceId) ?? null : null;
   const effectiveBookingService = bookingDraft?.serviceId ? selectedBookingService ?? matchedBookingService : null;
+  const bookingCoachOptions = coachOptionsForAdminLesson(effectiveBookingService, state.staff);
+  const selectedBookingCoach =
+    bookingDraft?.staffId ? state.staff.find((member) => member.id === bookingDraft.staffId) ?? null : null;
+  const bookingCoachSelectOptions: Array<[string, string]> = [
+    ["", bookingCoachOptions.length ? "Select coach" : "No coaches assigned"],
+    ...bookingCoachOptions.map((member): [string, string] => [member.id, member.name]),
+  ];
   const [bookingServiceKind, setBookingServiceKind] = useState<BookingModalServiceKind>(() => {
     if (!bookingDraft) return "rentals";
     if (isUnavailableBooking(bookingDraft)) return "unavailable";
@@ -20664,6 +20688,7 @@ function EditorModal({
         serviceId: "",
         serviceName: UNAVAILABLE_SERVICE_NAME,
         calendarColor: normalizedBooking.calendarColor || "#6b7280",
+        staffId: null,
         paid: false,
         paidByMembershipCredit: false,
         membershipCreditMembershipId: "",
@@ -20689,12 +20714,20 @@ function EditorModal({
       : normalizedBooking.serviceId
         ? state.services.find((item) => item.id === normalizedBooking.serviceId) ?? nextService
         : null;
+    const resolvedCoachOptions = coachOptionsForAdminLesson(resolvedService, state.staff);
+    const resolvedStaffId =
+      resolvedService?.category === "lessons" && normalizedBooking.staffId
+        ? resolvedCoachOptions.some((member) => member.id === normalizedBooking.staffId)
+          ? normalizedBooking.staffId
+          : null
+        : null;
 
     setDraft({
       ...normalizedBooking,
       serviceId: resolvedService?.id ?? "",
       serviceName: resolvedService?.name ?? "",
       calendarColor: resolvedService?.calendarColor ?? DEFAULT_SERVICE_CALENDAR_COLOR,
+      staffId: resolvedStaffId,
     } as typeof draft);
   }
 
@@ -20711,6 +20744,7 @@ function EditorModal({
         customerId: "",
         playerName: "",
         calendarColor: "#6b7280",
+        staffId: null,
         paid: false,
         paidByMembershipCredit: false,
         membershipCreditMembershipId: "",
@@ -20723,6 +20757,7 @@ function EditorModal({
       serviceId: "",
       serviceName: "",
       calendarColor: DEFAULT_SERVICE_CALENDAR_COLOR,
+      staffId: null,
       paid: false,
       paidByMembershipCredit: false,
       membershipCreditMembershipId: "",
@@ -20813,6 +20848,27 @@ function EditorModal({
                   })}
                 </div>
               </div>
+              {bookingServiceKind === "lessons" ? (
+                <div className="sm:col-span-2 rounded-lg border border-black/10 bg-black/[0.02] px-4 py-3">
+                  <div className="text-xs font-semibold uppercase tracking-[0.12em] text-black/45">Coach</div>
+                  {selectedBookingCoach ? (
+                    <div className="mt-2 flex items-center gap-3">
+                      <span
+                        className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-semibold text-white"
+                        style={{ backgroundColor: normalizeCalendarColor(selectedBookingCoach.calendarColor) }}
+                      >
+                        {staffInitials(selectedBookingCoach.name)}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-black">{selectedBookingCoach.name}</div>
+                        <div className="text-xs text-black/50">{selectedBookingCoach.role || "Instructor"}</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-2 text-sm font-semibold text-black/55">No coach selected</div>
+                  )}
+                </div>
+              ) : null}
               <TextField label="Date" type="date" value={(draft as Booking).date} onChange={(value) => patchBooking({ date: value })} />
               <SelectField label="Status" value={(draft as Booking).status} onChange={(value) => patchBooking({ status: value as Booking["status"] })} options={["Confirmed", "Pending", "Cancelled"]} />
               <TextField label="Start" type="time" value={(draft as Booking).start} onChange={(value) => patchBooking({ start: value })} />
@@ -20853,6 +20909,14 @@ function EditorModal({
                   options={bookingServiceOptions}
                 />
               )}
+              {bookingServiceKind === "lessons" ? (
+                <SelectField
+                  label="Coach"
+                  value={(draft as Booking).staffId ?? ""}
+                  onChange={(value) => patchBooking({ staffId: value || null })}
+                  options={bookingCoachSelectOptions}
+                />
+              ) : null}
               <SelectField label="Resource" value={(draft as Booking).resource} onChange={(value) => patchBooking({ resource: value })} options={state.resources} />
               {(activeBookingDraft?.customerId || activeBookingDraft?.playerName) &&
               activeBookingDraft.serviceId &&
