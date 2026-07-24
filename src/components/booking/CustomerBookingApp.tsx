@@ -784,8 +784,8 @@ export default function CustomerBookingApp() {
     <main className="min-h-screen bg-[#f6f7f9] text-black">
       <header className="sticky top-0 z-30 border-b border-black/10 bg-white/95 backdrop-blur">
         <div className="mx-auto flex min-h-[86px] max-w-[1240px] items-center justify-between gap-5 px-5 py-4 lg:px-8">
-          <span className="inline-flex h-12 items-center rounded-[6px] bg-black px-4 shadow-sm">
-            <Image src="/logo.png" alt="The Grind Baseball Lab" width={118} height={46} className="h-8 w-auto" priority />
+          <span className="inline-flex h-12 items-center">
+            <Image src="/booking-header-logo.png" alt="The Grind Baseball Lab" width={230} height={102} className="h-12 w-auto" priority />
           </span>
           <div className="flex items-center gap-3 sm:gap-5">
             {parentAccount ? (
