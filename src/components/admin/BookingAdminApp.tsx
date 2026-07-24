@@ -15552,25 +15552,62 @@ function StaffSettingsView({
   onSave: (nextStaff: StaffMember[], successMessage?: string) => Promise<boolean | void>;
 }) {
   const [draft, setDraft] = useState(staff);
-  const [selectedStaffId, setSelectedStaffId] = useState<string | null>(() => staff.find((member) => member.role === "Owner")?.id ?? staff[0]?.id ?? null);
+  const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"active" | "inactive">("active");
+  const [search, setSearch] = useState("");
   const [activeDetailTab, setActiveDetailTab] = useState<"profile" | "payroll">("profile");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setDraft(staff);
     setSelectedStaffId((current) =>
-      current && staff.some((member) => member.id === current)
+      current === null || staff.some((member) => member.id === current)
         ? current
-        : staff.find((member) => member.role === "Owner")?.id ?? staff[0]?.id ?? null
+        : null
     );
   }, [staff]);
 
-  const selectedMember = draft.find((member) => member.id === selectedStaffId) ?? draft[0];
+  const activeCount = draft.filter((member) => member.active).length;
+  const inactiveCount = draft.length - activeCount;
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredStaff = useMemo(() => {
+    return draft.filter((member) => {
+      if (activeTab === "active" && !member.active) return false;
+      if (activeTab === "inactive" && member.active) return false;
+      if (!normalizedSearch) return true;
+      return [member.name, member.email, member.role].join(" ").toLowerCase().includes(normalizedSearch);
+    });
+  }, [activeTab, draft, normalizedSearch]);
+  const selectedMember = selectedStaffId ? draft.find((member) => member.id === selectedStaffId) ?? null : null;
   const selectedNameParts = splitStaffName(selectedMember?.name ?? "");
+  const summaryRange =
+    filteredStaff.length === 0 ? "0-0 of 0" : `1-${Math.min(filteredStaff.length, 25)} of ${filteredStaff.length}`;
 
   function patchSelectedStaff(patch: Partial<StaffMember>) {
     if (!selectedMember) return;
     setDraft((current) => current.map((member) => (member.id === selectedMember.id ? { ...member, ...patch } : member)));
+  }
+
+  function openNewStaffDetail() {
+    const nextMember: StaffMember = {
+      id: makeId("staff"),
+      name: "",
+      email: "",
+      phone: "",
+      bio: "",
+      notes: "",
+      role: "Staff",
+      active: true,
+      calendarColor: staffAvailabilityColor(draft.length),
+    };
+    setDraft((current) => [...current, nextMember]);
+    setActiveDetailTab("profile");
+    setSelectedStaffId(nextMember.id);
+  }
+
+  function openStaffDetail(member: StaffMember) {
+    setActiveDetailTab("profile");
+    setSelectedStaffId(member.id);
   }
 
   async function saveSelectedMember() {
@@ -15613,10 +15650,157 @@ function StaffSettingsView({
 
   if (!selectedMember) {
     return (
-      <section className="min-h-screen bg-white px-8 py-9">
-        <PageHeader title="Staff" subtitle="Manage your staff members & permissions" />
-        <div className="rounded-lg border border-dashed border-black/15 px-6 py-12 text-center text-black/55">
-          No staff members found.
+      <section className="min-h-screen bg-white">
+        <div className="grid min-h-screen lg:grid-cols-[280px_minmax(0,1fr)]">
+          <aside className="border-b border-black/10 bg-[#f7f7f7] px-4 py-5 lg:border-b-0 lg:border-r">
+            <Link
+              href={backHref}
+              className="inline-flex items-center gap-2 text-sm font-semibold text-black/80 transition hover:text-black"
+            >
+              <Icon name="arrow-left" className="h-4 w-4" />
+              Back to app
+            </Link>
+
+            <div className="mt-7 space-y-6">
+              {settingsNavGroups.map((group) => (
+                <div key={group.title}>
+                  <div className="mb-2 text-[15px] font-medium text-black/60">{group.title}</div>
+                  <div className="space-y-1">
+                    {group.items.map((item) => {
+                      const className = [
+                        "flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-[15px] transition",
+                        item.section === "staff"
+                          ? "bg-[#e9e9e9] font-semibold text-black"
+                          : "text-black/80 hover:bg-black/5",
+                      ].join(" ");
+                      const content = (
+                        <>
+                          <Icon name={item.icon} className="h-[18px] w-[18px]" />
+                          <span>{item.label}</span>
+                        </>
+                      );
+                      return item.href ? (
+                        <Link key={item.label} href={item.href} className={className}>
+                          {content}
+                        </Link>
+                      ) : (
+                        <button key={item.label} type="button" className={className}>
+                          {content}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </aside>
+
+          <div className="px-5 py-8 lg:px-8">
+            <div className="mb-12 flex items-start justify-between gap-4">
+              <div>
+                <h1 className="text-[26px] font-medium leading-tight text-black">Staff</h1>
+                <p className="mt-1 text-[16px] text-black/80">Manage your staff members & permissions</p>
+              </div>
+              <button
+                type="button"
+                onClick={openNewStaffDetail}
+                className="inline-flex min-h-12 items-center gap-3 rounded-[4px] bg-[#1f1b1b] px-6 text-[16px] font-semibold text-white shadow-[0_3px_8px_rgba(0,0,0,0.22)]"
+              >
+                <Icon name="plus" className="h-5 w-5" />
+                New
+              </button>
+            </div>
+
+            <div className="mb-5 flex items-end gap-7 border-b border-black/15">
+              <button
+                type="button"
+                onClick={() => setActiveTab("active")}
+                className={[
+                  "border-b-[3px] px-5 pb-4 text-[17px] font-semibold transition",
+                  activeTab === "active" ? "border-black text-black" : "border-transparent text-black/60",
+                ].join(" ")}
+              >
+                Active ({activeCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("inactive")}
+                className={[
+                  "border-b-[3px] px-5 pb-4 text-[17px] font-semibold transition",
+                  activeTab === "inactive" ? "border-black text-black" : "border-transparent text-black/60",
+                ].join(" ")}
+              >
+                Inactive ({inactiveCount})
+              </button>
+            </div>
+
+            <div className="relative mb-5">
+              <Icon name="search" className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-black/45" />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search staff..."
+                className="min-h-12 w-full rounded-[4px] border border-black/25 bg-white pl-14 pr-4 text-[17px] outline-none focus:border-[#526f9f]"
+              />
+            </div>
+
+            <div className="overflow-hidden rounded-[4px] border border-black/10 bg-white shadow-sm">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-[#f3f4f6]">
+                    <th className="px-5 py-5 text-left text-[16px] font-semibold text-black">Name</th>
+                    <th className="px-5 py-5 text-left text-[16px] font-semibold text-black">Email</th>
+                    <th className="px-5 py-5 text-left text-[16px] font-semibold text-black">Role</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-black/10">
+                  {filteredStaff.length ? (
+                    filteredStaff.map((member) => (
+                      <tr
+                        key={member.id}
+                        onClick={() => openStaffDetail(member)}
+                        className="cursor-pointer bg-white transition hover:bg-[#e4e5e7]"
+                      >
+                        <td className="px-5 py-5 align-middle">
+                          <div className="flex items-center gap-3">
+                            <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#bfbfbf] text-white">
+                              <Icon name="user" className="h-5 w-5" />
+                            </div>
+                            <span className="text-[17px] text-black">{member.name}</span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-5 align-middle text-[17px] text-black">{member.email}</td>
+                        <td className="px-5 py-5 align-middle">
+                          <StaffRoleBadge role={member.role} />
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={3} className="px-5 py-12 text-center text-[15px] text-black/45">
+                        No staff members found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+
+              <div className="flex items-center justify-end gap-8 border-t border-black/10 px-5 py-4 text-[15px] text-black/70">
+                <div className="flex items-center gap-2">
+                  <span>Rows per page:</span>
+                  <div className="inline-flex items-center gap-2">
+                    <span>25</span>
+                    <Icon name="chevron" className="h-4 w-4 -rotate-90 text-black/45" />
+                  </div>
+                </div>
+                <div>{summaryRange}</div>
+                <div className="flex items-center gap-2 text-black/25">
+                  <Icon name="chevron" className="h-4 w-4 rotate-180" />
+                  <Icon name="chevron" className="h-4 w-4" />
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
     );
@@ -15628,9 +15812,9 @@ function StaffSettingsView({
         <div className="mb-5 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="mb-4 flex items-center gap-2 text-[15px] text-black">
-              <Link href={backHref} className="text-black hover:underline">
+              <button type="button" onClick={() => setSelectedStaffId(null)} className="text-black hover:underline">
                 Staff
-              </Link>
+              </button>
               <span className="text-black/45">/</span>
               <select
                 value={selectedMember.id}
