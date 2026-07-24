@@ -185,6 +185,7 @@ type Booking = {
   serviceName?: string;
   calendarColor?: string;
   resource: string;
+  staffId?: string | null;
   status: "Confirmed" | "Pending" | "Cancelled";
   paid: boolean;
   paidByMembershipCredit?: boolean;
@@ -505,6 +506,7 @@ type BookingBookingRow = {
   player_name: string | null;
   service_id: string | null;
   resource_id: string | null;
+  staff_member_id: string | null;
   status: Booking["status"];
   paid: boolean;
 };
@@ -2567,6 +2569,7 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
       player_name: item.playerName || null,
       service_id: item.serviceId || null,
       resource_id: resourceId,
+      staff_member_id: item.staffId || null,
       status: item.status,
       paid: item.paid || Boolean(creditMembership),
     });
@@ -3437,6 +3440,7 @@ function normalizeUnavailableBooking(booking: Booking): Booking {
     serviceId: "",
     serviceName: UNAVAILABLE_SERVICE_NAME,
     calendarColor: "#6b7280",
+    staffId: null,
     paid: false,
     paidByMembershipCredit: false,
     membershipCreditMembershipId: "",
@@ -4753,6 +4757,7 @@ export default function BookingAdminApp({
               ? serviceMetaById.get(booking.service_id)?.calendarColor ?? DEFAULT_SERVICE_CALENDAR_COLOR
               : "#6b7280",
             resource: booking.resource_id ? namesById.get(booking.resource_id) ?? "" : "",
+            staffId: booking.staff_member_id ?? null,
             status: booking.status,
             paid: Boolean(booking.paid || creditEntry),
             paidByMembershipCredit: Boolean(creditEntry),
@@ -6248,6 +6253,7 @@ export default function BookingAdminApp({
               customersById={customersById}
               resources={state.resources}
               servicesById={servicesById}
+              staff={state.staff}
               onDateChange={setActiveDate}
               onNew={(seed) => setModal({ type: "booking", seed })}
               onEdit={(id) => setModal({ type: "booking", id })}
@@ -8495,6 +8501,7 @@ function CalendarView({
   customersById,
   resources,
   servicesById,
+  staff,
   onDateChange,
   onNew,
   onEdit,
@@ -8508,6 +8515,7 @@ function CalendarView({
   customersById: Map<string, Customer>;
   resources: string[];
   servicesById: Map<string, Service>;
+  staff: StaffMember[];
   onDateChange: (date: string) => void;
   onNew: (seed?: Partial<Booking>) => void;
   onEdit: (id: string) => void;
@@ -8559,6 +8567,7 @@ function CalendarView({
     () => bookings.filter((booking) => booking.status !== "Cancelled"),
     [bookings]
   );
+  const staffById = useMemo(() => new Map(staff.map((member) => [member.id, member])), [staff]);
   const visibleDayBookings = useMemo(
     () =>
       activeCalendarBookings
@@ -9254,11 +9263,16 @@ function CalendarView({
                           const isCompactBooking = durationMinutes <= 30;
                           const isUnavailableBlock = isUnavailableBooking(booking);
                           const isDraggingBooking = dragBookingId === booking.id;
+                          const coachName = booking.staffId ? staffById.get(booking.staffId)?.name ?? "" : "";
                           const bookingCustomerName =
                             isUnavailableBlock ? "Unavailable" : booking.playerName || customer?.player || customer?.name || "Customer";
                           const bookingServiceName = isUnavailableBlock
                             ? booking.resource
                             : service?.name || booking.serviceName || "Service";
+                          const bookingSubtitle =
+                            isCompactBooking && !isUnavailableBlock && coachName
+                              ? `${bookingServiceName} - ${coachName}`
+                              : bookingServiceName;
 
                           return (
                             <button
@@ -9306,9 +9320,14 @@ function CalendarView({
                                     isCompactBooking ? "mt-0.5 text-[9px]" : "mt-0.5 text-[10px]"
                                   }`}
                                 >
-                                  {bookingServiceName}
+                                  {bookingSubtitle}
                                 </div>
                               )}
+                              {!isCompactBooking && !isUnavailableBlock && coachName ? (
+                                <div className={`mt-0.5 truncate text-[10px] font-medium leading-[1.05] ${tone.subClass}`}>
+                                  Coach: {coachName}
+                                </div>
+                              ) : null}
                             </button>
                           );
                         })}
@@ -9438,12 +9457,17 @@ function CalendarView({
                         const isCompactBooking = durationMinutes <= 30;
                         const isUnavailableBlock = isUnavailableBooking(booking);
                         const isDraggingBooking = dragBookingId === booking.id;
+                        const coachName = booking.staffId ? staffById.get(booking.staffId)?.name ?? "" : "";
                         const bookingTitle = isUnavailableBlock
                           ? "Unavailable"
                           : booking.playerName || customer?.player || customer?.name || "Customer";
                         const bookingSubtitle = isUnavailableBlock
                           ? booking.resource
                           : service?.name || booking.serviceName || "Service";
+                        const bookingDetail =
+                          isCompactBooking && !isUnavailableBlock && coachName
+                            ? `${bookingSubtitle} - ${coachName}`
+                            : bookingSubtitle;
 
                         return (
                           <button
@@ -9497,9 +9521,14 @@ function CalendarView({
                                   isCompactBooking ? "mt-0.5 text-[10px]" : "mt-1 text-[11px]"
                                 }`}
                               >
-                                {bookingSubtitle}
+                                {bookingDetail}
                               </div>
                             )}
+                            {!isCompactBooking && !isUnavailableBlock && coachName ? (
+                              <div className={`mt-1 truncate text-[11px] font-medium leading-none ${tone.subClass}`}>
+                                Coach: {coachName}
+                              </div>
+                            ) : null}
                           </button>
                         );
                       })}
@@ -9552,6 +9581,7 @@ function CalendarView({
                         const statusBadge = bookingStatusBadge(booking);
                         const tone = bookingTonePresentation(booking, service);
                         const paymentIndicator = bookingPaymentIndicator(booking);
+                        const coachName = booking.staffId ? staffById.get(booking.staffId)?.name ?? "" : "";
                         return (
                           <button
                             key={booking.id}
@@ -9584,6 +9614,7 @@ function CalendarView({
                               {booking.playerName || customer?.player || customer?.name || "Customer"}
                             </div>
                             <div className={`mt-1 text-[13px] ${tone.subClass}`}>{service?.name || booking.serviceName || "Service"}</div>
+                            {coachName ? <div className={`mt-1 text-[12px] ${tone.subClass}`}>Coach: {coachName}</div> : null}
                           </button>
                         );
                       })
@@ -9622,6 +9653,14 @@ function CalendarView({
                         const statusBadge = bookingStatusBadge(booking);
                         const tone = bookingTonePresentation(booking, service);
                         const paymentIndicator = bookingPaymentIndicator(booking);
+                        const coachName = booking.staffId ? staffById.get(booking.staffId)?.name ?? "" : "";
+                        const bookingDetail = [
+                          service?.name || booking.serviceName || "Service",
+                          booking.resource,
+                          coachName ? `Coach: ${coachName}` : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" - ");
                         return (
                           <button
                             key={booking.id}
@@ -9654,7 +9693,7 @@ function CalendarView({
                               {booking.playerName || customer?.player || customer?.name || "Customer"}
                             </div>
                             <div className={`mt-1 text-[12px] ${tone.subClass}`}>
-                              {(service?.name || booking.serviceName || "Service")} \u00b7 {booking.resource}
+                              {bookingDetail}
                             </div>
                           </button>
                         );
