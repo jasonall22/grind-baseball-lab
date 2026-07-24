@@ -780,10 +780,10 @@ export default function CustomerBookingApp() {
   return (
     <main className="min-h-screen bg-[#f6f7f9] text-black">
       <header className="sticky top-0 z-30 border-b border-black/10 bg-white/95 backdrop-blur">
-        <div className="mx-auto grid min-h-[170px] max-w-[1240px] grid-cols-1 items-center gap-4 px-5 py-6 sm:grid-cols-[1fr_auto_1fr] sm:gap-5 lg:px-8">
+        <div className="mx-auto grid min-h-[142px] max-w-[1240px] grid-cols-1 items-center gap-4 px-5 py-5 sm:grid-cols-[1fr_auto_1fr] sm:gap-5 lg:px-8">
           <div className="hidden sm:block" />
           <a href="/book" className="justify-self-center" aria-label="The Grind Baseball Lab booking home">
-            <Image src="/logo-header-grind.png" alt="The Grind Baseball Lab" width={788} height={350} className="h-auto w-[300px] sm:w-[460px] lg:w-[520px]" priority />
+            <Image src="/logo-header.png" alt="The Grind Baseball Lab" width={420} height={164} className="h-auto w-[280px] sm:w-[360px] lg:w-[420px]" priority />
           </a>
           <div className="flex items-center justify-center gap-3 justify-self-center sm:justify-self-end sm:gap-5">
             {parentAccount ? (
