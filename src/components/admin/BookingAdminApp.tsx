@@ -9568,6 +9568,7 @@ function AvailabilityView({
   const [calendarMode, setCalendarMode] = useState<"day" | "week">("week");
   const [editorOpen, setEditorOpen] = useState(false);
   const [draft, setDraft] = useState<StaffAvailabilityEntry | null>(null);
+  const [selectedAvailabilityId, setSelectedAvailabilityId] = useState<string | null>(null);
   const [dragSelection, setDragSelection] = useState<{
     date: string;
     start: number;
@@ -9612,6 +9613,12 @@ function AvailabilityView({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [scrollStartMinutes, slotHeight]);
+
+  useEffect(() => {
+    if (selectedAvailabilityId && !visibleEntries.some((entry) => entry.id === selectedAvailabilityId)) {
+      setSelectedAvailabilityId(null);
+    }
+  }, [selectedAvailabilityId, visibleEntries]);
 
   function update(index: number, next: [string, boolean, string, string]) {
     onChange(rows.map((row, i) => (i === index ? next : row)));
@@ -9665,6 +9672,7 @@ function AvailabilityView({
   function beginAvailabilityDrag(date: string, event: React.MouseEvent<HTMLDivElement>) {
     if (event.button !== 0 || !manageableStaff.length) return;
     const start = minutesFromColumnEvent(event, "floor");
+    setSelectedAvailabilityId(null);
     setDragSelection({ date, start, current: start + 15 });
   }
 
@@ -9695,7 +9703,10 @@ function AvailabilityView({
   function editAvailabilityDraft(entry: StaffAvailabilityEntry) {
     if (!canManageAny && entry.staffId !== currentStaffId) return;
     const nextDraft = createAvailabilityDraft(entry.date, timeToMinutes(entry.start), entry);
-    if (nextDraft) setDraft(nextDraft);
+    if (nextDraft) {
+      setSelectedAvailabilityId(null);
+      setDraft(nextDraft);
+    }
   }
 
   async function saveDraft() {
@@ -9709,13 +9720,25 @@ function AvailabilityView({
       resources: draft.resources.filter(Boolean),
     });
 
-    if (saved) setDraft(null);
+    if (saved) {
+      setSelectedAvailabilityId(null);
+      setDraft(null);
+    }
   }
 
   async function deleteDraft() {
     if (!draft) return;
     const deleted = await onDeleteEntry(draft.id);
-    if (deleted) setDraft(null);
+    if (deleted) {
+      setSelectedAvailabilityId(null);
+      setDraft(null);
+    }
+  }
+
+  async function deleteAvailabilityEntry(entry: StaffAvailabilityEntry) {
+    if (!canManageAny && entry.staffId !== currentStaffId) return;
+    const deleted = await onDeleteEntry(entry.id);
+    if (deleted) setSelectedAvailabilityId(null);
   }
 
   function renderAvailabilityBlocks(date: string) {
@@ -9755,18 +9778,61 @@ function AvailabilityView({
             .join("")
             .slice(0, 2);
 
+          const selected = selectedAvailabilityId === entry.id;
+
           return (
-            <button
+            <div
               key={entry.id}
-              type="button"
+              role="button"
+              tabIndex={0}
               onMouseDown={(event) => event.stopPropagation()}
               onClick={(event) => {
                 event.stopPropagation();
-                editAvailabilityDraft(entry);
+                setSelectedAvailabilityId((current) => (current === entry.id ? null : entry.id));
               }}
-              className="absolute left-[5px] right-[5px] block appearance-none overflow-hidden rounded-[4px] border border-black/20 text-left text-white shadow-sm"
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setSelectedAvailabilityId((current) => (current === entry.id ? null : entry.id));
+                }
+              }}
+              className={[
+                "absolute left-[5px] right-[5px] block cursor-pointer appearance-none rounded-[4px] border border-black/20 text-left text-white shadow-sm",
+                selected ? "z-30 overflow-visible ring-2 ring-white/90" : "z-10 overflow-hidden",
+              ].join(" ")}
               style={{ top, height, backgroundColor: entry.color }}
             >
+              {selected ? (
+                <div
+                  className="absolute left-[10px] top-[28px] z-40 grid w-[50px] overflow-visible rounded-md bg-white text-black shadow-[0_8px_18px_rgba(0,0,0,0.28)]"
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <button
+                    type="button"
+                    aria-label="Edit availability details"
+                    onClick={() => editAvailabilityDraft(entry)}
+                    className="group relative grid h-[50px] w-[50px] place-items-center rounded-t-md text-black/55 hover:bg-black/[0.04] hover:text-black"
+                  >
+                    <Icon name="edit" className="h-6 w-6" />
+                    <span className="pointer-events-none absolute left-[58px] top-1/2 hidden -translate-y-1/2 whitespace-nowrap rounded bg-black/60 px-2 py-1 text-[12px] font-semibold text-white group-hover:block">
+                      Edit availability details
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Delete availability"
+                    onClick={() => void deleteAvailabilityEntry(entry)}
+                    className="group relative grid h-[50px] w-[50px] place-items-center rounded-b-md text-black/55 hover:bg-black/[0.04] hover:text-black"
+                  >
+                    <Icon name="trash" className="h-6 w-6" />
+                    <span className="pointer-events-none absolute left-[58px] top-1/2 hidden -translate-y-1/2 whitespace-nowrap rounded bg-black/60 px-2 py-1 text-[12px] font-semibold text-white group-hover:block">
+                      Delete availability
+                    </span>
+                  </button>
+                </div>
+              ) : null}
               <div className="absolute left-[6px] right-[6px] top-[4px]">
                 <div className="truncate text-[10px] font-semibold leading-[10px] text-white">
                   {timeLabel(entry.start)} - {timeLabel(entry.end)}
@@ -9788,7 +9854,7 @@ function AvailabilityView({
                   </div>
                 </>
               ) : null}
-            </button>
+            </div>
           );
         })}
 
@@ -9890,25 +9956,29 @@ function AvailabilityView({
               ))}
             </div>
 
-            {visibleDates.map((date) => (
-              <div
-                key={`availability-column-${date}`}
-                onMouseDown={(event) => beginAvailabilityDrag(date, event)}
-                onMouseMove={(event) => updateAvailabilityDrag(date, event)}
-                onMouseUp={(event) => finishAvailabilityDrag(date, event)}
-                onMouseLeave={() => setDragSelection((selection) => (selection?.date === date ? null : selection))}
-                className={[
-                  "relative cursor-crosshair border-r border-black/10 last:border-r-0",
-                  date === today ? "bg-[#eaf6ff]" : "bg-white",
-                ].join(" ")}
-                style={{ height: slots.length * slotHeight }}
-              >
-                {slots.map((slot) => (
-                  <div key={`${date}-${slot}`} className="border-b border-black/10" style={{ height: slotHeight }} />
-                ))}
-                {renderAvailabilityBlocks(date)}
-              </div>
-            ))}
+            {visibleDates.map((date) => {
+              const selectedInColumn = visibleEntries.some((entry) => entry.id === selectedAvailabilityId && entry.date === date);
+              return (
+                <div
+                  key={`availability-column-${date}`}
+                  onMouseDown={(event) => beginAvailabilityDrag(date, event)}
+                  onMouseMove={(event) => updateAvailabilityDrag(date, event)}
+                  onMouseUp={(event) => finishAvailabilityDrag(date, event)}
+                  onMouseLeave={() => setDragSelection((selection) => (selection?.date === date ? null : selection))}
+                  className={[
+                    "relative cursor-crosshair border-r border-black/10 last:border-r-0",
+                    selectedInColumn ? "z-20" : "z-0",
+                    date === today ? "bg-[#eaf6ff]" : "bg-white",
+                  ].join(" ")}
+                  style={{ height: slots.length * slotHeight }}
+                >
+                  {slots.map((slot) => (
+                    <div key={`${date}-${slot}`} className="border-b border-black/10" style={{ height: slotHeight }} />
+                  ))}
+                  {renderAvailabilityBlocks(date)}
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
