@@ -7017,7 +7017,6 @@ function AdminAccountMenu({
   size?: "compact" | "large";
   variant?: "dark" | "light";
 }) {
-  const router = useRouter();
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -7052,9 +7051,11 @@ function AdminAccountMenu({
     if (isSigningOut) return;
 
     setIsSigningOut(true);
-    await supabase.auth.signOut();
-    router.replace("/book");
-    router.refresh();
+    try {
+      await supabase.auth.signOut();
+    } finally {
+      window.location.assign("/book");
+    }
   }
 
   return (

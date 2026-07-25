@@ -65,7 +65,7 @@ export default function AdminAuthGate({
 
       if (!session?.user?.id) {
         setStatus("denied");
-        router.replace("/login");
+        router.replace("/book");
         return;
       }
 
