@@ -16,10 +16,12 @@ import {
   publicBookingCategoryLabels,
   scheduleSlotsForDate,
   serviceRooms,
+  shiftDate,
   timeLabel,
   timeToMinutes,
   type PublicBookingCategory,
   type PublicBookingData,
+  type PublicBookingSchedule,
   type PublicBookingService,
 } from "@/lib/publicBooking";
 import { supabase } from "@/lib/supabaseClient";
@@ -185,6 +187,56 @@ function serviceCardDescription(service: PublicBookingService, data: PublicBooki
 function serviceCardBadge(service: PublicBookingService) {
   if (service.category === "memberships") return `${service.membershipBillingPeriod} membership`;
   return durationLabel(service.duration);
+}
+
+function compactTimeLabel(value: string) {
+  return timeLabel(value).replace(":00", "");
+}
+
+function relativeDayLabel(date: string, today: string) {
+  if (date === today) return "today";
+  if (date === shiftDate(today, 1)) return "tomorrow";
+  return parseLocalDate(date).toLocaleDateString("en-US", { weekday: "short" });
+}
+
+function facilityHoursStatus(schedules: PublicBookingSchedule[], now: Date) {
+  const schedule =
+    schedules.find((item) => item.isDefault) ??
+    schedules.find((item) => item.slug === "working-hours") ??
+    schedules[0] ??
+    null;
+  if (!schedule) return { isOpen: false, label: "Hours unavailable" };
+
+  const today = isoDate(now);
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const todaySlots = [...scheduleSlotsForDate(schedule, today)].sort(
+    (left, right) => timeToMinutes(left.start) - timeToMinutes(right.start)
+  );
+  const openSlot = todaySlots.find((slot) => currentMinutes >= timeToMinutes(slot.start) && currentMinutes < timeToMinutes(slot.end));
+  if (openSlot) {
+    return { isOpen: true, label: `Open - Closes ${compactTimeLabel(openSlot.end)} today` };
+  }
+
+  const laterSlot = todaySlots.find((slot) => currentMinutes < timeToMinutes(slot.start));
+  if (laterSlot) {
+    return { isOpen: false, label: `Closed - Opens ${compactTimeLabel(laterSlot.start)} today` };
+  }
+
+  for (let offset = 1; offset <= 14; offset += 1) {
+    const date = shiftDate(today, offset);
+    const slots = [...scheduleSlotsForDate(schedule, date)].sort(
+      (left, right) => timeToMinutes(left.start) - timeToMinutes(right.start)
+    );
+    const nextSlot = slots[0];
+    if (nextSlot) {
+      return {
+        isOpen: false,
+        label: `Closed - Opens ${compactTimeLabel(nextSlot.start)} ${relativeDayLabel(date, today)}`,
+      };
+    }
+  }
+
+  return { isOpen: false, label: "Closed" };
 }
 
 function formatLongDate(value: string) {
@@ -391,15 +443,27 @@ function LogoPanel({ compact = false }: { compact?: boolean }) {
 
 function BookingHero({
   settings,
+  schedules,
   onSelectCategory,
   onSignIn,
   showSignIn = false,
 }: {
   settings: PublicBookingData["settings"];
+  schedules: PublicBookingData["schedules"];
   onSelectCategory: (category: PublicBookingCategory) => void;
   onSignIn: () => void;
   showSignIn?: boolean;
 }) {
+  const [now, setNow] = useState(() => new Date());
+  const hoursStatus = facilityHoursStatus(schedules, now);
+  const [statusWord, ...statusDetailParts] = hoursStatus.label.split(" - ");
+  const statusDetail = statusDetailParts.join(" - ");
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   return (
     <section className="bg-white px-4 py-5 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-[1240px] overflow-hidden rounded-[10px] border border-black/10 bg-white shadow-[0_18px_45px_rgba(0,0,0,0.12)]">
@@ -421,8 +485,14 @@ function BookingHero({
             <div className="mt-4 flex flex-wrap gap-2 text-[14px] font-semibold text-black/65">
               <span className="rounded-full border border-black/10 bg-[#f7f8fa] px-4 py-2">{settings.address}</span>
               <span className="rounded-full border border-black/10 bg-[#f7f8fa] px-4 py-2">{settings.phone}</span>
-              <span className="rounded-full border border-red-100 bg-red-50 px-4 py-2">
-                <span className="text-[#d10018]">Closed</span> - Opens 4PM today
+              <span
+                className={[
+                  "rounded-full border px-4 py-2",
+                  hoursStatus.isOpen ? "border-emerald-100 bg-emerald-50" : "border-red-100 bg-red-50",
+                ].join(" ")}
+              >
+                <span className={hoursStatus.isOpen ? "text-emerald-700" : "text-[#d10018]"}>{statusWord}</span>
+                {statusDetail ? ` - ${statusDetail}` : ""}
               </span>
             </div>
           </div>
@@ -1902,7 +1972,13 @@ export default function CustomerBookingApp() {
         </div>
       </header>
 
-      <BookingHero settings={data.settings} onSelectCategory={setSelectedCategory} onSignIn={openSignInModal} showSignIn={!parentAccount} />
+      <BookingHero
+        settings={data.settings}
+        schedules={data.schedules}
+        onSelectCategory={setSelectedCategory}
+        onSignIn={openSignInModal}
+        showSignIn={!parentAccount}
+      />
 
       <section className="mx-auto max-w-[1240px] px-5 py-10 lg:px-8">
         <div className="min-w-0">
