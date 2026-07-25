@@ -107,7 +107,7 @@ export async function GET(req: Request) {
     let dashboard = emptyDashboard();
 
     if (customer?.id) {
-      const [bookingsResult, membershipsResult, servicesResult, resourcesResult, staffResult] = await Promise.all([
+      const [bookingsResult, membershipsResult, servicesResult, resourcesResult, staffResult, paymentsResult] = await Promise.all([
         supabase
           .from("booking_bookings")
           .select("id,booking_date,start_time,end_time,status,paid,service_id,resource_id,staff_member_id,player_name")
@@ -124,9 +124,15 @@ export async function GET(req: Request) {
         supabase.from("booking_services").select("id,name,service_type,price"),
         supabase.from("booking_resources").select("id,name"),
         supabase.from("booking_staff_members").select("id,full_name"),
+        supabase
+          .from("booking_customer_payments")
+          .select("id,amount_cents,status,description,receipt_url,payment_method_brand,payment_method_last4,processed_at,created_at")
+          .eq("customer_id", customer.id)
+          .order("processed_at", { ascending: false })
+          .limit(40),
       ]);
 
-      const failed = [bookingsResult, membershipsResult, servicesResult, resourcesResult, staffResult].find((result) => result.error);
+      const failed = [bookingsResult, membershipsResult, servicesResult, resourcesResult, staffResult, paymentsResult].find((result) => result.error);
       if (failed?.error) throw failed.error;
 
       const servicesById = new Map(
@@ -141,6 +147,32 @@ export async function GET(req: Request) {
       );
       const resourcesById = new Map(((resourcesResult.data ?? []) as Array<Record<string, unknown>>).map((resource) => [String(resource.id), clean(resource.name)]));
       const staffById = new Map(((staffResult.data ?? []) as Array<Record<string, unknown>>).map((staff) => [String(staff.id), clean(staff.full_name)]));
+      const payments = ((paymentsResult.data ?? []) as Array<Record<string, unknown>>).map((payment) => ({
+        id: String(payment.id),
+        amountCents: Number(payment.amount_cents ?? 0),
+        status: clean(payment.status),
+        description: clean(payment.description),
+        receiptUrl: clean(payment.receipt_url),
+        paymentMethodBrand: clean(payment.payment_method_brand),
+        paymentMethodLast4: clean(payment.payment_method_last4),
+        processedAt: clean(payment.processed_at),
+        createdAt: clean(payment.created_at),
+      }));
+      const cancelRequestsByMembershipId = new Map<string, Record<string, string>>();
+      payments
+        .filter((payment) => payment.paymentMethodBrand === "Membership cancellation request")
+        .forEach((payment) => {
+          const membershipId = payment.description.match(/\[membership:([^\]]+)\]/)?.[1] ?? "";
+          if (!membershipId || cancelRequestsByMembershipId.has(membershipId)) return;
+          cancelRequestsByMembershipId.set(membershipId, {
+            id: payment.id,
+            status: payment.status === "Cancelled" ? "Completed" : "Pending",
+            message: payment.description.replace(/\[membership:[^\]]+\]\s*/g, "").replace(/^Cancellation requested\.?\s*/i, "").trim(),
+            requestedAt: payment.processedAt || payment.createdAt,
+            reviewedAt: "",
+            adminNotes: "",
+          });
+        });
       const today = new Date().toISOString().slice(0, 10);
       const bookings = ((bookingsResult.data ?? []) as Array<Record<string, unknown>>).map((booking) => {
         const service = servicesById.get(clean(booking.service_id));
@@ -168,10 +200,20 @@ export async function GET(req: Request) {
           .sort((a, b) => `${b.date} ${b.start}`.localeCompare(`${a.date} ${a.start}`)),
         memberships: ((membershipsResult.data ?? []) as Array<Record<string, unknown>>).map((membership) => {
           const service = servicesById.get(clean(membership.membership_service_id));
+          const membershipName = service?.name || "Membership";
+          const membershipNameKey = membershipName.toLowerCase();
+          const latestPayment = payments.find((payment) => {
+            const description = payment.description.toLowerCase();
+            return (
+              payment.paymentMethodBrand !== "Membership cancellation request" &&
+              ["Succeeded", "Refunded"].includes(payment.status) &&
+              (description.includes(membershipNameKey) || description.includes("membership"))
+            );
+          });
           return {
             id: String(membership.id),
             status: clean(membership.status) || "Active",
-            serviceName: service?.name || "Membership",
+            serviceName: membershipName,
             billingPeriod: clean(membership.billing_period) || "Monthly",
             priceCents: Number(membership.price_cents ?? service?.priceCents ?? 0),
             creditsPerDay: Number(membership.credits_per_day ?? 0),
@@ -179,6 +221,14 @@ export async function GET(req: Request) {
             currentPeriodStart: clean(membership.current_period_start),
             currentPeriodEnd: clean(membership.current_period_end),
             autoRenew: Boolean(membership.auto_renew),
+            latestReceiptUrl: latestPayment?.receiptUrl ?? "",
+            latestPaymentAmountCents: latestPayment?.amountCents ?? 0,
+            latestPaymentStatus: latestPayment?.status ?? "",
+            latestPaymentDate: latestPayment?.processedAt || latestPayment?.createdAt || "",
+            latestPaymentMethod: latestPayment?.paymentMethodBrand
+              ? `${latestPayment.paymentMethodBrand}${latestPayment.paymentMethodLast4 ? ` ending ${latestPayment.paymentMethodLast4}` : ""}`
+              : "",
+            cancelRequest: cancelRequestsByMembershipId.get(String(membership.id)) ?? null,
           };
         }),
       };

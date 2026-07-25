@@ -424,6 +424,7 @@ type MembershipCancelOptions = {
   timing: MembershipCancelTiming;
   refundProrated: boolean;
 };
+type MembershipCancelRequestStatus = "Pending" | "Reviewed" | "Completed" | "Declined";
 
 type BookingCustomerMembershipRow = {
   id: string;
@@ -465,6 +466,32 @@ type CustomerMembershipRecord = {
   autoRenew: boolean;
   startedAt: string;
   cancelledAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type BookingMembershipCancelRequestRow = {
+  id: string;
+  customer_id: string;
+  status: string | null;
+  description: string | null;
+  payment_method_brand: string | null;
+  processed_at: string | null;
+  created_at: string;
+  updated_at: string | null;
+};
+
+type MembershipCancelRequestRecord = {
+  id: string;
+  customerId: string;
+  customerMembershipId: string;
+  membershipServiceId: string;
+  status: MembershipCancelRequestStatus;
+  message: string;
+  requestedByEmail: string;
+  requestedAt: string;
+  reviewedAt: string;
+  adminNotes: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -2704,6 +2731,11 @@ function normalizeCustomerMembershipStatus(value: unknown): CustomerMembershipSt
   return "Active";
 }
 
+function normalizeMembershipCancelRequestStatus(value: unknown): MembershipCancelRequestStatus {
+  if (value === "Reviewed" || value === "Completed" || value === "Declined") return value;
+  return "Pending";
+}
+
 function addMembershipPeriod(dateValue: string, period: MembershipBillingPeriod) {
   const date = parseLocalDate(dateValue);
   if (period === "Weekly") date.setDate(date.getDate() + 7);
@@ -2740,6 +2772,25 @@ function normalizeCustomerMembershipRow(row: BookingCustomerMembershipRow): Cust
     autoRenew: row.auto_renew ?? true,
     startedAt: row.started_at ?? row.created_at,
     cancelledAt: row.cancelled_at ?? "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at ?? row.created_at,
+  };
+}
+
+function normalizeMembershipCancelRequestRow(row: BookingMembershipCancelRequestRow): MembershipCancelRequestRecord {
+  const description = row.description ?? "";
+  const customerMembershipId = description.match(/\[membership:([^\]]+)\]/)?.[1] ?? "";
+  return {
+    id: row.id,
+    customerId: row.customer_id,
+    customerMembershipId,
+    membershipServiceId: "",
+    status: row.status === "Cancelled" ? "Completed" : normalizeMembershipCancelRequestStatus(row.status),
+    message: description.replace(/\[membership:[^\]]+\]\s*/g, "").replace(/^Cancellation requested\.?\s*/i, "").trim(),
+    requestedByEmail: "",
+    requestedAt: row.processed_at ?? row.created_at,
+    reviewedAt: "",
+    adminNotes: "",
     createdAt: row.created_at,
     updatedAt: row.updated_at ?? row.created_at,
   };
@@ -4261,6 +4312,7 @@ export default function BookingAdminApp({
   const [isRemoteLoading, setIsRemoteLoading] = useState(hasSupabaseEnv);
   const [resourceIdsByName, setResourceIdsByName] = useState<Record<string, string>>({});
   const [customerMembershipsByCustomerId, setCustomerMembershipsByCustomerId] = useState<Record<string, CustomerMembershipRecord[]>>({});
+  const [membershipCancelRequestsByMembershipId, setMembershipCancelRequestsByMembershipId] = useState<Record<string, MembershipCancelRequestRecord[]>>({});
   const [membershipCreditLedger, setMembershipCreditLedger] = useState<MembershipCreditLedgerEntry[]>([]);
   const [backToAppHref, setBackToAppHref] = useState(bookingAdminRouteByView.home);
   const [showCustomerImport, setShowCustomerImport] = useState(false);
@@ -4444,6 +4496,7 @@ export default function BookingAdminApp({
         servicesResult,
         customersResult,
         customerMembershipsResult,
+        membershipCancelRequestsResult,
         membershipCreditLedgerResult,
         bookingsResult,
         availabilityResult,
@@ -4461,6 +4514,11 @@ export default function BookingAdminApp({
         supabase.from("booking_services").select("*").order("sort_order"),
         supabase.from("booking_customers").select("*").order("created_at"),
         supabase.from("booking_customer_memberships").select("*").order("created_at"),
+        supabase
+          .from("booking_customer_payments")
+          .select("id,customer_id,status,description,payment_method_brand,processed_at,created_at,updated_at")
+          .eq("payment_method_brand", "Membership cancellation request")
+          .order("created_at", { ascending: false }),
         supabase.from("booking_membership_credit_ledger").select("*").order("created_at"),
         supabase.from("booking_bookings").select("*").order("booking_date").order("start_time"),
         supabase.from("booking_availability").select("*").order("weekday"),
@@ -4480,6 +4538,7 @@ export default function BookingAdminApp({
         servicesResult.error,
         customersResult.error,
         customerMembershipsResult.error,
+        membershipCancelRequestsResult.error,
         membershipCreditLedgerResult.error,
         bookingsResult.error,
         availabilityResult.error,
@@ -4500,6 +4559,7 @@ export default function BookingAdminApp({
       const serviceRows = (servicesResult.data ?? []) as BookingServiceRow[];
       const customerRows = (customersResult.data ?? []) as BookingCustomerRow[];
       const customerMembershipRows = (customerMembershipsResult.data ?? []) as BookingCustomerMembershipRow[];
+      const membershipCancelRequestRows = (membershipCancelRequestsResult.data ?? []) as BookingMembershipCancelRequestRow[];
       const membershipCreditLedgerRows = (membershipCreditLedgerResult.data ?? []) as BookingMembershipCreditLedgerRow[];
       const bookingRows = (bookingsResult.data ?? []) as BookingBookingRow[];
       const availabilityRows = (availabilityResult.data ?? []) as BookingAvailabilityRow[];
@@ -4541,6 +4601,13 @@ export default function BookingAdminApp({
         }
 
         acc[normalized.customerId].push(normalized);
+        return acc;
+      }, {});
+      const cancelRequestsByMembershipId = membershipCancelRequestRows.reduce<Record<string, MembershipCancelRequestRecord[]>>((acc, row) => {
+        const normalized = normalizeMembershipCancelRequestRow(row);
+        if (!normalized.customerMembershipId) return acc;
+        if (!acc[normalized.customerMembershipId]) acc[normalized.customerMembershipId] = [];
+        acc[normalized.customerMembershipId].push(normalized);
         return acc;
       }, {});
       const membershipCreditLedgerEntries = membershipCreditLedgerRows.map(normalizeMembershipCreditLedgerRow);
@@ -4807,12 +4874,14 @@ export default function BookingAdminApp({
         })),
       });
       setCustomerMembershipsByCustomerId(customerMembershipsById);
+      setMembershipCancelRequestsByMembershipId(cancelRequestsByMembershipId);
       setMembershipCreditLedger(membershipCreditLedgerEntries);
       setDataSource("supabase");
     } catch (error) {
       console.error(error);
       setDataSource("local");
       setCustomerMembershipsByCustomerId({});
+      setMembershipCancelRequestsByMembershipId({});
       setMembershipCreditLedger([]);
       showToast("Could not load Supabase data. Using local draft data.");
     } finally {
@@ -5693,6 +5762,20 @@ export default function BookingAdminApp({
             : membership
         ),
       }));
+      setMembershipCancelRequestsByMembershipId((previous) => ({
+        ...previous,
+        [membershipRecordId]: (previous[membershipRecordId] ?? []).map((request) =>
+          request.status === "Pending"
+            ? {
+                ...request,
+                status: "Completed",
+                reviewedAt: now,
+                adminNotes: options.timing === "period_end" ? "Admin scheduled cancellation at period end." : "Admin cancelled membership.",
+                updatedAt: now,
+              }
+            : request
+        ),
+      }));
       showToast(options.timing === "period_end" ? "Membership will cancel at period end." : "Membership cancelled.");
       return true;
     }
@@ -5719,6 +5802,20 @@ export default function BookingAdminApp({
         ...previous,
         [customerId]: (previous[customerId] ?? []).map((membership) =>
           membership.id === normalized.id ? normalized : membership
+        ),
+      }));
+      setMembershipCancelRequestsByMembershipId((previous) => ({
+        ...previous,
+        [membershipRecordId]: (previous[membershipRecordId] ?? []).map((request) =>
+          request.status === "Pending"
+            ? {
+                ...request,
+                status: "Completed",
+                reviewedAt: new Date().toISOString(),
+                adminNotes: options.timing === "period_end" ? "Admin scheduled cancellation at period end." : "Admin cancelled membership.",
+                updatedAt: new Date().toISOString(),
+              }
+            : request
         ),
       }));
       const refundAmount = Number(payload.refund?.amountCents ?? 0);
@@ -6308,6 +6405,7 @@ export default function BookingAdminApp({
                 servicesById={servicesById}
                 taxesAndFees={state.taxesAndFees}
                 customerMemberships={selectedCustomer ? customerMembershipsByCustomerId[selectedCustomer.id] ?? [] : []}
+                membershipCancelRequestsByMembershipId={membershipCancelRequestsByMembershipId}
                 membershipServices={state.services.filter(
                   (service) => (service.category ?? inferServiceCategory(service.name)) === "memberships"
                 )}
@@ -11538,6 +11636,7 @@ function CustomerDetailView({
   servicesById,
   taxesAndFees,
   customerMemberships,
+  membershipCancelRequestsByMembershipId,
   membershipServices,
   onSaveCustomer,
   onAssignMembership,
@@ -11549,6 +11648,7 @@ function CustomerDetailView({
   servicesById: Map<string, Service>;
   taxesAndFees: AppState["taxesAndFees"];
   customerMemberships: CustomerMembershipRecord[];
+  membershipCancelRequestsByMembershipId: Record<string, MembershipCancelRequestRecord[]>;
   membershipServices: Service[];
   onSaveCustomer: (item: Customer, options?: { message?: string; silent?: boolean }) => Promise<boolean>;
   onAssignMembership: (customerId: string, membershipServiceId: string) => Promise<boolean>;
@@ -13154,6 +13254,9 @@ function CustomerDetailView({
                 membership.currentPeriodStart && membership.currentPeriodEnd
                   ? `${formatMembershipDate(membership.currentPeriodStart)} - ${formatMembershipDate(membership.currentPeriodEnd)}`
                   : "Billing cycle not set";
+              const pendingCancelRequest = (membershipCancelRequestsByMembershipId[membership.id] ?? []).find(
+                (request) => request.status === "Pending"
+              );
 
               return (
                 <div key={membership.id} className="rounded-2xl border border-black/10 bg-white p-4 shadow-[0_1px_0_rgba(0,0,0,0.03)]">
@@ -13187,6 +13290,19 @@ function CustomerDetailView({
                       ) : null}
                     </div>
                   </div>
+
+                  {pendingCancelRequest ? (
+                    <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-semibold">Customer requested cancellation</span>
+                        <span className="text-amber-800">{formatMembershipDate(pendingCancelRequest.requestedAt)}</span>
+                      </div>
+                      {pendingCancelRequest.message ? <div className="mt-2 leading-5">{pendingCancelRequest.message}</div> : null}
+                      {pendingCancelRequest.requestedByEmail ? (
+                        <div className="mt-2 text-amber-800">From {pendingCancelRequest.requestedByEmail}</div>
+                      ) : null}
+                    </div>
+                  ) : null}
 
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     <div className="rounded-xl border border-black/8 bg-black/[0.02] px-3 py-3">

@@ -51,6 +51,14 @@ type CustomerBookingRecord = {
   staffName: string;
   playerName: string;
 };
+type CustomerMembershipCancelRequest = {
+  id: string;
+  status: string;
+  message: string;
+  requestedAt: string;
+  reviewedAt: string;
+  adminNotes: string;
+};
 type CustomerMembershipRecord = {
   id: string;
   status: string;
@@ -62,6 +70,12 @@ type CustomerMembershipRecord = {
   currentPeriodStart: string;
   currentPeriodEnd: string;
   autoRenew: boolean;
+  latestReceiptUrl: string;
+  latestPaymentAmountCents: number;
+  latestPaymentStatus: string;
+  latestPaymentDate: string;
+  latestPaymentMethod: string;
+  cancelRequest: CustomerMembershipCancelRequest | null;
 };
 type CustomerDashboard = {
   upcomingBookings: CustomerBookingRecord[];
@@ -481,8 +495,20 @@ function BookingSummaryCard({ booking }: { booking: CustomerBookingRecord }) {
   );
 }
 
-function MembershipSummaryCard({ membership }: { membership: CustomerMembershipRecord }) {
+function MembershipSummaryCard({
+  membership,
+  onDetails,
+  onPrint,
+  onRequestCancel,
+}: {
+  membership: CustomerMembershipRecord;
+  onDetails: (membership: CustomerMembershipRecord) => void;
+  onPrint: (membership: CustomerMembershipRecord) => void;
+  onRequestCancel: (membership: CustomerMembershipRecord) => void;
+}) {
   const period = membershipCreditPeriodLabel(membership.creditLimitPeriod);
+  const hasPendingCancelRequest = membership.cancelRequest?.status === "Pending";
+  const canRequestCancel = !["Cancelled", "Expired"].includes(membership.status) && !hasPendingCancelRequest;
   return (
     <div className="rounded-[8px] border border-black/10 bg-white px-4 py-4 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -494,6 +520,11 @@ function MembershipSummaryCard({ membership }: { membership: CustomerMembershipR
         </div>
         <span className="rounded-full bg-[#e8f8ef] px-3 py-1 text-[12px] font-semibold text-[#087238]">{membership.status}</span>
       </div>
+      {hasPendingCancelRequest ? (
+        <div className="mt-3 rounded-[6px] border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] font-semibold text-amber-800">
+          Cancellation request sent to admin
+        </div>
+      ) : null}
       <div className="mt-4 grid gap-2 text-[14px] text-black/65 sm:grid-cols-2">
         <div>
           {membership.creditsPerDay > 0
@@ -502,6 +533,30 @@ function MembershipSummaryCard({ membership }: { membership: CustomerMembershipR
         </div>
         <div>{membership.autoRenew ? "Auto renews" : "Does not auto renew"}</div>
         {membership.currentPeriodEnd ? <div>Renews {formatLongDate(membership.currentPeriodEnd.slice(0, 10))}</div> : null}
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => onDetails(membership)}
+          className="rounded-[6px] border border-black/15 px-3 py-2 text-[13px] font-semibold hover:bg-black/[0.04]"
+        >
+          Details
+        </button>
+        <button
+          type="button"
+          onClick={() => onPrint(membership)}
+          className="rounded-[6px] border border-black/15 px-3 py-2 text-[13px] font-semibold hover:bg-black/[0.04]"
+        >
+          Print receipt
+        </button>
+        <button
+          type="button"
+          onClick={() => onRequestCancel(membership)}
+          disabled={!canRequestCancel}
+          className="rounded-[6px] border border-red-200 px-3 py-2 text-[13px] font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {hasPendingCancelRequest ? "Request pending" : "Request cancellation"}
+        </button>
       </div>
     </div>
   );
@@ -514,6 +569,9 @@ function CustomerPortalModal({
   status,
   onClose,
   onRefresh,
+  onMembershipDetails,
+  onPrintMembershipReceipt,
+  onRequestMembershipCancel,
 }: {
   account: ParentAccount;
   dashboard: CustomerDashboard;
@@ -521,6 +579,9 @@ function CustomerPortalModal({
   status: string;
   onClose: () => void;
   onRefresh: () => void;
+  onMembershipDetails: (membership: CustomerMembershipRecord) => void;
+  onPrintMembershipReceipt: (membership: CustomerMembershipRecord) => void;
+  onRequestMembershipCancel: (membership: CustomerMembershipRecord) => void;
 }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/55 px-4 py-8">
@@ -549,13 +610,29 @@ function CustomerPortalModal({
               {busy ? "Refreshing..." : "Refresh"}
             </button>
           </div>
-          {status ? <div className="mt-4 rounded-[6px] bg-red-50 px-4 py-3 text-sm text-red-700">{status}</div> : null}
+          {status ? (
+            <div
+              className={`mt-4 rounded-[6px] px-4 py-3 text-sm ${
+                status.toLowerCase().includes("request") ? "bg-[#eef8fc] text-[#0b6f9f]" : "bg-red-50 text-red-700"
+              }`}
+            >
+              {status}
+            </div>
+          ) : null}
 
           <section className="mt-6">
             <div className="text-[20px] font-semibold">Memberships</div>
             <div className="mt-3 grid gap-3">
               {dashboard.memberships.length ? (
-                dashboard.memberships.map((membership) => <MembershipSummaryCard key={membership.id} membership={membership} />)
+                dashboard.memberships.map((membership) => (
+                  <MembershipSummaryCard
+                    key={membership.id}
+                    membership={membership}
+                    onDetails={onMembershipDetails}
+                    onPrint={onPrintMembershipReceipt}
+                    onRequestCancel={onRequestMembershipCancel}
+                  />
+                ))
               ) : (
                 <div className="rounded-[8px] border border-dashed border-black/15 bg-white px-4 py-6 text-center text-[15px] text-black/55">
                   No memberships yet.
@@ -589,6 +666,184 @@ function CustomerPortalModal({
               )}
             </div>
           </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MembershipDetailsModal({
+  membership,
+  onClose,
+  onPrint,
+  onRequestCancel,
+}: {
+  membership: CustomerMembershipRecord;
+  onClose: () => void;
+  onPrint: (membership: CustomerMembershipRecord) => void;
+  onRequestCancel: (membership: CustomerMembershipRecord) => void;
+}) {
+  const period = membershipCreditPeriodLabel(membership.creditLimitPeriod);
+  const hasPendingCancelRequest = membership.cancelRequest?.status === "Pending";
+  const canRequestCancel = !["Cancelled", "Expired"].includes(membership.status) && !hasPendingCancelRequest;
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/55 px-4 py-8">
+      <div className="flex max-h-[calc(100vh-64px)] w-full max-w-[640px] flex-col overflow-hidden rounded-[5px] bg-white shadow-[0_20px_48px_rgba(0,0,0,0.36)]">
+        <div className="flex h-[76px] shrink-0 items-center border-b border-black/10 px-7">
+          <div>
+            <div className="text-[22px] font-semibold">Membership Details</div>
+            <div className="mt-1 text-[13px] text-black/55">{membership.serviceName}</div>
+          </div>
+          <button type="button" onClick={onClose} className="ml-auto text-[32px] leading-none text-black/45">
+            x
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-7 py-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-[20px] font-semibold">{membership.serviceName}</div>
+              <div className="mt-1 text-[15px] text-black/55">
+                {money(membership.priceCents / 100)}/{membershipPeriodLabel(membership.billingPeriod)}
+              </div>
+            </div>
+            <span className="rounded-full bg-[#e8f8ef] px-3 py-1 text-[12px] font-semibold text-[#087238]">{membership.status}</span>
+          </div>
+
+          {hasPendingCancelRequest ? (
+            <div className="mt-5 rounded-[8px] border border-amber-200 bg-amber-50 px-4 py-3 text-[14px] text-amber-900">
+              <div className="font-semibold">Cancellation request pending</div>
+              {membership.cancelRequest?.requestedAt ? (
+                <div className="mt-1 text-amber-800">Sent {formatLongDate(membership.cancelRequest.requestedAt.slice(0, 10))}</div>
+              ) : null}
+              {membership.cancelRequest?.message ? <div className="mt-2 text-amber-800">{membership.cancelRequest.message}</div> : null}
+            </div>
+          ) : null}
+
+          <div className="mt-6 grid gap-3 text-[15px]">
+            <div className="flex justify-between gap-6 border-b border-black/10 pb-3">
+              <span className="text-black/50">Credits</span>
+              <span className="text-right font-semibold">
+                {membership.creditsPerDay > 0
+                  ? `${membership.creditsPerDay} credit${membership.creditsPerDay === 1 ? "" : "s"} per ${period}`
+                  : "Member booking credits"}
+              </span>
+            </div>
+            <div className="flex justify-between gap-6 border-b border-black/10 pb-3">
+              <span className="text-black/50">Renewal</span>
+              <span className="text-right font-semibold">{membership.autoRenew ? "Auto renews" : "Does not auto renew"}</span>
+            </div>
+            <div className="flex justify-between gap-6 border-b border-black/10 pb-3">
+              <span className="text-black/50">Current period</span>
+              <span className="text-right font-semibold">
+                {membership.currentPeriodStart ? formatLongDate(membership.currentPeriodStart.slice(0, 10)) : "Not set"} -{" "}
+                {membership.currentPeriodEnd ? formatLongDate(membership.currentPeriodEnd.slice(0, 10)) : "Not set"}
+              </span>
+            </div>
+            <div className="flex justify-between gap-6 border-b border-black/10 pb-3">
+              <span className="text-black/50">Last payment</span>
+              <span className="text-right font-semibold">
+                {membership.latestPaymentAmountCents
+                  ? `${money(membership.latestPaymentAmountCents / 100)}${membership.latestPaymentDate ? ` on ${formatLongDate(membership.latestPaymentDate.slice(0, 10))}` : ""}`
+                  : "No payment on file"}
+              </span>
+            </div>
+            {membership.latestPaymentMethod ? (
+              <div className="flex justify-between gap-6 border-b border-black/10 pb-3">
+                <span className="text-black/50">Payment method</span>
+                <span className="text-right font-semibold">{membership.latestPaymentMethod}</span>
+              </div>
+            ) : null}
+            {membership.latestReceiptUrl ? (
+              <a
+                href={membership.latestReceiptUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="font-semibold text-[#0b6f9f] underline underline-offset-4"
+              >
+                Open Stripe receipt
+              </a>
+            ) : null}
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-wrap justify-end gap-3 border-t border-black/10 px-7 py-5">
+          <button type="button" onClick={() => onPrint(membership)} className="rounded-[6px] border border-black/15 px-4 py-2.5 text-[14px] font-semibold">
+            Print receipt
+          </button>
+          <button
+            type="button"
+            onClick={() => onRequestCancel(membership)}
+            disabled={!canRequestCancel}
+            className="rounded-[6px] border border-red-200 px-4 py-2.5 text-[14px] font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {hasPendingCancelRequest ? "Request pending" : "Request cancellation"}
+          </button>
+          <button type="button" onClick={onClose} className="rounded-[6px] bg-black px-4 py-2.5 text-[14px] font-semibold text-white">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MembershipCancelRequestModal({
+  membership,
+  message,
+  setMessage,
+  busy,
+  status,
+  onClose,
+  onSubmit,
+}: {
+  membership: CustomerMembershipRecord;
+  message: string;
+  setMessage: (value: string) => void;
+  busy: boolean;
+  status: string;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/55 px-4 py-8">
+      <div className="w-full max-w-[560px] overflow-hidden rounded-[5px] bg-white shadow-[0_20px_48px_rgba(0,0,0,0.36)]">
+        <div className="flex items-center border-b border-black/10 px-7 py-5">
+          <div>
+            <div className="text-[22px] font-semibold">Request Cancellation</div>
+            <div className="mt-1 text-[13px] text-black/55">{membership.serviceName}</div>
+          </div>
+          <button type="button" onClick={onClose} className="ml-auto text-[32px] leading-none text-black/45">
+            x
+          </button>
+        </div>
+        <div className="px-7 py-6">
+          <div className="rounded-[8px] bg-[#eef8fc] px-4 py-3 text-[14px] leading-6 text-[#0b6f9f]">
+            This sends a cancellation request to The Grind Baseball Lab admin. Your membership stays active until the admin reviews it.
+          </div>
+          <label className="mt-5 grid gap-2 text-[14px] font-semibold">
+            Message to admin <span className="font-normal text-black/45">(optional)</span>
+            <textarea
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              rows={4}
+              className="resize-none rounded-[6px] border border-black/15 px-4 py-3 text-[15px] font-normal outline-none focus:border-black"
+              placeholder="Add any details about your cancellation request..."
+            />
+          </label>
+          {status ? <div className="mt-4 rounded-[6px] bg-red-50 px-4 py-3 text-sm text-red-700">{status}</div> : null}
+        </div>
+        <div className="flex flex-wrap justify-end gap-3 border-t border-black/10 px-7 py-5">
+          <button type="button" onClick={onClose} className="rounded-[6px] border border-black/15 px-5 py-2.5 text-[14px] font-semibold">
+            Keep membership
+          </button>
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={busy}
+            className="rounded-[6px] bg-black px-5 py-2.5 text-[14px] font-semibold text-white disabled:opacity-55"
+          >
+            {busy ? "Sending..." : "Send request"}
+          </button>
         </div>
       </div>
     </div>
@@ -979,6 +1234,11 @@ export default function CustomerBookingApp() {
   const [customerDashboard, setCustomerDashboard] = useState<CustomerDashboard>(emptyCustomerDashboard);
   const [customerPortalBusy, setCustomerPortalBusy] = useState(false);
   const [customerPortalStatus, setCustomerPortalStatus] = useState("");
+  const [selectedMembershipDetails, setSelectedMembershipDetails] = useState<CustomerMembershipRecord | null>(null);
+  const [membershipCancelRequest, setMembershipCancelRequest] = useState<CustomerMembershipRecord | null>(null);
+  const [membershipCancelRequestMessage, setMembershipCancelRequestMessage] = useState("");
+  const [membershipCancelRequestBusy, setMembershipCancelRequestBusy] = useState(false);
+  const [membershipCancelRequestStatus, setMembershipCancelRequestStatus] = useState("");
   const [discountCode, setDiscountCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
@@ -1169,6 +1429,113 @@ export default function CustomerBookingApp() {
     setCustomerPortalStatus("");
     setShowCustomerPortal(true);
     void refreshCustomerAccount();
+  }
+
+  function printMembershipReceipt(membership: CustomerMembershipRecord) {
+    const receiptWindow = window.open("", "_blank", "width=760,height=900");
+    if (!receiptWindow) {
+      setCustomerPortalStatus("Pop-up blocked. Please allow pop-ups to print your receipt.");
+      return;
+    }
+
+    const account = parentAccount;
+    const paymentDate = membership.latestPaymentDate ? formatLongDate(membership.latestPaymentDate.slice(0, 10)) : "Not available";
+    const periodStart = membership.currentPeriodStart ? formatLongDate(membership.currentPeriodStart.slice(0, 10)) : "Not set";
+    const periodEnd = membership.currentPeriodEnd ? formatLongDate(membership.currentPeriodEnd.slice(0, 10)) : "Not set";
+    const paidAmount = membership.latestPaymentAmountCents ? money(membership.latestPaymentAmountCents / 100) : money(membership.priceCents / 100);
+    const safe = (value: string) =>
+      value
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+
+    receiptWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>${safe(membership.serviceName)} Receipt</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 40px; color: #111; }
+            .receipt { max-width: 680px; margin: 0 auto; border: 1px solid #ddd; border-radius: 10px; overflow: hidden; }
+            .header { background: #050505; color: white; padding: 28px; }
+            .header h1 { margin: 0; font-size: 24px; }
+            .header p { margin: 8px 0 0; color: rgba(255,255,255,.72); }
+            .content { padding: 28px; }
+            .row { display: flex; justify-content: space-between; gap: 24px; border-bottom: 1px solid #eee; padding: 13px 0; }
+            .label { color: #666; }
+            .value { font-weight: 700; text-align: right; }
+            .total { font-size: 22px; }
+            .footer { padding: 20px 28px; color: #666; font-size: 13px; border-top: 1px solid #eee; }
+            @media print { button { display: none; } body { margin: 0; } .receipt { border: 0; } }
+          </style>
+        </head>
+        <body>
+          <div class="receipt">
+            <div class="header">
+              <h1>The Grind Baseball Lab</h1>
+              <p>Membership receipt</p>
+            </div>
+            <div class="content">
+              <div class="row"><span class="label">Membership</span><span class="value">${safe(membership.serviceName)}</span></div>
+              <div class="row"><span class="label">Parent</span><span class="value">${safe(account?.parentName || "")}</span></div>
+              <div class="row"><span class="label">Player</span><span class="value">${safe(account?.playerName || "")}</span></div>
+              <div class="row"><span class="label">Email</span><span class="value">${safe(account?.email || "")}</span></div>
+              <div class="row"><span class="label">Billing</span><span class="value">${safe(membership.billingPeriod)}</span></div>
+              <div class="row"><span class="label">Current period</span><span class="value">${safe(periodStart)} - ${safe(periodEnd)}</span></div>
+              <div class="row"><span class="label">Payment date</span><span class="value">${safe(paymentDate)}</span></div>
+              <div class="row"><span class="label">Payment method</span><span class="value">${safe(membership.latestPaymentMethod || "Card on file")}</span></div>
+              <div class="row total"><span class="label">Amount</span><span class="value">${safe(paidAmount)}</span></div>
+            </div>
+            <div class="footer">Generated from your Grind Baseball Lab account.</div>
+          </div>
+          <script>window.addEventListener("load", () => { window.print(); });</script>
+        </body>
+      </html>
+    `);
+    receiptWindow.document.close();
+  }
+
+  function openMembershipCancelRequest(membership: CustomerMembershipRecord) {
+    setMembershipCancelRequest(membership);
+    setMembershipCancelRequestMessage("");
+    setMembershipCancelRequestStatus("");
+  }
+
+  async function sendMembershipCancelRequest() {
+    if (!membershipCancelRequest || membershipCancelRequestBusy) return;
+
+    setMembershipCancelRequestBusy(true);
+    setMembershipCancelRequestStatus("");
+    try {
+      const sessionResult = await supabase.auth.getSession();
+      const token = sessionResult.data.session?.access_token;
+      if (!token) throw new Error("Please sign in again.");
+
+      const response = await fetch("/api/book/memberships/cancel-request", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          membershipRecordId: membershipCancelRequest.id,
+          message: membershipCancelRequestMessage,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Could not send cancellation request.");
+
+      await refreshCustomerAccount();
+      setMembershipCancelRequest(null);
+      setMembershipCancelRequestMessage("");
+      setSelectedMembershipDetails(null);
+      setCustomerPortalStatus(payload.alreadyPending ? "Cancellation request is already pending with the admin." : "Cancellation request sent to admin.");
+    } catch (error) {
+      setMembershipCancelRequestStatus(error instanceof Error ? error.message : "Could not send cancellation request.");
+    } finally {
+      setMembershipCancelRequestBusy(false);
+    }
   }
 
   async function signInParentAccount(event: FormEvent<HTMLFormElement>) {
@@ -1948,6 +2315,30 @@ export default function CustomerBookingApp() {
           status={customerPortalStatus}
           onClose={() => setShowCustomerPortal(false)}
           onRefresh={refreshCustomerAccount}
+          onMembershipDetails={setSelectedMembershipDetails}
+          onPrintMembershipReceipt={printMembershipReceipt}
+          onRequestMembershipCancel={openMembershipCancelRequest}
+        />
+      ) : null}
+
+      {selectedMembershipDetails ? (
+        <MembershipDetailsModal
+          membership={selectedMembershipDetails}
+          onClose={() => setSelectedMembershipDetails(null)}
+          onPrint={printMembershipReceipt}
+          onRequestCancel={openMembershipCancelRequest}
+        />
+      ) : null}
+
+      {membershipCancelRequest ? (
+        <MembershipCancelRequestModal
+          membership={membershipCancelRequest}
+          message={membershipCancelRequestMessage}
+          setMessage={setMembershipCancelRequestMessage}
+          busy={membershipCancelRequestBusy}
+          status={membershipCancelRequestStatus}
+          onClose={() => setMembershipCancelRequest(null)}
+          onSubmit={sendMembershipCancelRequest}
         />
       ) : null}
 

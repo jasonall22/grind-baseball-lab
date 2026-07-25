@@ -170,6 +170,19 @@ export async function POST(req: Request) {
 
     if (updateResult.error) throw updateResult.error;
 
+    const requestUpdate = await supabase
+      .from("booking_customer_payments")
+      .update({
+        status: "Cancelled",
+        processed_at: now,
+      })
+      .eq("customer_id", customerId)
+      .eq("payment_method_brand", "Membership cancellation request")
+      .eq("status", "Pending")
+      .ilike("description", `%[membership:${membershipRecordId}]%`);
+
+    if (requestUpdate.error) throw requestUpdate.error;
+
     if (refund && refund.amountCents > 0) {
       const refundRecord = await supabase.from("booking_customer_payments").insert({
         customer_id: customerId,
