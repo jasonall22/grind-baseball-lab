@@ -376,48 +376,6 @@ function BookingHero({
   );
 }
 
-function InfoCard({ settings }: { settings: PublicBookingData["settings"] }) {
-  const iconClass = "mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full border border-black/10 bg-white text-[14px] font-bold text-[#1784bd]";
-  return (
-    <aside className="h-fit rounded-[10px] border border-black/10 bg-white p-6 text-[14px] leading-6 shadow-[0_10px_30px_rgba(15,23,42,0.06)] lg:sticky lg:top-[110px]">
-      <div className="text-[12px] font-bold uppercase tracking-[0.16em] text-black/40">Facility Info</div>
-      <div className="mt-5 grid gap-5">
-        <div className="flex gap-4">
-          <span className={iconClass}>A</span>
-          <div>
-            <div className="text-[13px] font-semibold uppercase tracking-[0.1em] text-black/40">Address</div>
-            <div className="mt-1 text-[15px] text-black/75">{settings.address}</div>
-          </div>
-        </div>
-        <div className="flex gap-4">
-          <span className={iconClass}>P</span>
-          <div>
-            <div className="text-[13px] font-semibold uppercase tracking-[0.1em] text-black/40">Phone</div>
-            <div className="mt-1 text-[15px] text-black/75">{settings.phone}</div>
-          </div>
-        </div>
-        <div className="flex gap-4 rounded-[8px] border border-red-100 bg-red-50/70 px-4 py-3">
-          <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white text-[14px] font-bold text-[#d10018]">H</span>
-          <div className="min-w-0">
-            <div className="text-[13px] font-semibold uppercase tracking-[0.1em] text-black/40">Today</div>
-            <div className="mt-1 text-[15px] text-black/75">
-              <span className="font-semibold text-[#d10018]">Closed</span> - Opens 4PM today
-            </div>
-          </div>
-          <span className="ml-auto text-black/45">v</span>
-        </div>
-      </div>
-      <div className="mt-7 border-t border-black/10 pt-6">
-        <div className="font-semibold">Follow us</div>
-        <div className="mt-4 flex gap-3 text-[15px] font-semibold text-black/60">
-          <span className="grid h-10 w-10 place-items-center rounded-full border border-black/10 bg-[#f7f8fa]">W</span>
-          <span className="grid h-10 w-10 place-items-center rounded-full border border-black/10 bg-[#f7f8fa]">F</span>
-        </div>
-      </div>
-    </aside>
-  );
-}
-
 function ModalShell({
   step,
   children,
@@ -1253,7 +1211,7 @@ export default function CustomerBookingApp() {
 
       <BookingHero settings={data.settings} onSelectCategory={setSelectedCategory} onSignIn={openSignInModal} showSignIn={!parentAccount} />
 
-      <section className="mx-auto grid max-w-[1240px] gap-8 px-5 py-10 lg:grid-cols-[minmax(0,1fr)_370px] lg:px-8">
+      <section className="mx-auto max-w-[1240px] px-5 py-10 lg:px-8">
         <div className="min-w-0">
           <div className="flex items-center gap-3">
             {selectedCategory ? (
@@ -1343,7 +1301,6 @@ export default function CustomerBookingApp() {
           )}
         </div>
 
-        <InfoCard settings={data.settings} />
       </section>
 
       <footer className="mt-6 border-t border-white/10 bg-black text-white">
