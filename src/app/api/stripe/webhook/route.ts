@@ -98,7 +98,9 @@ function normalizeBillingPeriod(value: unknown) {
 }
 
 function normalizeCreditLimitPeriod(value: unknown) {
-  return value === "weekly" || value === "monthly" ? value : "daily";
+  if (value === "week" || value === "weekly") return "week";
+  if (value === "month" || value === "monthly") return "month";
+  return "day";
 }
 
 function normalizeCreditScope(value: unknown) {

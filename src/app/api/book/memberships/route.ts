@@ -34,7 +34,9 @@ function normalizeBillingPeriod(value: unknown) {
 }
 
 function normalizeCreditLimitPeriod(value: unknown) {
-  return value === "weekly" || value === "monthly" ? value : "daily";
+  if (value === "week" || value === "weekly") return "week";
+  if (value === "month" || value === "monthly") return "month";
+  return "day";
 }
 
 function normalizeCreditScope(value: unknown) {
@@ -53,6 +55,22 @@ function stripeIntervalForBillingPeriod(billingPeriod: string): "week" | "month"
   if (billingPeriod === "Weekly") return "week";
   if (billingPeriod === "Yearly") return "year";
   return "month";
+}
+
+async function findReusableMembershipSubscription(stripe: ReturnType<typeof getStripe>, stripeCustomerId: string, serviceId: string) {
+  const subscriptions = await stripe.subscriptions.list({
+    customer: stripeCustomerId,
+    status: "all",
+    limit: 100,
+    expand: ["data.latest_invoice.payment_intent.latest_charge"],
+  });
+
+  return subscriptions.data
+    .filter((subscription) => {
+      if (subscription.metadata.membership_service_id !== serviceId) return false;
+      return ["active", "trialing", "past_due", "unpaid"].includes(subscription.status);
+    })
+    .sort((a, b) => b.created - a.created)[0] ?? null;
 }
 
 function stringArray(value: unknown) {
@@ -233,18 +251,20 @@ export async function POST(req: Request) {
         .eq("id", customerId);
       if (savedCardResult.error) throw savedCardResult.error;
 
-      const subscription = await stripe.subscriptions.create({
-        customer: stripeCustomerId,
-        default_payment_method: paymentMethodId,
-        items: [{ price: effectiveStripePriceId, quantity: 1 }],
-        payment_behavior: "error_if_incomplete",
-        metadata: {
-          local_customer_id: customerId,
-          membership_service_id: serviceId,
-          membership_origin: "public_booking_page",
-        },
-        expand: ["latest_invoice.payment_intent.latest_charge"],
-      });
+      const subscription =
+        (await findReusableMembershipSubscription(stripe, stripeCustomerId, serviceId)) ??
+        (await stripe.subscriptions.create({
+          customer: stripeCustomerId,
+          default_payment_method: paymentMethodId,
+          items: [{ price: effectiveStripePriceId, quantity: 1 }],
+          payment_behavior: "error_if_incomplete",
+          metadata: {
+            local_customer_id: customerId,
+            membership_service_id: serviceId,
+            membership_origin: "public_booking_page",
+          },
+          expand: ["latest_invoice.payment_intent.latest_charge"],
+        }));
 
       const subscriptionSource = subscription as unknown as { current_period_start?: number; current_period_end?: number };
       const currentPeriodStart = subscriptionSource.current_period_start
