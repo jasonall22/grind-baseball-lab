@@ -496,6 +496,17 @@ type MembershipCancelRequestRecord = {
   updatedAt: string;
 };
 
+type MembershipCancelNotification = {
+  id: string;
+  customerId: string;
+  customerName: string;
+  playerName: string;
+  membershipName: string;
+  message: string;
+  requestedAt: string;
+  href: string;
+};
+
 type MembershipCreditLedgerReason = "booking" | "manual_adjustment" | "refund" | "expiration";
 
 type BookingMembershipCreditLedgerRow = {
@@ -1633,6 +1644,7 @@ type IconName =
   | "arrow-left"
   | "repeat"
   | "refresh"
+  | "bell"
   | "logout";
 
 const iconPaths: Record<IconName, string[]> = {
@@ -1671,6 +1683,7 @@ const iconPaths: Record<IconName, string[]> = {
   "arrow-left": ["m12 19-7-7 7-7", "M19 12H5"],
   repeat: ["m17 2 4 4-4 4", "M3 11V9a4 4 0 0 1 4-4h14", "m7 22-4-4 4-4", "M21 13v2a4 4 0 0 1-4 4H3"],
   refresh: ["M21 12a9 9 0 1 1-2.64-6.36", "M21 3v6h-6"],
+  bell: ["M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9", "M10 21h4"],
   logout: ["M10 17l5-5-5-5", "M15 12H3", "M21 19V5a2 2 0 0 0-2-2h-5", "M14 21h5a2 2 0 0 0 2-2"],
 };
 
@@ -6165,6 +6178,35 @@ export default function BookingAdminApp({
     () => new Map(state.services.map((service) => [service.id, service])),
     [state.services]
   );
+  const customerMembershipsByMembershipId = useMemo(() => {
+    const memberships = new Map<string, CustomerMembershipRecord>();
+    Object.values(customerMembershipsByCustomerId).forEach((items) => {
+      items.forEach((membership) => memberships.set(membership.id, membership));
+    });
+    return memberships;
+  }, [customerMembershipsByCustomerId]);
+  const pendingMembershipCancelNotifications = useMemo(() => {
+    return Object.values(membershipCancelRequestsByMembershipId)
+      .flat()
+      .filter((request) => request.status === "Pending")
+      .map((request) => {
+        const customer = customersById.get(request.customerId);
+        const membership = customerMembershipsByMembershipId.get(request.customerMembershipId);
+        const service = membership ? servicesById.get(membership.membershipServiceId) : null;
+
+        return {
+          id: request.id,
+          customerId: request.customerId,
+          customerName: customer?.name || "Customer",
+          playerName: customer?.player || "",
+          membershipName: service?.name || "Membership",
+          message: request.message,
+          requestedAt: request.requestedAt,
+          href: `/admin/customers/${request.customerId}?tab=memberships`,
+        };
+      })
+      .sort((left, right) => right.requestedAt.localeCompare(left.requestedAt));
+  }, [customerMembershipsByMembershipId, customersById, membershipCancelRequestsByMembershipId, servicesById]);
 
   const dayBookings = state.bookings.filter((booking) => booking.date === activeDate);
   const activeMainView = view === "more" || view.startsWith("settings") ? "settings" : view;
@@ -6201,7 +6243,12 @@ export default function BookingAdminApp({
 
   return (
     <div className="min-h-screen bg-white text-black">
-      <MobileAdminHeader currentAuthEmail={currentAuthEmail} variant={view === "more" ? "light" : "dark"} />
+      <MobileAdminHeader currentAuthEmail={currentAuthEmail} notifications={pendingMembershipCancelNotifications} variant={view === "more" ? "light" : "dark"} />
+      {isSettingsView && pendingMembershipCancelNotifications.length ? (
+        <div className="fixed right-6 top-5 z-40 hidden lg:block">
+          <AdminNotificationBell notifications={pendingMembershipCancelNotifications} variant="light" />
+        </div>
+      ) : null}
       <div
         className={[
           "grid min-h-screen grid-cols-1 bg-white",
@@ -6213,7 +6260,10 @@ export default function BookingAdminApp({
           <aside className="hidden bg-[#f5f5f5] p-3 lg:flex lg:min-h-screen lg:flex-col lg:px-5 lg:py-5">
             <div className="-mx-5 -mt-5 mb-5 hidden items-center justify-between border-b border-white/10 bg-black px-5 py-3 shadow-[0_1px_4px_rgba(0,0,0,0.28)] lg:flex">
               <AdminBrandLogo size="desktop" />
-              <AdminAccountMenu currentAuthEmail={currentAuthEmail} />
+              <div className="flex items-center gap-2">
+                <AdminNotificationBell notifications={pendingMembershipCancelNotifications} />
+                <AdminAccountMenu currentAuthEmail={currentAuthEmail} />
+              </div>
             </div>
 
             <nav className="flex w-full gap-1 overflow-x-auto lg:mt-8 lg:grid lg:overflow-visible">
@@ -6847,6 +6897,108 @@ function AdminBrandLogo({ size = "desktop" }: { size?: "desktop" | "mobile" }) {
   );
 }
 
+function AdminNotificationBell({
+  notifications,
+  variant = "dark",
+}: {
+  notifications: MembershipCancelNotification[];
+  variant?: "dark" | "light";
+}) {
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const isLight = variant === "light";
+  const count = notifications.length;
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function closeOnOutsideClick(event: MouseEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isOpen]);
+
+  return (
+    <div ref={menuRef} className="relative">
+      <button
+        type="button"
+        aria-expanded={isOpen}
+        aria-label={count ? `${count} pending cancellation request${count === 1 ? "" : "s"}` : "Notifications"}
+        onClick={() => setIsOpen((current) => !current)}
+        className={[
+          "relative grid h-8 w-8 place-items-center rounded-full transition",
+          isLight ? "bg-black/5 text-black hover:bg-black/10" : "bg-black/20 text-white hover:bg-white/15",
+        ].join(" ")}
+      >
+        <Icon name="bell" className="h-5 w-5" />
+        {count ? (
+          <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1 text-[11px] font-bold leading-none text-white ring-2 ring-white">
+            {count > 9 ? "9+" : count}
+          </span>
+        ) : null}
+      </button>
+
+      {isOpen ? (
+        <div className="absolute right-0 top-full z-50 mt-2 w-[340px] overflow-hidden rounded-xl border border-black/10 bg-white text-black shadow-[0_12px_28px_rgba(0,0,0,0.18)]">
+          <div className="border-b border-black/10 px-4 py-3">
+            <div className="text-sm font-semibold">Notifications</div>
+            <div className="mt-1 text-xs text-black/50">
+              {count ? `${count} pending membership cancellation request${count === 1 ? "" : "s"}` : "No pending requests"}
+            </div>
+          </div>
+          {count ? (
+            <div className="max-h-[360px] overflow-y-auto py-1">
+              {notifications.slice(0, 8).map((notification) => (
+                <Link
+                  key={notification.id}
+                  href={notification.href}
+                  onClick={() => setIsOpen(false)}
+                  className="block border-b border-black/5 px-4 py-3 text-left transition last:border-b-0 hover:bg-black/[0.04]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold">{notification.customerName}</div>
+                      <div className="mt-1 truncate text-xs text-black/55">
+                        {notification.playerName ? `${notification.playerName} - ` : ""}
+                        {notification.membershipName}
+                      </div>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-700">
+                      Cancel
+                    </span>
+                  </div>
+                  {notification.message ? (
+                    <div className="mt-2 line-clamp-2 text-xs leading-5 text-black/60">{notification.message}</div>
+                  ) : null}
+                  <div className="mt-2 text-[11px] font-medium text-black/40">
+                    Requested {formatMembershipDate(notification.requestedAt)}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="px-4 py-6 text-center text-sm text-black/45">You are all caught up.</div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function AdminAccountMenu({
   currentAuthEmail,
   size = "compact",
@@ -6937,9 +7089,11 @@ function AdminAccountMenu({
 
 function MobileAdminHeader({
   currentAuthEmail,
+  notifications,
   variant = "dark",
 }: {
   currentAuthEmail?: string;
+  notifications: MembershipCancelNotification[];
   variant?: "dark" | "light";
 }) {
   const isLight = variant === "light";
@@ -6954,7 +7108,10 @@ function MobileAdminHeader({
       ].join(" ")}
     >
       <AdminBrandLogo size="mobile" />
-      <AdminAccountMenu currentAuthEmail={currentAuthEmail} size="large" variant={isLight ? "light" : "dark"} />
+      <div className="flex items-center gap-3">
+        <AdminNotificationBell notifications={notifications} variant={isLight ? "light" : "dark"} />
+        <AdminAccountMenu currentAuthEmail={currentAuthEmail} size="large" variant={isLight ? "light" : "dark"} />
+      </div>
     </header>
   );
 }
