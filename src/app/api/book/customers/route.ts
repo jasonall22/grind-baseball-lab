@@ -53,6 +53,7 @@ type CustomerDashboardResponse = {
   upcomingBookings: Array<Record<string, unknown>>;
   pastBookings: Array<Record<string, unknown>>;
   memberships: Array<Record<string, unknown>>;
+  membershipHistory: Array<Record<string, unknown>>;
 };
 
 function clean(value: unknown) {
@@ -69,7 +70,7 @@ function parsePrice(value: unknown) {
 }
 
 function emptyDashboard(): CustomerDashboardResponse {
-  return { upcomingBookings: [], pastBookings: [], memberships: [] };
+  return { upcomingBookings: [], pastBookings: [], memberships: [], membershipHistory: [] };
 }
 
 function isExistingUserError(error: QueryError) {
@@ -117,7 +118,7 @@ export async function GET(req: Request) {
           .limit(40),
         supabase
           .from("booking_customer_memberships")
-          .select("id,membership_service_id,status,billing_period,price_cents,credits_per_day,credit_limit_period,current_period_start,current_period_end,auto_renew")
+          .select("id,membership_service_id,status,billing_period,price_cents,credits_per_day,credit_limit_period,current_period_start,current_period_end,auto_renew,started_at,cancelled_at,created_at")
           .eq("customer_id", customer.id)
           .order("created_at", { ascending: false })
           .limit(20),
@@ -190,6 +191,41 @@ export async function GET(req: Request) {
           playerName: clean(booking.player_name),
         };
       });
+      const membershipItems = ((membershipsResult.data ?? []) as Array<Record<string, unknown>>).map((membership) => {
+        const service = servicesById.get(clean(membership.membership_service_id));
+        const membershipName = service?.name || "Membership";
+        const membershipNameKey = membershipName.toLowerCase();
+        const latestPayment = payments.find((payment) => {
+          const description = payment.description.toLowerCase();
+          return (
+            payment.paymentMethodBrand !== "Membership cancellation request" &&
+            ["Succeeded", "Refunded"].includes(payment.status) &&
+            (description.includes(membershipNameKey) || description.includes("membership"))
+          );
+        });
+        return {
+          id: String(membership.id),
+          status: clean(membership.status) || "Active",
+          serviceName: membershipName,
+          billingPeriod: clean(membership.billing_period) || "Monthly",
+          priceCents: Number(membership.price_cents ?? service?.priceCents ?? 0),
+          creditsPerDay: Number(membership.credits_per_day ?? 0),
+          creditLimitPeriod: clean(membership.credit_limit_period) || "day",
+          currentPeriodStart: clean(membership.current_period_start),
+          currentPeriodEnd: clean(membership.current_period_end),
+          startedAt: clean(membership.started_at) || clean(membership.created_at),
+          cancelledAt: clean(membership.cancelled_at),
+          autoRenew: Boolean(membership.auto_renew),
+          latestReceiptUrl: latestPayment?.receiptUrl ?? "",
+          latestPaymentAmountCents: latestPayment?.amountCents ?? 0,
+          latestPaymentStatus: latestPayment?.status ?? "",
+          latestPaymentDate: latestPayment?.processedAt || latestPayment?.createdAt || "",
+          latestPaymentMethod: latestPayment?.paymentMethodBrand
+            ? `${latestPayment.paymentMethodBrand}${latestPayment.paymentMethodLast4 ? ` ending ${latestPayment.paymentMethodLast4}` : ""}`
+            : "",
+          cancelRequest: cancelRequestsByMembershipId.get(String(membership.id)) ?? null,
+        };
+      });
 
       dashboard = {
         upcomingBookings: bookings
@@ -198,44 +234,8 @@ export async function GET(req: Request) {
         pastBookings: bookings
           .filter((booking) => booking.date < today || booking.status === "Cancelled")
           .sort((a, b) => `${b.date} ${b.start}`.localeCompare(`${a.date} ${a.start}`)),
-        memberships: ((membershipsResult.data ?? []) as Array<Record<string, unknown>>)
-          .filter((membership) => {
-            const status = clean(membership.status) || "Active";
-            return status !== "Cancelled" && status !== "Expired";
-          })
-          .map((membership) => {
-            const service = servicesById.get(clean(membership.membership_service_id));
-            const membershipName = service?.name || "Membership";
-            const membershipNameKey = membershipName.toLowerCase();
-            const latestPayment = payments.find((payment) => {
-              const description = payment.description.toLowerCase();
-              return (
-                payment.paymentMethodBrand !== "Membership cancellation request" &&
-                ["Succeeded", "Refunded"].includes(payment.status) &&
-                (description.includes(membershipNameKey) || description.includes("membership"))
-              );
-            });
-            return {
-              id: String(membership.id),
-              status: clean(membership.status) || "Active",
-              serviceName: membershipName,
-              billingPeriod: clean(membership.billing_period) || "Monthly",
-              priceCents: Number(membership.price_cents ?? service?.priceCents ?? 0),
-              creditsPerDay: Number(membership.credits_per_day ?? 0),
-              creditLimitPeriod: clean(membership.credit_limit_period) || "day",
-              currentPeriodStart: clean(membership.current_period_start),
-              currentPeriodEnd: clean(membership.current_period_end),
-              autoRenew: Boolean(membership.auto_renew),
-              latestReceiptUrl: latestPayment?.receiptUrl ?? "",
-              latestPaymentAmountCents: latestPayment?.amountCents ?? 0,
-              latestPaymentStatus: latestPayment?.status ?? "",
-              latestPaymentDate: latestPayment?.processedAt || latestPayment?.createdAt || "",
-              latestPaymentMethod: latestPayment?.paymentMethodBrand
-                ? `${latestPayment.paymentMethodBrand}${latestPayment.paymentMethodLast4 ? ` ending ${latestPayment.paymentMethodLast4}` : ""}`
-                : "",
-              cancelRequest: cancelRequestsByMembershipId.get(String(membership.id)) ?? null,
-            };
-          }),
+        memberships: membershipItems.filter((membership) => !["Cancelled", "Expired"].includes(String(membership.status))),
+        membershipHistory: membershipItems.filter((membership) => ["Cancelled", "Expired"].includes(String(membership.status))),
       };
     }
 

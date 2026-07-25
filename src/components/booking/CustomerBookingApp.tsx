@@ -69,6 +69,8 @@ type CustomerMembershipRecord = {
   creditLimitPeriod: string;
   currentPeriodStart: string;
   currentPeriodEnd: string;
+  startedAt: string;
+  cancelledAt: string;
   autoRenew: boolean;
   latestReceiptUrl: string;
   latestPaymentAmountCents: number;
@@ -81,6 +83,7 @@ type CustomerDashboard = {
   upcomingBookings: CustomerBookingRecord[];
   pastBookings: CustomerBookingRecord[];
   memberships: CustomerMembershipRecord[];
+  membershipHistory: CustomerMembershipRecord[];
 };
 type CustomerAccountPayload = {
   customer: ParentAccount | null;
@@ -114,7 +117,16 @@ const emptyAccountForm: AccountForm = {
 };
 
 function emptyCustomerDashboard(): CustomerDashboard {
-  return { upcomingBookings: [], pastBookings: [], memberships: [] };
+  return { upcomingBookings: [], pastBookings: [], memberships: [], membershipHistory: [] };
+}
+
+function normalizeCustomerDashboard(value?: Partial<CustomerDashboard> | null): CustomerDashboard {
+  return {
+    upcomingBookings: Array.isArray(value?.upcomingBookings) ? value.upcomingBookings : [],
+    pastBookings: Array.isArray(value?.pastBookings) ? value.pastBookings : [],
+    memberships: Array.isArray(value?.memberships) ? value.memberships : [],
+    membershipHistory: Array.isArray(value?.membershipHistory) ? value.membershipHistory : [],
+  };
 }
 
 function todayIso() {
@@ -135,6 +147,23 @@ function membershipPeriodLabel(period: string) {
 
 function membershipCreditPeriodLabel(period: string) {
   return period === "week" || period === "weekly" ? "week" : period === "month" || period === "monthly" ? "month" : "day";
+}
+
+function membershipStatusClasses(status: string) {
+  switch (status) {
+    case "Active":
+      return "bg-[#e8f8ef] text-[#087238]";
+    case "Cancelled":
+      return "bg-red-50 text-red-700";
+    case "Expired":
+      return "bg-black/[0.06] text-black/55";
+    case "Past Due":
+      return "bg-orange-50 text-orange-700";
+    case "Paused":
+      return "bg-amber-50 text-amber-700";
+    default:
+      return "bg-black/[0.06] text-black/65";
+  }
 }
 
 function membershipCreditLabel(service: PublicBookingService) {
@@ -518,7 +547,9 @@ function MembershipSummaryCard({
             {money(membership.priceCents / 100)}/{membershipPeriodLabel(membership.billingPeriod)}
           </div>
         </div>
-        <span className="rounded-full bg-[#e8f8ef] px-3 py-1 text-[12px] font-semibold text-[#087238]">{membership.status}</span>
+        <span className={`rounded-full px-3 py-1 text-[12px] font-semibold ${membershipStatusClasses(membership.status)}`}>
+          {membership.status}
+        </span>
       </div>
       {hasPendingCancelRequest ? (
         <div className="mt-3 rounded-[6px] border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] font-semibold text-amber-800">
@@ -556,6 +587,62 @@ function MembershipSummaryCard({
           className="rounded-[6px] border border-red-200 px-3 py-2 text-[13px] font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {hasPendingCancelRequest ? "Request pending" : "Request cancellation"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function MembershipHistoryCard({
+  membership,
+  onDetails,
+  onPrint,
+}: {
+  membership: CustomerMembershipRecord;
+  onDetails: (membership: CustomerMembershipRecord) => void;
+  onPrint: (membership: CustomerMembershipRecord) => void;
+}) {
+  const startLabel = membership.startedAt ? formatLongDate(membership.startedAt.slice(0, 10)) : "Start date not set";
+  const endLabel =
+    membership.cancelledAt || membership.currentPeriodEnd
+      ? formatLongDate((membership.cancelledAt || membership.currentPeriodEnd).slice(0, 10))
+      : "End date not set";
+
+  return (
+    <div className="rounded-[8px] border border-black/10 bg-white px-4 py-4 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-[16px] font-semibold">{membership.serviceName}</div>
+          <div className="mt-1 text-[14px] text-black/55">
+            {money(membership.priceCents / 100)}/{membershipPeriodLabel(membership.billingPeriod)}
+          </div>
+        </div>
+        <span className={`rounded-full px-3 py-1 text-[12px] font-semibold ${membershipStatusClasses(membership.status)}`}>
+          {membership.status}
+        </span>
+      </div>
+      <div className="mt-4 grid gap-2 text-[14px] text-black/65 sm:grid-cols-2">
+        <div>Started {startLabel}</div>
+        <div>{membership.status === "Cancelled" ? `Cancelled ${endLabel}` : `Ended ${endLabel}`}</div>
+        {membership.latestPaymentAmountCents ? (
+          <div>Last payment {money(membership.latestPaymentAmountCents / 100)}</div>
+        ) : null}
+        {membership.latestPaymentDate ? <div>Paid {formatLongDate(membership.latestPaymentDate.slice(0, 10))}</div> : null}
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => onDetails(membership)}
+          className="rounded-[6px] border border-black/15 px-3 py-2 text-[13px] font-semibold hover:bg-black/[0.04]"
+        >
+          Details
+        </button>
+        <button
+          type="button"
+          onClick={() => onPrint(membership)}
+          className="rounded-[6px] border border-black/15 px-3 py-2 text-[13px] font-semibold hover:bg-black/[0.04]"
+        >
+          Print receipt
         </button>
       </div>
     </div>
@@ -642,6 +729,26 @@ function CustomerPortalModal({
           </section>
 
           <section className="mt-7">
+            <div className="text-[20px] font-semibold">Membership History</div>
+            <div className="mt-3 grid gap-3">
+              {dashboard.membershipHistory.length ? (
+                dashboard.membershipHistory.map((membership) => (
+                  <MembershipHistoryCard
+                    key={membership.id}
+                    membership={membership}
+                    onDetails={onMembershipDetails}
+                    onPrint={onPrintMembershipReceipt}
+                  />
+                ))
+              ) : (
+                <div className="rounded-[8px] border border-dashed border-black/15 bg-white px-4 py-6 text-center text-[15px] text-black/55">
+                  No membership history yet.
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="mt-7">
             <div className="text-[20px] font-semibold">Upcoming Bookings</div>
             <div className="mt-3 grid gap-3">
               {dashboard.upcomingBookings.length ? (
@@ -707,7 +814,9 @@ function MembershipDetailsModal({
                 {money(membership.priceCents / 100)}/{membershipPeriodLabel(membership.billingPeriod)}
               </div>
             </div>
-            <span className="rounded-full bg-[#e8f8ef] px-3 py-1 text-[12px] font-semibold text-[#087238]">{membership.status}</span>
+            <span className={`rounded-full px-3 py-1 text-[12px] font-semibold ${membershipStatusClasses(membership.status)}`}>
+              {membership.status}
+            </span>
           </div>
 
           {hasPendingCancelRequest ? (
@@ -1379,7 +1488,7 @@ export default function CustomerBookingApp() {
     const payload = await response.json();
     return {
       customer: (payload.customer as ParentAccount | null) ?? null,
-      dashboard: (payload.dashboard as CustomerDashboard | undefined) ?? emptyCustomerDashboard(),
+      dashboard: normalizeCustomerDashboard(payload.dashboard as Partial<CustomerDashboard> | undefined),
     };
   }
 

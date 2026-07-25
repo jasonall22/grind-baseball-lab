@@ -12154,6 +12154,24 @@ function CustomerDetailView({
       if (leftActive !== rightActive) return leftActive ? -1 : 1;
       return `${right.currentPeriodStart} ${right.createdAt}`.localeCompare(`${left.currentPeriodStart} ${left.createdAt}`);
     });
+  const membershipHistoryCards = memberships
+    .filter((membership) => membership.status === "Cancelled" || membership.status === "Expired")
+    .map((membership) => {
+      const service = servicesById.get(membership.membershipServiceId);
+      const creditSettings = membershipCreditSettings(membership, service);
+
+      return {
+        ...membership,
+        creditsPerDay: creditSettings.creditsPerDay,
+        creditLimitPeriod: creditSettings.creditLimitPeriod,
+        service,
+      };
+    })
+    .sort((left, right) => {
+      const leftDate = left.cancelledAt || left.currentPeriodEnd || left.updatedAt || left.createdAt;
+      const rightDate = right.cancelledAt || right.currentPeriodEnd || right.updatedAt || right.createdAt;
+      return rightDate.localeCompare(leftDate);
+    });
   const creditMemberships = membershipCards.filter(
     (membership) => isActiveCustomerMembership(membership) && membership.creditsPerDay > 0
   );
@@ -13520,8 +13538,100 @@ function CustomerDetailView({
             ))}
           </div>
         ) : (
-          <div className="p-6 text-sm text-black/45">No memberships assigned.</div>
+          <div className="p-6 text-sm text-black/45">
+            {membershipHistoryCards.length ? "No active memberships." : "No memberships assigned."}
+          </div>
         )}
+
+        {membershipHistoryCards.length ? (
+          <div className="border-t border-black/10 p-4">
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+              <div>
+                <div className="text-[15px] font-semibold text-black">Membership History</div>
+                <div className="mt-1 text-[13px] text-black/50">Cancelled and expired memberships stay here for record keeping.</div>
+              </div>
+              <span className="rounded-full bg-black/[0.05] px-3 py-1 text-[12px] font-semibold text-black/55">
+                {membershipHistoryCards.length} record{membershipHistoryCards.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            <div className="grid gap-3 xl:grid-cols-2">
+              {membershipHistoryCards.map((membership) => {
+                const membershipName = membership.service?.name || "Membership";
+                const periodLabel =
+                  membership.currentPeriodStart && membership.currentPeriodEnd
+                    ? `${formatMembershipDate(membership.currentPeriodStart)} - ${formatMembershipDate(membership.currentPeriodEnd)}`
+                    : "Billing cycle not set";
+                const cancelRequest = (membershipCancelRequestsByMembershipId[membership.id] ?? [])[0] ?? null;
+                const endLabel = membership.cancelledAt || membership.currentPeriodEnd || membership.updatedAt || "";
+
+                return (
+                  <div key={membership.id} className="rounded-2xl border border-black/10 bg-white p-4 shadow-[0_1px_0_rgba(0,0,0,0.03)]">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="text-[15px] font-semibold text-black">{membershipName}</div>
+                        <div className="mt-1 text-[13px] text-black/55">
+                          {membership.billingPeriod} membership
+                          {membership.autoRenew ? " - Auto renewal was on" : " - Manual renewal"}
+                        </div>
+                      </div>
+                      <span className={`rounded-full px-3 py-1 text-[12px] font-semibold ${membershipStatusClasses(membership.status)}`}>
+                        {membership.status}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-xl border border-black/8 bg-black/[0.02] px-3 py-3">
+                        <div className="text-[12px] uppercase tracking-[0.08em] text-black/40">Price</div>
+                        <div className="mt-1 text-[15px] font-semibold text-black">{money(membership.priceCents / 100)}</div>
+                      </div>
+                      <div className="rounded-xl border border-black/8 bg-black/[0.02] px-3 py-3">
+                        <div className="text-[12px] uppercase tracking-[0.08em] text-black/40">
+                          {membershipCreditLimitPeriodAdjective(membership.creditLimitPeriod)} credits
+                        </div>
+                        <div className="mt-1 text-[15px] font-semibold text-black">
+                          {membershipCreditAllowanceLabel(membership.creditsPerDay, membership.creditLimitPeriod)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 space-y-2 text-[13px] text-black/65">
+                      <div className="flex items-start justify-between gap-4">
+                        <span className="text-black/45">Credit scope</span>
+                        <span className="max-w-[70%] text-right text-black">{membershipCreditScopeLabel(membership, servicesById)}</span>
+                      </div>
+                      <div className="flex items-start justify-between gap-4">
+                        <span className="text-black/45">Period</span>
+                        <span className="max-w-[70%] text-right text-black">{periodLabel}</span>
+                      </div>
+                      <div className="flex items-start justify-between gap-4">
+                        <span className="text-black/45">Started</span>
+                        <span className="text-right text-black">{formatMembershipDate(membership.startedAt || membership.createdAt)}</span>
+                      </div>
+                      {endLabel ? (
+                        <div className="flex items-start justify-between gap-4">
+                          <span className="text-black/45">{membership.status === "Cancelled" ? "Cancelled" : "Ended"}</span>
+                          <span className="text-right text-black">{formatMembershipDate(endLabel)}</span>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {cancelRequest ? (
+                      <div className="mt-4 rounded-xl border border-black/10 bg-black/[0.02] px-4 py-3 text-[13px] text-black/65">
+                        <div className="font-semibold text-black">
+                          Cancellation request {cancelRequest.status === "Pending" ? "pending" : "completed"}
+                        </div>
+                        {cancelRequest.requestedAt ? (
+                          <div className="mt-1">Requested {formatMembershipDate(cancelRequest.requestedAt)}</div>
+                        ) : null}
+                        {cancelRequest.message ? <div className="mt-2 leading-5">{cancelRequest.message}</div> : null}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
       </DetailPanel>
     );
   }
