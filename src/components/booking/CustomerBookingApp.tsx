@@ -38,6 +38,40 @@ type ParentAccount = {
   email: string;
   phone: string;
 };
+type CustomerBookingRecord = {
+  id: string;
+  date: string;
+  start: string;
+  end: string;
+  status: string;
+  paid: boolean;
+  serviceName: string;
+  serviceCategory: string;
+  resourceName: string;
+  staffName: string;
+  playerName: string;
+};
+type CustomerMembershipRecord = {
+  id: string;
+  status: string;
+  serviceName: string;
+  billingPeriod: string;
+  priceCents: number;
+  creditsPerDay: number;
+  creditLimitPeriod: string;
+  currentPeriodStart: string;
+  currentPeriodEnd: string;
+  autoRenew: boolean;
+};
+type CustomerDashboard = {
+  upcomingBookings: CustomerBookingRecord[];
+  pastBookings: CustomerBookingRecord[];
+  memberships: CustomerMembershipRecord[];
+};
+type CustomerAccountPayload = {
+  customer: ParentAccount | null;
+  dashboard?: CustomerDashboard;
+};
 type AccountForm = {
   parentFirstName: string;
   parentLastName: string;
@@ -65,6 +99,10 @@ const emptyAccountForm: AccountForm = {
   playerAge: "",
 };
 
+function emptyCustomerDashboard(): CustomerDashboard {
+  return { upcomingBookings: [], pastBookings: [], memberships: [] };
+}
+
 function todayIso() {
   return isoDate(new Date());
 }
@@ -82,7 +120,7 @@ function membershipPeriodLabel(period: string) {
 }
 
 function membershipCreditPeriodLabel(period: string) {
-  return period === "weekly" ? "week" : period === "monthly" ? "month" : "day";
+  return period === "week" || period === "weekly" ? "week" : period === "month" || period === "monthly" ? "month" : "day";
 }
 
 function membershipCreditLabel(service: PublicBookingService) {
@@ -416,6 +454,142 @@ function ModalShell({
           {children}
         </div>
         <div className="shrink-0 border-t border-black/10 px-4 py-4">{footer}</div>
+      </div>
+    </div>
+  );
+}
+
+function BookingSummaryCard({ booking }: { booking: CustomerBookingRecord }) {
+  return (
+    <div className="rounded-[8px] border border-black/10 bg-white px-4 py-4 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-[17px] font-semibold">{booking.serviceName}</div>
+          <div className="mt-1 text-[14px] text-black/55">{booking.playerName || "Player"}</div>
+        </div>
+        <span className="rounded-full bg-black/[0.06] px-3 py-1 text-[12px] font-semibold text-black/65">{booking.status}</span>
+      </div>
+      <div className="mt-4 grid gap-2 text-[14px] text-black/65 sm:grid-cols-2">
+        <div>{formatLongDate(booking.date)}</div>
+        <div>
+          {timeLabel(booking.start)} - {timeLabel(booking.end)}
+        </div>
+        {booking.resourceName ? <div>{booking.resourceName}</div> : null}
+        {booking.staffName ? <div>Coach: {booking.staffName}</div> : null}
+      </div>
+    </div>
+  );
+}
+
+function MembershipSummaryCard({ membership }: { membership: CustomerMembershipRecord }) {
+  const period = membershipCreditPeriodLabel(membership.creditLimitPeriod);
+  return (
+    <div className="rounded-[8px] border border-black/10 bg-white px-4 py-4 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-[17px] font-semibold">{membership.serviceName}</div>
+          <div className="mt-1 text-[14px] text-black/55">
+            {money(membership.priceCents / 100)}/{membershipPeriodLabel(membership.billingPeriod)}
+          </div>
+        </div>
+        <span className="rounded-full bg-[#e8f8ef] px-3 py-1 text-[12px] font-semibold text-[#087238]">{membership.status}</span>
+      </div>
+      <div className="mt-4 grid gap-2 text-[14px] text-black/65 sm:grid-cols-2">
+        <div>
+          {membership.creditsPerDay > 0
+            ? `${membership.creditsPerDay} credit${membership.creditsPerDay === 1 ? "" : "s"} per ${period}`
+            : "Member booking credits"}
+        </div>
+        <div>{membership.autoRenew ? "Auto renews" : "Does not auto renew"}</div>
+        {membership.currentPeriodEnd ? <div>Renews {formatLongDate(membership.currentPeriodEnd.slice(0, 10))}</div> : null}
+      </div>
+    </div>
+  );
+}
+
+function CustomerPortalModal({
+  account,
+  dashboard,
+  busy,
+  status,
+  onClose,
+  onRefresh,
+}: {
+  account: ParentAccount;
+  dashboard: CustomerDashboard;
+  busy: boolean;
+  status: string;
+  onClose: () => void;
+  onRefresh: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/55 px-4 py-8">
+      <div className="flex max-h-[calc(100vh-64px)] w-full max-w-[860px] flex-col overflow-hidden rounded-[5px] bg-[#f6f7f9] shadow-[0_20px_48px_rgba(0,0,0,0.36)]">
+        <div className="flex h-[76px] shrink-0 items-center border-b border-black/10 bg-white px-7">
+          <div>
+            <div className="text-[22px] font-semibold">My Account</div>
+            <div className="mt-1 text-[13px] text-black/55">{account.email}</div>
+          </div>
+          <button type="button" onClick={onClose} className="ml-auto text-[32px] leading-none text-black/45">
+            x
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-[8px] border border-black/10 bg-white px-4 py-4">
+            <div>
+              <div className="text-[17px] font-semibold">{account.parentName}</div>
+              <div className="mt-1 text-[14px] text-black/55">Player: {account.playerName || "Not set"}</div>
+            </div>
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={busy}
+              className="rounded-[6px] border border-black/15 px-4 py-2 text-[14px] font-semibold disabled:opacity-55"
+            >
+              {busy ? "Refreshing..." : "Refresh"}
+            </button>
+          </div>
+          {status ? <div className="mt-4 rounded-[6px] bg-red-50 px-4 py-3 text-sm text-red-700">{status}</div> : null}
+
+          <section className="mt-6">
+            <div className="text-[20px] font-semibold">Memberships</div>
+            <div className="mt-3 grid gap-3">
+              {dashboard.memberships.length ? (
+                dashboard.memberships.map((membership) => <MembershipSummaryCard key={membership.id} membership={membership} />)
+              ) : (
+                <div className="rounded-[8px] border border-dashed border-black/15 bg-white px-4 py-6 text-center text-[15px] text-black/55">
+                  No memberships yet.
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="mt-7">
+            <div className="text-[20px] font-semibold">Upcoming Bookings</div>
+            <div className="mt-3 grid gap-3">
+              {dashboard.upcomingBookings.length ? (
+                dashboard.upcomingBookings.map((booking) => <BookingSummaryCard key={booking.id} booking={booking} />)
+              ) : (
+                <div className="rounded-[8px] border border-dashed border-black/15 bg-white px-4 py-6 text-center text-[15px] text-black/55">
+                  No upcoming bookings.
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="mt-7">
+            <div className="text-[20px] font-semibold">Past Bookings</div>
+            <div className="mt-3 grid gap-3">
+              {dashboard.pastBookings.length ? (
+                dashboard.pastBookings.slice(0, 8).map((booking) => <BookingSummaryCard key={booking.id} booking={booking} />)
+              ) : (
+                <div className="rounded-[8px] border border-dashed border-black/15 bg-white px-4 py-6 text-center text-[15px] text-black/55">
+                  No past bookings.
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
       </div>
     </div>
   );
@@ -801,6 +975,10 @@ export default function CustomerBookingApp() {
   const [signInBusy, setSignInBusy] = useState(false);
   const [signInStatus, setSignInStatus] = useState("");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [showCustomerPortal, setShowCustomerPortal] = useState(false);
+  const [customerDashboard, setCustomerDashboard] = useState<CustomerDashboard>(emptyCustomerDashboard);
+  const [customerPortalBusy, setCustomerPortalBusy] = useState(false);
+  const [customerPortalStatus, setCustomerPortalStatus] = useState("");
   const [discountCode, setDiscountCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
@@ -834,10 +1012,10 @@ export default function CustomerBookingApp() {
       const token = sessionResult.data.session?.access_token;
       if (!token) return;
 
-      const account = await loadParentAccount(token);
-      if (!mounted || !account) return;
+      const payload = await loadParentAccount(token);
+      if (!mounted || !payload?.customer) return;
 
-      applyParentAccount(account);
+      applyParentAccount(payload.customer, payload.dashboard);
     }
 
     void loadAccount();
@@ -931,7 +1109,7 @@ export default function CustomerBookingApp() {
     setShowSignInModal(true);
   }
 
-  async function loadParentAccount(token: string) {
+  async function loadParentAccount(token: string): Promise<CustomerAccountPayload | null> {
     const response = await fetch("/api/book/customers", {
       cache: "no-store",
       headers: { Authorization: `Bearer ${token}` },
@@ -939,12 +1117,16 @@ export default function CustomerBookingApp() {
     if (!response.ok) return null;
 
     const payload = await response.json();
-    return payload.customer as ParentAccount | null;
+    return {
+      customer: (payload.customer as ParentAccount | null) ?? null,
+      dashboard: (payload.dashboard as CustomerDashboard | undefined) ?? emptyCustomerDashboard(),
+    };
   }
 
-  function applyParentAccount(account: ParentAccount) {
+  function applyParentAccount(account: ParentAccount, dashboard?: CustomerDashboard) {
     const playerName = account.playerName || "Yourself";
     setParentAccount(account);
+    if (dashboard) setCustomerDashboard(dashboard);
     setSelectedPlayer(playerName);
     setForm({
       parentName: account.parentName,
@@ -958,8 +1140,35 @@ export default function CustomerBookingApp() {
     setAccountMenuOpen(false);
     await supabase.auth.signOut();
     setParentAccount(null);
+    setShowCustomerPortal(false);
+    setCustomerDashboard(emptyCustomerDashboard());
     setSelectedPlayer("Yourself");
     setForm({ parentName: "", playerName: "Yourself", email: "", phone: "" });
+  }
+
+  async function refreshCustomerAccount() {
+    setCustomerPortalBusy(true);
+    setCustomerPortalStatus("");
+    try {
+      const sessionResult = await supabase.auth.getSession();
+      const token = sessionResult.data.session?.access_token;
+      if (!token) throw new Error("Please sign in again.");
+
+      const payload = await loadParentAccount(token);
+      if (!payload?.customer) throw new Error("Could not load your account.");
+      applyParentAccount(payload.customer, payload.dashboard);
+    } catch (error) {
+      setCustomerPortalStatus(error instanceof Error ? error.message : "Could not refresh account.");
+    } finally {
+      setCustomerPortalBusy(false);
+    }
+  }
+
+  function openCustomerPortal() {
+    setAccountMenuOpen(false);
+    setCustomerPortalStatus("");
+    setShowCustomerPortal(true);
+    void refreshCustomerAccount();
   }
 
   async function signInParentAccount(event: FormEvent<HTMLFormElement>) {
@@ -984,11 +1193,11 @@ export default function CustomerBookingApp() {
       const token = signInResult.data.session?.access_token ?? (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) throw new Error("Could not load your account session.");
 
-      const account = await loadParentAccount(token);
-      if (!account) throw new Error("Signed in, but could not load your family account.");
+      const payload = await loadParentAccount(token);
+      if (!payload?.customer) throw new Error("Signed in, but could not load your family account.");
 
-      applyParentAccount(account);
-      setSignInForm({ email: account.email || email, password: "" });
+      applyParentAccount(payload.customer, payload.dashboard);
+      setSignInForm({ email: payload.customer.email || email, password: "" });
       setShowSignInModal(false);
     } catch (error) {
       setSignInStatus(error instanceof Error ? error.message : "Could not sign in.");
@@ -1029,6 +1238,7 @@ export default function CustomerBookingApp() {
       }
 
       setParentAccount(account);
+      setCustomerDashboard(emptyCustomerDashboard());
       setSelectedPlayer(account.playerName);
       setForm({
         parentName: account.parentName,
@@ -1181,6 +1391,13 @@ export default function CustomerBookingApp() {
                       <div className="text-[15px] font-semibold">{parentAccount.parentName}</div>
                       <div className="mt-1 truncate text-[13px] text-black/55">{parentAccount.email}</div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={openCustomerPortal}
+                      className="block w-full border-b border-black/10 px-4 py-3 text-left text-[15px] font-semibold hover:bg-black/[0.04]"
+                    >
+                      My Bookings & Memberships
+                    </button>
                     <button
                       type="button"
                       onClick={signOut}
@@ -1720,6 +1937,17 @@ export default function CustomerBookingApp() {
           status={signInStatus}
           onClose={() => setShowSignInModal(false)}
           onSubmit={signInParentAccount}
+        />
+      ) : null}
+
+      {showCustomerPortal && parentAccount ? (
+        <CustomerPortalModal
+          account={parentAccount}
+          dashboard={customerDashboard}
+          busy={customerPortalBusy}
+          status={customerPortalStatus}
+          onClose={() => setShowCustomerPortal(false)}
+          onRefresh={refreshCustomerAccount}
         />
       ) : null}
 

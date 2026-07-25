@@ -49,6 +49,11 @@ type CreateCustomerBody = {
   phone?: string;
   password?: string;
 };
+type CustomerDashboardResponse = {
+  upcomingBookings: Array<Record<string, unknown>>;
+  pastBookings: Array<Record<string, unknown>>;
+  memberships: Array<Record<string, unknown>>;
+};
 
 function clean(value: unknown) {
   return String(value ?? "").trim();
@@ -56,6 +61,15 @@ function clean(value: unknown) {
 
 function badRequest(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
+}
+
+function parsePrice(value: unknown) {
+  const amount = Number(String(value ?? "").replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+function emptyDashboard(): CustomerDashboardResponse {
+  return { upcomingBookings: [], pastBookings: [], memberships: [] };
 }
 
 function isExistingUserError(error: QueryError) {
@@ -90,6 +104,85 @@ export async function GET(req: Request) {
       | null;
     const metadata = user.user_metadata ?? {};
     const metadataName = clean(metadata.full_name);
+    let dashboard = emptyDashboard();
+
+    if (customer?.id) {
+      const [bookingsResult, membershipsResult, servicesResult, resourcesResult, staffResult] = await Promise.all([
+        supabase
+          .from("booking_bookings")
+          .select("id,booking_date,start_time,end_time,status,paid,service_id,resource_id,staff_member_id,player_name")
+          .eq("customer_id", customer.id)
+          .order("booking_date", { ascending: false })
+          .order("start_time", { ascending: false })
+          .limit(40),
+        supabase
+          .from("booking_customer_memberships")
+          .select("id,membership_service_id,status,billing_period,price_cents,credits_per_day,credit_limit_period,current_period_start,current_period_end,auto_renew")
+          .eq("customer_id", customer.id)
+          .order("created_at", { ascending: false })
+          .limit(20),
+        supabase.from("booking_services").select("id,name,service_type,price"),
+        supabase.from("booking_resources").select("id,name"),
+        supabase.from("booking_staff_members").select("id,full_name"),
+      ]);
+
+      const failed = [bookingsResult, membershipsResult, servicesResult, resourcesResult, staffResult].find((result) => result.error);
+      if (failed?.error) throw failed.error;
+
+      const servicesById = new Map(
+        ((servicesResult.data ?? []) as Array<Record<string, unknown>>).map((service) => [
+          String(service.id),
+          {
+            name: clean(service.name),
+            category: clean(service.service_type),
+            priceCents: Math.round(parsePrice(service.price) * 100),
+          },
+        ])
+      );
+      const resourcesById = new Map(((resourcesResult.data ?? []) as Array<Record<string, unknown>>).map((resource) => [String(resource.id), clean(resource.name)]));
+      const staffById = new Map(((staffResult.data ?? []) as Array<Record<string, unknown>>).map((staff) => [String(staff.id), clean(staff.full_name)]));
+      const today = new Date().toISOString().slice(0, 10);
+      const bookings = ((bookingsResult.data ?? []) as Array<Record<string, unknown>>).map((booking) => {
+        const service = servicesById.get(clean(booking.service_id));
+        return {
+          id: String(booking.id),
+          date: clean(booking.booking_date),
+          start: clean(booking.start_time),
+          end: clean(booking.end_time),
+          status: clean(booking.status) || "Pending",
+          paid: Boolean(booking.paid),
+          serviceName: service?.name || "Booking",
+          serviceCategory: service?.category || "",
+          resourceName: resourcesById.get(clean(booking.resource_id)) || "",
+          staffName: staffById.get(clean(booking.staff_member_id)) || "",
+          playerName: clean(booking.player_name),
+        };
+      });
+
+      dashboard = {
+        upcomingBookings: bookings
+          .filter((booking) => booking.date >= today && booking.status !== "Cancelled")
+          .sort((a, b) => `${a.date} ${a.start}`.localeCompare(`${b.date} ${b.start}`)),
+        pastBookings: bookings
+          .filter((booking) => booking.date < today || booking.status === "Cancelled")
+          .sort((a, b) => `${b.date} ${b.start}`.localeCompare(`${a.date} ${a.start}`)),
+        memberships: ((membershipsResult.data ?? []) as Array<Record<string, unknown>>).map((membership) => {
+          const service = servicesById.get(clean(membership.membership_service_id));
+          return {
+            id: String(membership.id),
+            status: clean(membership.status) || "Active",
+            serviceName: service?.name || "Membership",
+            billingPeriod: clean(membership.billing_period) || "Monthly",
+            priceCents: Number(membership.price_cents ?? service?.priceCents ?? 0),
+            creditsPerDay: Number(membership.credits_per_day ?? 0),
+            creditLimitPeriod: clean(membership.credit_limit_period) || "day",
+            currentPeriodStart: clean(membership.current_period_start),
+            currentPeriodEnd: clean(membership.current_period_end),
+            autoRenew: Boolean(membership.auto_renew),
+          };
+        }),
+      };
+    }
 
     return NextResponse.json({
       ok: true,
@@ -101,6 +194,7 @@ export async function GET(req: Request) {
         email,
         phone: clean(customer?.phone),
       },
+      dashboard,
     });
   } catch (error) {
     console.error(error);
