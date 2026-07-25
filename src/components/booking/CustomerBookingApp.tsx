@@ -2075,7 +2075,7 @@ export default function CustomerBookingApp() {
       <footer className="mt-6 border-t border-white/10 bg-black text-white">
         <div className="mx-auto flex max-w-[1240px] flex-col gap-6 px-5 py-8 sm:flex-row sm:items-center sm:justify-between lg:px-8">
           <div className="flex items-center gap-4">
-            <span className="inline-flex h-12 items-center rounded-[6px] bg-white px-4">
+            <span className="inline-flex h-12 items-center rounded-[6px] bg-black px-4">
               <Image src="/logo.png" alt="The Grind Baseball Lab" width={118} height={46} className="h-8 w-auto" />
             </span>
             <div>
