@@ -7,6 +7,12 @@ import { getStripe } from "@/lib/stripe";
 export const runtime = "nodejs";
 
 type CancelTiming = "immediate" | "period_end";
+type ProratedRefundResult = {
+  amountCents: number;
+  refundId: string;
+  receiptUrl: string;
+  reason?: string;
+};
 
 function stripeObjectId(value: unknown) {
   if (typeof value === "string") return value;
@@ -20,11 +26,69 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-async function proratedRefundForSubscription(stripe: Stripe, subscription: Stripe.Subscription) {
+async function chargeIdForInvoice(stripe: Stripe, invoice: Stripe.Invoice) {
+  const invoiceSource = invoice as unknown as {
+    charge?: string | Stripe.Charge | null;
+    payment_intent?: string | Stripe.PaymentIntent | null;
+    payments?: {
+      data?: Array<{
+        charge?: string | Stripe.Charge | null;
+        payment?: {
+          charge?: string | Stripe.Charge | null;
+        } | null;
+      }>;
+    };
+  };
+
+  const paymentIntent = invoiceSource.payment_intent;
+  if (paymentIntent && typeof paymentIntent === "object") {
+    const chargeId = stripeObjectId(paymentIntent.latest_charge);
+    if (chargeId) return chargeId;
+  }
+
+  if (typeof paymentIntent === "string") {
+    const retrievedPaymentIntent = await stripe.paymentIntents.retrieve(paymentIntent, {
+      expand: ["latest_charge"],
+    });
+    const chargeId = stripeObjectId(retrievedPaymentIntent.latest_charge);
+    if (chargeId) return chargeId;
+  }
+
+  const invoiceChargeId = stripeObjectId(invoiceSource.charge);
+  if (invoiceChargeId) return invoiceChargeId;
+
+  for (const invoicePayment of invoiceSource.payments?.data ?? []) {
+    const chargeId = stripeObjectId(invoicePayment.charge) || stripeObjectId(invoicePayment.payment?.charge);
+    if (chargeId) return chargeId;
+  }
+
+  return "";
+}
+
+async function paidInvoiceForSubscription(stripe: Stripe, subscription: Stripe.Subscription) {
+  const subscriptionSource = subscription as unknown as {
+    latest_invoice?: string | Stripe.Invoice | null;
+  };
+  const latestInvoiceId = stripeObjectId(subscriptionSource.latest_invoice);
+  if (latestInvoiceId) {
+    const invoice = await stripe.invoices.retrieve(latestInvoiceId, {
+      expand: ["payment_intent.latest_charge", "payments"],
+    });
+    if (invoice.amount_paid > 0) return invoice;
+  }
+
+  const invoiceList = await stripe.invoices.list({
+    subscription: subscription.id,
+    limit: 5,
+    expand: ["data.payment_intent.latest_charge", "data.payments"],
+  });
+  return invoiceList.data.find((invoice) => invoice.amount_paid > 0) ?? null;
+}
+
+async function proratedRefundForSubscription(stripe: Stripe, subscription: Stripe.Subscription): Promise<ProratedRefundResult> {
   const subscriptionSource = subscription as unknown as {
     current_period_start?: number;
     current_period_end?: number;
-    latest_invoice?: string | Stripe.Invoice | null;
   };
   const periodStart = Number(subscriptionSource.current_period_start ?? 0);
   const periodEnd = Number(subscriptionSource.current_period_end ?? 0);
@@ -33,35 +97,31 @@ async function proratedRefundForSubscription(stripe: Stripe, subscription: Strip
   const remainingSeconds = clamp(periodEnd - nowSeconds, 0, totalPeriodSeconds);
 
   if (!totalPeriodSeconds || !remainingSeconds) {
-    return { amountCents: 0, refundId: "", receiptUrl: "" };
+    return { amountCents: 0, refundId: "", receiptUrl: "", reason: "No remaining billable time." };
   }
 
-  const latestInvoiceId = stripeObjectId(subscriptionSource.latest_invoice);
-  if (!latestInvoiceId) return { amountCents: 0, refundId: "", receiptUrl: "" };
+  const invoice = await paidInvoiceForSubscription(stripe, subscription);
+  if (!invoice) return { amountCents: 0, refundId: "", receiptUrl: "", reason: "No paid Stripe invoice was found." };
 
-  const invoice = await stripe.invoices.retrieve(latestInvoiceId, {
-    expand: ["payment_intent.latest_charge"],
-  });
-  const invoiceSource = invoice as unknown as {
-    amount_paid?: number;
-    payment_intent?: string | Stripe.PaymentIntent | null;
-  };
-  const paymentIntent = invoiceSource.payment_intent;
-  const latestCharge =
-    paymentIntent && typeof paymentIntent === "object" && "latest_charge" in paymentIntent
-      ? (paymentIntent as Stripe.PaymentIntent).latest_charge
-      : null;
-  const latestChargeId = stripeObjectId(latestCharge);
-
-  if (!latestChargeId) return { amountCents: 0, refundId: "", receiptUrl: "" };
+  const latestChargeId = await chargeIdForInvoice(stripe, invoice);
+  if (!latestChargeId) {
+    return { amountCents: 0, refundId: "", receiptUrl: "", reason: "No refundable Stripe charge was found." };
+  }
 
   const charge = await stripe.charges.retrieve(latestChargeId);
   const refundableCents = Math.max(0, charge.amount - charge.amount_refunded);
-  const basisCents = Math.max(0, Number(invoiceSource.amount_paid ?? charge.amount));
+  const basisCents = Math.max(0, Number(invoice.amount_paid ?? charge.amount));
   const proratedCents = Math.floor(basisCents * (remainingSeconds / totalPeriodSeconds));
   const amountCents = Math.min(refundableCents, proratedCents);
 
-  if (amountCents < 1) return { amountCents: 0, refundId: "", receiptUrl: charge.receipt_url ?? "" };
+  if (amountCents < 1) {
+    return {
+      amountCents: 0,
+      refundId: "",
+      receiptUrl: charge.receipt_url ?? "",
+      reason: "No refundable prorated amount remained.",
+    };
+  }
 
   const refund = await stripe.refunds.create({
     charge: latestChargeId,
@@ -118,7 +178,7 @@ export async function POST(req: Request) {
     };
     const now = new Date().toISOString();
     const stripeSubscriptionId = membership.stripe_subscription_id?.trim() || "";
-    let refund: { amountCents: number; refundId: string; receiptUrl: string } | null = null;
+    let refund: ProratedRefundResult | null = null;
     let subscriptionPeriodEnd = membership.current_period_end ?? null;
 
     if (stripeSubscriptionId) {

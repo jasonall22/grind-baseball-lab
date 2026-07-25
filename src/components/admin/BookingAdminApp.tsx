@@ -5834,6 +5834,8 @@ export default function BookingAdminApp({
       const refundAmount = Number(payload.refund?.amountCents ?? 0);
       if (refundAmount > 0) {
         showToast(`Membership cancelled and ${moneyPrecise(refundAmount / 100)} refunded.`);
+      } else if (options.timing === "immediate" && options.refundProrated && payload.refund) {
+        showToast(payload.refund.reason || "Membership cancelled. No refundable Stripe charge was found.");
       } else {
         showToast(options.timing === "period_end" ? "Membership will cancel at period end." : "Membership cancelled.");
       }
@@ -12134,6 +12136,7 @@ function CustomerDetailView({
     return total + (booking.paid ? servicePrice : 0);
   }, 0);
   const membershipCards = memberships
+    .filter((membership) => membership.status !== "Cancelled" && membership.status !== "Expired")
     .map((membership) => {
       const service = servicesById.get(membership.membershipServiceId);
       const creditSettings = membershipCreditSettings(membership, service);
@@ -12193,7 +12196,7 @@ function CustomerDetailView({
   function openCancelMembershipDialog(membership: CustomerMembershipRecord) {
     setMembershipCancelDraft(membership);
     setMembershipCancelTiming("period_end");
-    setMembershipCancelRefundProrated(false);
+    setMembershipCancelRefundProrated(Boolean(membership.stripeSubscriptionId));
   }
 
   async function cancelSelectedMembership() {
@@ -13809,7 +13812,10 @@ function CustomerDetailView({
 
               <button
                 type="button"
-                onClick={() => setMembershipCancelTiming("immediate")}
+                onClick={() => {
+                  setMembershipCancelTiming("immediate");
+                  setMembershipCancelRefundProrated(Boolean(membershipCancelDraft.stripeSubscriptionId));
+                }}
                 className={[
                   "rounded-xl border px-4 py-3 text-left transition",
                   membershipCancelTiming === "immediate"

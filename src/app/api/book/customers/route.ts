@@ -198,39 +198,44 @@ export async function GET(req: Request) {
         pastBookings: bookings
           .filter((booking) => booking.date < today || booking.status === "Cancelled")
           .sort((a, b) => `${b.date} ${b.start}`.localeCompare(`${a.date} ${a.start}`)),
-        memberships: ((membershipsResult.data ?? []) as Array<Record<string, unknown>>).map((membership) => {
-          const service = servicesById.get(clean(membership.membership_service_id));
-          const membershipName = service?.name || "Membership";
-          const membershipNameKey = membershipName.toLowerCase();
-          const latestPayment = payments.find((payment) => {
-            const description = payment.description.toLowerCase();
-            return (
-              payment.paymentMethodBrand !== "Membership cancellation request" &&
-              ["Succeeded", "Refunded"].includes(payment.status) &&
-              (description.includes(membershipNameKey) || description.includes("membership"))
-            );
-          });
-          return {
-            id: String(membership.id),
-            status: clean(membership.status) || "Active",
-            serviceName: membershipName,
-            billingPeriod: clean(membership.billing_period) || "Monthly",
-            priceCents: Number(membership.price_cents ?? service?.priceCents ?? 0),
-            creditsPerDay: Number(membership.credits_per_day ?? 0),
-            creditLimitPeriod: clean(membership.credit_limit_period) || "day",
-            currentPeriodStart: clean(membership.current_period_start),
-            currentPeriodEnd: clean(membership.current_period_end),
-            autoRenew: Boolean(membership.auto_renew),
-            latestReceiptUrl: latestPayment?.receiptUrl ?? "",
-            latestPaymentAmountCents: latestPayment?.amountCents ?? 0,
-            latestPaymentStatus: latestPayment?.status ?? "",
-            latestPaymentDate: latestPayment?.processedAt || latestPayment?.createdAt || "",
-            latestPaymentMethod: latestPayment?.paymentMethodBrand
-              ? `${latestPayment.paymentMethodBrand}${latestPayment.paymentMethodLast4 ? ` ending ${latestPayment.paymentMethodLast4}` : ""}`
-              : "",
-            cancelRequest: cancelRequestsByMembershipId.get(String(membership.id)) ?? null,
-          };
-        }),
+        memberships: ((membershipsResult.data ?? []) as Array<Record<string, unknown>>)
+          .filter((membership) => {
+            const status = clean(membership.status) || "Active";
+            return status !== "Cancelled" && status !== "Expired";
+          })
+          .map((membership) => {
+            const service = servicesById.get(clean(membership.membership_service_id));
+            const membershipName = service?.name || "Membership";
+            const membershipNameKey = membershipName.toLowerCase();
+            const latestPayment = payments.find((payment) => {
+              const description = payment.description.toLowerCase();
+              return (
+                payment.paymentMethodBrand !== "Membership cancellation request" &&
+                ["Succeeded", "Refunded"].includes(payment.status) &&
+                (description.includes(membershipNameKey) || description.includes("membership"))
+              );
+            });
+            return {
+              id: String(membership.id),
+              status: clean(membership.status) || "Active",
+              serviceName: membershipName,
+              billingPeriod: clean(membership.billing_period) || "Monthly",
+              priceCents: Number(membership.price_cents ?? service?.priceCents ?? 0),
+              creditsPerDay: Number(membership.credits_per_day ?? 0),
+              creditLimitPeriod: clean(membership.credit_limit_period) || "day",
+              currentPeriodStart: clean(membership.current_period_start),
+              currentPeriodEnd: clean(membership.current_period_end),
+              autoRenew: Boolean(membership.auto_renew),
+              latestReceiptUrl: latestPayment?.receiptUrl ?? "",
+              latestPaymentAmountCents: latestPayment?.amountCents ?? 0,
+              latestPaymentStatus: latestPayment?.status ?? "",
+              latestPaymentDate: latestPayment?.processedAt || latestPayment?.createdAt || "",
+              latestPaymentMethod: latestPayment?.paymentMethodBrand
+                ? `${latestPayment.paymentMethodBrand}${latestPayment.paymentMethodLast4 ? ` ending ${latestPayment.paymentMethodLast4}` : ""}`
+                : "",
+              cancelRequest: cancelRequestsByMembershipId.get(String(membership.id)) ?? null,
+            };
+          }),
       };
     }
 
