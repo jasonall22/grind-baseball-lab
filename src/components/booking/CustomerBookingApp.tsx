@@ -1731,10 +1731,10 @@ export default function CustomerBookingApp() {
           ) : null}
 
           {step === "done" ? (
-            <div className="flex min-h-[520px] flex-col items-center justify-center text-center">
-              <div className="flex h-[122px] w-[122px] items-center justify-center rounded-full bg-[#7ad33d] text-[32px] font-semibold text-white">Done</div>
-              <div className="mt-12 text-[22px] font-semibold">{selectedService.name} - {isMembership ? "Membership Started" : "Booking Confirmed"}</div>
-              <p className="mt-5 max-w-[630px] text-[20px] leading-[1.55]">
+            <div className="flex min-h-full flex-col items-center justify-center py-5 text-center">
+              <div className="flex h-[96px] w-[96px] items-center justify-center rounded-full bg-[#7ad33d] text-[26px] font-semibold text-white">Done</div>
+              <div className="mt-7 text-[20px] font-semibold leading-tight">{selectedService.name} - {isMembership ? "Membership Started" : "Booking Confirmed"}</div>
+              <p className="mt-4 max-w-[560px] text-[17px] leading-[1.45] text-black/70">
                 {isMembership
                   ? "Your membership is ready to use for eligible services at The Grind Baseball Lab."
                   : "Looking forward to seeing you at The Grind Baseball Lab! You will receive a confirmation email with your booking details shortly."}
