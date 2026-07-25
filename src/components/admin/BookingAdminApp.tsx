@@ -6261,7 +6261,7 @@ export default function BookingAdminApp({
             <div className="-mx-5 -mt-5 mb-5 hidden items-center justify-between border-b border-white/10 bg-black px-5 py-3 shadow-[0_1px_4px_rgba(0,0,0,0.28)] lg:flex">
               <AdminBrandLogo size="desktop" />
               <div className="flex items-center gap-2">
-                <AdminNotificationBell notifications={pendingMembershipCancelNotifications} />
+                <AdminNotificationBell notifications={pendingMembershipCancelNotifications} menuAlign="left" />
                 <AdminAccountMenu currentAuthEmail={currentAuthEmail} />
               </div>
             </div>
@@ -6900,9 +6900,11 @@ function AdminBrandLogo({ size = "desktop" }: { size?: "desktop" | "mobile" }) {
 function AdminNotificationBell({
   notifications,
   variant = "dark",
+  menuAlign = "right",
 }: {
   notifications: MembershipCancelNotification[];
   variant?: "dark" | "light";
+  menuAlign?: "left" | "right";
 }) {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [isOpen, setIsOpen] = useState(false);
@@ -6953,7 +6955,12 @@ function AdminNotificationBell({
       </button>
 
       {isOpen ? (
-        <div className="absolute right-0 top-full z-50 mt-2 w-[340px] overflow-hidden rounded-xl border border-black/10 bg-white text-black shadow-[0_12px_28px_rgba(0,0,0,0.18)]">
+        <div
+          className={[
+            "absolute top-full z-50 mt-2 w-[min(340px,calc(100vw-24px))] overflow-hidden rounded-xl border border-black/10 bg-white text-black shadow-[0_12px_28px_rgba(0,0,0,0.18)]",
+            menuAlign === "left" ? "left-0" : "right-0",
+          ].join(" ")}
+        >
           <div className="border-b border-black/10 px-4 py-3">
             <div className="text-sm font-semibold">Notifications</div>
             <div className="mt-1 text-xs text-black/50">
