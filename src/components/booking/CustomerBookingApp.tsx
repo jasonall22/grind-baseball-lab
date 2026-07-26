@@ -1915,7 +1915,7 @@ export default function CustomerBookingApp() {
     setPasswordResetEmailBusy(true);
     setSignInStatus("");
     try {
-      const redirectTo = `${window.location.origin}/book`;
+      const redirectTo = "https://www.grindbaseballlab.com/book";
       const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
       if (error) throw error;
 
