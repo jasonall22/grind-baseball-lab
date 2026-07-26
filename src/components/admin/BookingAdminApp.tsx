@@ -8835,6 +8835,8 @@ function CalendarView({
     resource: string;
     anchorStart: number;
     anchorEnd: number;
+    boundStart: number;
+    boundEnd: number;
     start: number;
     end: number;
     hasDragged: boolean;
@@ -9128,17 +9130,51 @@ function CalendarView({
     selection: NonNullable<typeof slotSelection>,
     boundaryMinutes: number
   ) {
-    if (boundaryMinutes <= selection.anchorStart) {
+    const boundedBoundary = Math.max(selection.boundStart, Math.min(selection.boundEnd, boundaryMinutes));
+
+    if (boundedBoundary <= selection.anchorStart) {
       return {
-        start: Math.max(0, boundaryMinutes),
+        start: Math.max(selection.boundStart, boundedBoundary),
         end: selection.anchorEnd,
       };
     }
 
     return {
       start: selection.anchorStart,
-      end: Math.max(selection.anchorEnd, boundaryMinutes),
+      end: Math.max(selection.anchorEnd, boundedBoundary),
     };
+  }
+
+  function calendarColumnFromElement(element: HTMLElement) {
+    return element.closest<HTMLElement>("[data-calendar-lane-column='true']") ?? element;
+  }
+
+  function availableSelectionBounds(resource: string, startMinutes: number) {
+    const timeline = dayResourceViewByName.get(resource)?.timeline ?? [];
+    const index = timeline.findIndex(
+      (segment) => segment.type === "available" && startMinutes >= segment.start && startMinutes < segment.end
+    );
+
+    if (index < 0) {
+      return { start: startMinutes, end: Math.min(1439, startMinutes + 30) };
+    }
+
+    let start = timeline[index].start;
+    let end = timeline[index].end;
+
+    for (let previous = index - 1; previous >= 0; previous -= 1) {
+      const segment = timeline[previous];
+      if (segment.type !== "available" || segment.end !== start) break;
+      start = segment.start;
+    }
+
+    for (let next = index + 1; next < timeline.length; next += 1) {
+      const segment = timeline[next];
+      if (segment.type !== "available" || segment.start !== end) break;
+      end = segment.end;
+    }
+
+    return { start, end };
   }
 
   function startSlotSelection(
@@ -9149,13 +9185,26 @@ function CalendarView({
   ) {
     if (event.button !== 0 || dragBookingId) return;
 
-    const startMinutes = slotStartFromClientY(event.currentTarget, event.clientY, segmentStart, segmentEnd);
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+
+    const columnElement = calendarColumnFromElement(event.currentTarget);
+    const startMinutes = slotStartFromClientY(
+      columnElement,
+      event.clientY,
+      visibleCalendarRange.start,
+      visibleCalendarRange.end
+    );
+    const bounds = availableSelectionBounds(resource, startMinutes);
+    const boundedStart = Math.max(bounds.start, Math.min(Math.max(bounds.start, bounds.end - 30), startMinutes));
     setSlotSelection({
       resource,
-      anchorStart: startMinutes,
-      anchorEnd: Math.min(1439, startMinutes + 30),
-      start: startMinutes,
-      end: Math.min(1439, startMinutes + 30),
+      anchorStart: boundedStart,
+      anchorEnd: Math.min(bounds.end, boundedStart + 30),
+      boundStart: bounds.start,
+      boundEnd: bounds.end,
+      start: boundedStart,
+      end: Math.min(bounds.end, boundedStart + 30),
       hasDragged: false,
     });
   }
@@ -9168,7 +9217,15 @@ function CalendarView({
   ) {
     if (!slotSelection || slotSelection.resource !== resource || dragBookingId) return;
 
-    const boundaryMinutes = slotBoundaryFromClientY(event.currentTarget, event.clientY, segmentStart, segmentEnd);
+    event.preventDefault();
+
+    const columnElement = calendarColumnFromElement(event.currentTarget);
+    const boundaryMinutes = slotBoundaryFromClientY(
+      columnElement,
+      event.clientY,
+      visibleCalendarRange.start,
+      visibleCalendarRange.end
+    );
     const range = slotSelectionRange(slotSelection, boundaryMinutes);
     setSlotSelection({
       ...slotSelection,
@@ -9191,8 +9248,15 @@ function CalendarView({
     event.preventDefault();
     event.stopPropagation();
     slotSelectionClickGuardRef.current = true;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
 
-    const boundaryMinutes = slotBoundaryFromClientY(event.currentTarget, event.clientY, segmentStart, segmentEnd);
+    const columnElement = calendarColumnFromElement(event.currentTarget);
+    const boundaryMinutes = slotBoundaryFromClientY(
+      columnElement,
+      event.clientY,
+      visibleCalendarRange.start,
+      visibleCalendarRange.end
+    );
     const range = slotSelectionRange(slotSelection, boundaryMinutes);
     setSlotSelection(null);
     createBookingFromSlot(resource, range.start, range.end);
@@ -9605,6 +9669,7 @@ function CalendarView({
                     {mobileVisibleDayResourceViews.map(({ resource, timeline }) => (
                       <div
                         key={`mobile-day-column-${resource}`}
+                        data-calendar-lane-column="true"
                         className="relative border-r border-black/10 last:border-r-0"
                         onDragOver={(event) => handleColumnDragOver(event, resource)}
                         onDragLeave={() => handleColumnDragLeave(resource)}
@@ -9660,7 +9725,7 @@ function CalendarView({
                                 onDragOver={(event) => handleSlotDragOver(event, resource, renderedStart)}
                                 onDragLeave={() => handleSlotDragLeave(resource, renderedStart)}
                                 onDrop={(event) => void handleSlotDrop(event, resource, renderedStart, renderedEnd)}
-                                className={`absolute left-[2px] right-[2px] overflow-hidden rounded-md border px-2 py-1 text-left shadow-sm transition select-none ${
+                                className={`absolute left-[2px] right-[2px] touch-none overflow-hidden rounded-md border px-2 py-1 text-left shadow-sm transition select-none ${
                                   isDragTarget || isSelectionTarget
                                     ? "border-black bg-[#d7f4e5] text-black ring-2 ring-black/30"
                                     : "border-[#caefdd] bg-[#f3fcf7] text-[#166443]"
@@ -9752,6 +9817,25 @@ function CalendarView({
                             </button>
                           );
                         })}
+                        {slotSelection?.resource === resource ? (() => {
+                          const selectionTop = ((slotSelection.start - visibleCalendarRange.start) / 30) * mobileSlotHeight + 1;
+                          const selectionHeight = Math.max(
+                            34,
+                            ((slotSelection.end - slotSelection.start) / 30) * mobileSlotHeight - 2
+                          );
+
+                          return (
+                            <div
+                              className="pointer-events-none absolute left-[2px] right-[2px] z-10 overflow-hidden rounded-md border border-black/55 bg-[#d7f4e5]/90 px-2 py-1 text-left text-black shadow-[0_0_0_2px_rgba(0,0,0,0.18)]"
+                              style={{ top: selectionTop, height: selectionHeight }}
+                            >
+                              <div className="text-[9px] font-bold leading-none text-black/65">
+                                {timeLabel(minutesToTime(slotSelection.start))} - {timeLabel(minutesToTime(slotSelection.end))}
+                              </div>
+                              <div className="mt-1 text-[12px] font-bold leading-none">Selected time</div>
+                            </div>
+                          );
+                        })() : null}
                         {dragBookingId ? (() => {
                           const dropStart = dragTargetStartForResource(resource);
                           const dropTop =
@@ -9825,6 +9909,7 @@ function CalendarView({
                   return (
                     <div
                       key={resource}
+                      data-calendar-lane-column="true"
                       className="relative border-r border-black/10 bg-[#eaf6ff] last:border-r-0"
                       onDragOver={(event) => handleColumnDragOver(event, resource)}
                       onDragLeave={() => handleColumnDragLeave(resource)}
@@ -9879,7 +9964,7 @@ function CalendarView({
                               onDragLeave={() => handleSlotDragLeave(resource, renderedStart)}
                               onDrop={(event) => void handleSlotDrop(event, resource, renderedStart, renderedEnd)}
                               aria-label={`Book ${resource} from ${timeLabel(minutesToTime(renderedStart))} to ${timeLabel(minutesToTime(renderedEnd))}`}
-                              className={`absolute left-0 right-0 overflow-hidden border text-left transition select-none ${
+                              className={`absolute left-0 right-0 touch-none overflow-hidden border text-left transition select-none ${
                                 isDragTarget || isSelectionTarget
                                   ? "border-black/30 bg-[#c8e9ff] ring-2 ring-black/25"
                                   : "border-transparent bg-transparent hover:bg-[#d9efff]/70"
@@ -9980,6 +10065,25 @@ function CalendarView({
                           </button>
                           );
                         })}
+                      {slotSelection?.resource === resource ? (() => {
+                        const selectionTop = ((slotSelection.start - visibleCalendarRange.start) / 30) * slotHeight + 1;
+                        const selectionHeight = Math.max(
+                          28,
+                          ((slotSelection.end - slotSelection.start) / 30) * slotHeight - 2
+                        );
+
+                        return (
+                          <div
+                            className="pointer-events-none absolute left-[1px] right-[1px] z-10 overflow-hidden rounded-[4px] border border-black/45 bg-[#c8e9ff]/85 px-2 py-1 text-left text-black shadow-[0_0_0_2px_rgba(0,0,0,0.16)]"
+                            style={{ top: selectionTop, height: selectionHeight }}
+                          >
+                            <div className="text-[10px] font-bold leading-none text-black/65">
+                              {timeLabel(minutesToTime(slotSelection.start))} - {timeLabel(minutesToTime(slotSelection.end))}
+                            </div>
+                            <div className="mt-1 text-[12px] font-bold leading-none">Selected time</div>
+                          </div>
+                        );
+                      })() : null}
                       {dragBookingId ? (() => {
                         const dropStart = dragTargetStartForResource(resource);
                         const dropTop =
