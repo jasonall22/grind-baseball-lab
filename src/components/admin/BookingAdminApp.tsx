@@ -10139,6 +10139,7 @@ function CalendarView({
                         const paymentIndicator = bookingPaymentIndicator(booking);
                         const durationMinutes = Math.max(30, segment.end - segment.start);
                         const isCompactBooking = durationMinutes <= 30;
+                        const desktopStatusBadge = isCompactBooking ? null : statusBadge;
                         const isUnavailableBlock = isUnavailableBooking(booking);
                         const isDraggingBooking = dragBookingId === booking.id;
                         const coachName = booking.staffId ? staffById.get(booking.staffId)?.name ?? "" : "";
@@ -10162,23 +10163,24 @@ function CalendarView({
                             onDragEnd={endBookingDrag}
                             onClick={() => handleBookingCardClick(booking)}
                             className={`absolute left-[1px] right-[1px] overflow-hidden rounded-[4px] border text-left shadow-sm ${tone.borderClass} ${tone.containerClass} ${
-                              isCompactBooking ? "px-2 py-1" : "px-2.5 py-1.5"
+                              isCompactBooking ? "px-1.5 py-1" : "px-2.5 py-1.5"
                             } ${isDraggingBooking ? "cursor-grabbing opacity-60 ring-2 ring-black ring-offset-2" : "cursor-grab"}`}
                             style={{ top, height, ...tone.style }}
                           >
-                            <div className="flex min-w-0 items-start justify-between gap-1">
+                            <div className={isCompactBooking ? "pr-7" : "pr-16"}>
                               <div
-                                className={`min-w-0 flex-1 truncate ${isCompactBooking ? "text-[9px]" : "text-[10px]"} ${tone.timeClass} font-semibold leading-none`}
+                                className={`truncate ${isCompactBooking ? "text-[10px]" : "text-[10px]"} ${tone.timeClass} font-semibold leading-none`}
                               >
                                 {timeLabel(minutesToTime(segment.start))} - {timeLabel(minutesToTime(segment.end))}
                               </div>
-                            {statusBadge || paymentIndicator ? (
-                              <div className={`flex shrink-0 items-center ${isCompactBooking ? "gap-0.5" : "gap-1"}`}>
-                              {statusBadge ? (
+                            </div>
+                            {desktopStatusBadge || paymentIndicator ? (
+                              <div className={`absolute right-1 top-1 flex items-center ${isCompactBooking ? "gap-0.5" : "gap-1"}`}>
+                              {desktopStatusBadge ? (
                                 <span
-                                  className={`shrink-0 rounded-full ${isCompactBooking ? "px-1 py-[1px] text-[8px]" : "px-1.5 py-0.5 text-[9px]"} font-bold uppercase tracking-[0.04em] ${statusBadge.className}`}
+                                  className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.04em] ${desktopStatusBadge.className}`}
                                 >
-                                  {statusBadge.label}
+                                  {desktopStatusBadge.label}
                                 </span>
                               ) : null}
                               {paymentIndicator ? (
@@ -10191,25 +10193,24 @@ function CalendarView({
                               ) : null}
                               </div>
                             ) : null}
-                            </div>
                             <div
-                              className={`truncate font-semibold ${
-                                isCompactBooking ? "mt-0.5 text-[12px] leading-[1.05]" : "mt-1.5 text-[15px] leading-none"
+                              className={`truncate font-semibold ${isCompactBooking ? "pr-7" : "pr-16"} ${
+                                isCompactBooking ? "mt-0 text-[13px] leading-[1.05]" : "mt-1.5 text-[15px] leading-none"
                               }`}
                             >
                               {bookingTitle}
                             </div>
                             {isCompactBooking && isUnavailableBlock ? null : (
                               <div
-                                className={`truncate font-medium ${tone.subClass} ${
-                                  isCompactBooking ? "mt-0.5 text-[9px] leading-[1.05]" : "mt-1 text-[11px] leading-none"
+                                className={`truncate font-medium ${tone.subClass} ${isCompactBooking ? "pr-7" : "pr-16"} ${
+                                  isCompactBooking ? "mt-0 text-[10px] leading-[1.05]" : "mt-1 text-[11px] leading-none"
                                 }`}
                               >
                                 {bookingDetail}
                               </div>
                             )}
                             {!isCompactBooking && !isUnavailableBlock && coachName ? (
-                              <div className={`mt-1 truncate text-[11px] font-medium leading-none ${tone.subClass}`}>
+                              <div className={`mt-1 truncate pr-16 text-[11px] font-medium leading-none ${tone.subClass}`}>
                                 Coach: {coachName}
                               </div>
                             ) : null}
