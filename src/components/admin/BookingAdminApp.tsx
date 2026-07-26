@@ -9514,6 +9514,11 @@ function CalendarView({
                       <div
                         key={`mobile-day-column-${resource}`}
                         className="relative border-r border-black/10 last:border-r-0"
+                        onDragOver={(event) => handleColumnDragOver(event, resource)}
+                        onDragLeave={() => handleColumnDragLeave(resource)}
+                        onDrop={(event) =>
+                          void handleSlotDrop(event, resource, visibleCalendarRange.start, visibleCalendarRange.end)
+                        }
                         style={{ height: slots.length * mobileSlotHeight }}
                       >
                         {slots.map((slot) => (
@@ -9661,22 +9666,15 @@ function CalendarView({
                             dropStart === null
                               ? null
                               : ((dropStart - visibleCalendarRange.start) / 30) * mobileSlotHeight + 1;
+                          if (dropTop === null) return null;
 
                           return (
                             <div
-                              className="absolute inset-0 z-20"
-                              onDragOver={(event) => handleColumnDragOver(event, resource)}
-                              onDragLeave={() => handleColumnDragLeave(resource)}
-                              onDrop={(event) =>
-                                void handleSlotDrop(event, resource, visibleCalendarRange.start, visibleCalendarRange.end)
-                              }
+                              className="pointer-events-none absolute left-[2px] right-[2px] z-10 rounded-md border border-black/40 bg-[#d7f4e5]/70 ring-2 ring-black/25"
+                              aria-hidden="true"
+                              style={{ top: dropTop, height: mobileSlotHeight - 2 }}
                             >
-                              {dropTop !== null ? (
-                                <div
-                                  className="pointer-events-none absolute left-[2px] right-[2px] rounded-md border border-black/40 bg-[#d7f4e5]/70 ring-2 ring-black/25"
-                                  style={{ top: dropTop, height: mobileSlotHeight - 2 }}
-                                />
-                              ) : null}
+                              <span className="sr-only">Drop target</span>
                             </div>
                           );
                         })() : null}
@@ -9733,7 +9731,16 @@ function CalendarView({
                   const resourceTimeline = resourceDayView?.timeline ?? [];
 
                   return (
-                    <div key={resource} className="relative border-r border-black/10 bg-[#eaf6ff] last:border-r-0" style={{ height: columnHeight }}>
+                    <div
+                      key={resource}
+                      className="relative border-r border-black/10 bg-[#eaf6ff] last:border-r-0"
+                      onDragOver={(event) => handleColumnDragOver(event, resource)}
+                      onDragLeave={() => handleColumnDragLeave(resource)}
+                      onDrop={(event) =>
+                        void handleSlotDrop(event, resource, visibleCalendarRange.start, visibleCalendarRange.end)
+                      }
+                      style={{ height: columnHeight }}
+                    >
                       {slots.map((slot) => (
                         <div key={`${resource}-${slot}`} className="border-b border-black/10" style={{ height: slotHeight }} />
                       ))}
@@ -9887,22 +9894,15 @@ function CalendarView({
                           dropStart === null
                             ? null
                             : ((dropStart - visibleCalendarRange.start) / 30) * slotHeight + 1;
+                        if (dropTop === null) return null;
 
                         return (
                           <div
-                            className="absolute inset-0 z-20"
-                            onDragOver={(event) => handleColumnDragOver(event, resource)}
-                            onDragLeave={() => handleColumnDragLeave(resource)}
-                            onDrop={(event) =>
-                              void handleSlotDrop(event, resource, visibleCalendarRange.start, visibleCalendarRange.end)
-                            }
+                            className="pointer-events-none absolute left-[1px] right-[1px] z-10 rounded-[4px] border border-black/35 bg-[#c8e9ff]/70 ring-2 ring-black/25"
+                            aria-hidden="true"
+                            style={{ top: dropTop, height: slotHeight - 2 }}
                           >
-                            {dropTop !== null ? (
-                              <div
-                                className="pointer-events-none absolute left-[1px] right-[1px] rounded-[4px] border border-black/35 bg-[#c8e9ff]/70 ring-2 ring-black/25"
-                                style={{ top: dropTop, height: slotHeight - 2 }}
-                              />
-                            ) : null}
+                            <span className="sr-only">Drop target</span>
                           </div>
                         );
                       })() : null}
