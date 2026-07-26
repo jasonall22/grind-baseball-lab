@@ -10191,7 +10191,9 @@ function CalendarView({
                               </div>
                             </div>
                             {desktopStatusBadge || isDesktopPaid || isDesktopUnpaid ? (
-                              <div className={`absolute right-1 top-1 flex items-center ${isCompactBooking ? "gap-0.5" : "gap-1"}`}>
+                              <div
+                                className={`absolute right-[5px] flex items-center ${isCompactBooking ? "top-1/2 -translate-y-1/2 gap-[3px]" : "top-2 gap-1"}`}
+                              >
                               {desktopStatusBadge ? (
                                 <span
                                   className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.04em] ${desktopStatusBadge.className}`}
@@ -10201,20 +10203,20 @@ function CalendarView({
                               ) : null}
                               {isDesktopPaid ? (
                                 <>
-                                  <Icon name="dollar" className="mt-3 h-4 w-4 shrink-0 text-white" />
+                                  <span className="shrink-0 text-[20px] font-semibold leading-none text-white">$</span>
                                   <span
                                     title="Paid"
-                                    className="absolute right-6 top-[-2px] grid h-4 w-4 shrink-0 place-items-center rounded-full bg-[#23994a] text-white ring-1 ring-white/55"
+                                    className="absolute right-[25px] top-[-7px] grid h-4 w-4 shrink-0 place-items-center rounded-full bg-[#23994a] text-white ring-1 ring-white/55"
                                   >
                                     <Icon name="check" className="h-2.5 w-2.5" />
                                   </span>
-                                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-black/45 bg-[#e5e7eb] text-[10px] font-semibold text-black">
+                                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-black/55 bg-[#e5e7eb] text-[11px] font-semibold text-black">
                                     {desktopInitials}
                                   </span>
                                 </>
                               ) : null}
                               {isDesktopUnpaid ? (
-                                <Icon name="dollar-off" className="mt-2 h-5 w-5 shrink-0 text-white" />
+                                <Icon name="dollar-off" className="h-6 w-6 shrink-0 text-white" />
                               ) : null}
                               </div>
                             ) : null}
