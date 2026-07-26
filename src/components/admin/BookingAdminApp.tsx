@@ -10195,7 +10195,7 @@ function CalendarView({
                             ) : null}
                             <div
                               className={`truncate font-semibold ${isCompactBooking ? "pr-7" : "pr-16"} ${
-                                isCompactBooking ? "mt-0 text-[13px] leading-[1.05]" : "mt-1.5 text-[15px] leading-none"
+                                isCompactBooking ? "-mt-[1px] text-[13px] leading-[1.05]" : "mt-1 text-[15px] leading-none"
                               }`}
                             >
                               {bookingTitle}
@@ -10203,7 +10203,7 @@ function CalendarView({
                             {isCompactBooking && isUnavailableBlock ? null : (
                               <div
                                 className={`truncate font-medium ${tone.subClass} ${isCompactBooking ? "pr-7" : "pr-16"} ${
-                                  isCompactBooking ? "mt-0 text-[10px] leading-[1.05]" : "mt-1 text-[11px] leading-none"
+                                  isCompactBooking ? "-mt-[1px] text-[10px] leading-[1.05]" : "mt-0.5 text-[11px] leading-none"
                                 }`}
                               >
                                 {bookingDetail}
