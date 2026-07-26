@@ -2821,11 +2821,11 @@ export default function CustomerBookingApp() {
                   </div>
                 </div>
               ) : null}
-              <div className="mt-8 text-[15px]">Players in Family Account</div>
-              <div className="mt-4 text-[16px]">
+              <div className="mt-6 text-[15px]">Players in Family Account</div>
+              <div className="mt-3 text-[16px]">
                 {isMembership ? "Who is this membership for?" : "Who is the player attending this booking?"}
               </div>
-              <div className="mt-6 flex flex-wrap gap-4">
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(150px,170px))]">
                 {parentAccount ? (
                   <>
                     {familyMembers.map((member) => (
@@ -2841,25 +2841,25 @@ export default function CustomerBookingApp() {
                             phone: parentAccount.phone,
                           });
                         }}
-                        className={`h-[310px] w-[190px] rounded-[8px] border px-5 py-7 text-center ${
+                        className={`min-h-[184px] rounded-[8px] border px-4 py-5 text-center ${
                           selectedPlayer === member.name ? "border-black shadow-[inset_0_0_0_1px_black]" : "border-black/15"
                         }`}
                       >
-                        <span className="mx-auto flex h-[126px] w-[126px] items-center justify-center rounded-full bg-[#bebebe] text-[26px] text-white">
+                        <span className="mx-auto flex h-[86px] w-[86px] items-center justify-center rounded-full bg-[#bebebe] text-[22px] text-white sm:h-[96px] sm:w-[96px]">
                           {initials(member.name)}
                         </span>
-                        <span className="mt-5 block text-[18px]">{member.name}</span>
-                        {familyDobLabel(member) ? <span className="mt-6 block text-[14px]">{familyDobLabel(member)}</span> : null}
+                        <span className="mt-4 block text-[16px] font-semibold leading-tight">{member.name}</span>
+                        {familyDobLabel(member) ? <span className="mt-3 block text-[13px] text-black/60">{familyDobLabel(member)}</span> : null}
                       </button>
                     ))}
                     <button
                       type="button"
                       onClick={openCustomerPortal}
-                      className="flex h-[310px] w-[190px] flex-col items-center justify-center rounded-[8px] border border-dashed border-black/25 px-5 py-7 text-center hover:border-black"
+                      className="flex min-h-[184px] flex-col items-center justify-center rounded-[8px] border border-dashed border-black/25 px-4 py-5 text-center hover:border-black"
                     >
-                      <span className="flex h-[80px] w-[80px] items-center justify-center rounded-full bg-black text-[34px] text-white">+</span>
-                      <span className="mt-5 block text-[18px] font-semibold">Add player</span>
-                      <span className="mt-4 block text-[14px] leading-5 text-black/55">Add another child to this family account.</span>
+                      <span className="flex h-[66px] w-[66px] items-center justify-center rounded-full bg-black text-[30px] text-white">+</span>
+                      <span className="mt-4 block text-[16px] font-semibold">Add player</span>
+                      <span className="mt-2 block text-[13px] leading-5 text-black/55">Add another child.</span>
                     </button>
                   </>
                 ) : (
@@ -2867,23 +2867,23 @@ export default function CustomerBookingApp() {
                     <button
                       type="button"
                       onClick={openSignInModal}
-                      className="flex h-[310px] w-[190px] flex-col items-center justify-center rounded-[8px] border border-black/15 bg-white px-5 py-7 text-center transition hover:border-black hover:shadow-[0_12px_24px_rgba(0,0,0,0.08)]"
+                      className="flex min-h-[184px] flex-col items-center justify-center rounded-[8px] border border-black/15 bg-white px-4 py-5 text-center transition hover:border-black hover:shadow-[0_12px_24px_rgba(0,0,0,0.08)]"
                     >
-                      <span className="relative flex h-[80px] w-[80px] items-center justify-center rounded-full bg-[#1f1b1b]">
-                        <span className="absolute left-1/2 top-[19px] h-[18px] w-[18px] -translate-x-1/2 rounded-full border-[3px] border-white" />
-                        <span className="absolute bottom-[17px] left-1/2 h-[22px] w-[38px] -translate-x-1/2 rounded-t-full border-[3px] border-white border-b-0" />
+                      <span className="relative flex h-[66px] w-[66px] items-center justify-center rounded-full bg-[#1f1b1b]">
+                        <span className="absolute left-1/2 top-[16px] h-[15px] w-[15px] -translate-x-1/2 rounded-full border-[3px] border-white" />
+                        <span className="absolute bottom-[14px] left-1/2 h-[19px] w-[32px] -translate-x-1/2 rounded-t-full border-[3px] border-white border-b-0" />
                       </span>
-                      <span className="mt-5 block text-[18px] font-semibold">Sign in</span>
-                      <span className="mt-4 block text-[14px] leading-5 text-black/55">Use your existing family account.</span>
+                      <span className="mt-4 block text-[16px] font-semibold">Sign in</span>
+                      <span className="mt-2 block text-[13px] leading-5 text-black/55">Use your family account.</span>
                     </button>
                     <button
                       type="button"
                       onClick={openAccountModal}
-                      className="flex h-[310px] w-[190px] flex-col items-center justify-center rounded-[8px] border border-dashed border-black/25 px-5 py-7 text-center hover:border-black"
+                      className="flex min-h-[184px] flex-col items-center justify-center rounded-[8px] border border-dashed border-black/25 px-4 py-5 text-center hover:border-black"
                     >
-                      <span className="flex h-[80px] w-[80px] items-center justify-center rounded-full bg-black text-[34px] text-white">+</span>
-                      <span className="mt-5 block text-[18px] font-semibold">Create account</span>
-                      <span className="mt-4 block text-[14px] leading-5 text-black/55">Save parent and player details.</span>
+                      <span className="flex h-[66px] w-[66px] items-center justify-center rounded-full bg-black text-[30px] text-white">+</span>
+                      <span className="mt-4 block text-[16px] font-semibold">Create account</span>
+                      <span className="mt-2 block text-[13px] leading-5 text-black/55">Save family details.</span>
                     </button>
                   </>
                 )}
