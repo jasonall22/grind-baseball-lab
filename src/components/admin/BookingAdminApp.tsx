@@ -10166,18 +10166,17 @@ function CalendarView({
                             } ${isDraggingBooking ? "cursor-grabbing opacity-60 ring-2 ring-black ring-offset-2" : "cursor-grab"}`}
                             style={{ top, height, ...tone.style }}
                           >
-                            <div className={isCompactBooking ? "pr-7" : "pr-16"}>
+                            <div className="flex min-w-0 items-start justify-between gap-1">
                               <div
-                                className={`truncate ${isCompactBooking ? "text-[9px]" : "text-[10px]"} ${tone.timeClass} font-semibold leading-none`}
+                                className={`min-w-0 flex-1 truncate ${isCompactBooking ? "text-[9px]" : "text-[10px]"} ${tone.timeClass} font-semibold leading-none`}
                               >
                                 {timeLabel(minutesToTime(segment.start))} - {timeLabel(minutesToTime(segment.end))}
                               </div>
-                            </div>
                             {statusBadge || paymentIndicator ? (
-                              <div className="absolute right-1 top-1 flex items-center gap-1">
+                              <div className={`flex shrink-0 items-center ${isCompactBooking ? "gap-0.5" : "gap-1"}`}>
                               {statusBadge ? (
                                 <span
-                                  className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.06em] ${statusBadge.className}`}
+                                  className={`shrink-0 rounded-full ${isCompactBooking ? "px-1 py-[1px] text-[8px]" : "px-1.5 py-0.5 text-[9px]"} font-bold uppercase tracking-[0.04em] ${statusBadge.className}`}
                                 >
                                   {statusBadge.label}
                                 </span>
@@ -10185,24 +10184,25 @@ function CalendarView({
                               {paymentIndicator ? (
                                 <span
                                   title={paymentIndicator.label}
-                                  className={`grid h-5 w-5 shrink-0 place-items-center rounded-full ${paymentIndicator.className}`}
+                                  className={`grid ${isCompactBooking ? "h-4 w-4" : "h-5 w-5"} shrink-0 place-items-center rounded-full ${paymentIndicator.className}`}
                                 >
-                                  <Icon name={paymentIndicator.icon} className="h-3 w-3" />
+                                  <Icon name={paymentIndicator.icon} className={isCompactBooking ? "h-2.5 w-2.5" : "h-3 w-3"} />
                                 </span>
                               ) : null}
                               </div>
                             ) : null}
+                            </div>
                             <div
-                              className={`truncate font-semibold leading-none ${
-                                isCompactBooking ? "mt-1 text-[13px]" : "mt-1.5 text-[15px]"
+                              className={`truncate font-semibold ${
+                                isCompactBooking ? "mt-0.5 text-[12px] leading-[1.05]" : "mt-1.5 text-[15px] leading-none"
                               }`}
                             >
                               {bookingTitle}
                             </div>
                             {isCompactBooking && isUnavailableBlock ? null : (
                               <div
-                                className={`truncate font-medium leading-none ${tone.subClass} ${
-                                  isCompactBooking ? "mt-0.5 text-[10px]" : "mt-1 text-[11px]"
+                                className={`truncate font-medium ${tone.subClass} ${
+                                  isCompactBooking ? "mt-0.5 text-[9px] leading-[1.05]" : "mt-1 text-[11px] leading-none"
                                 }`}
                               >
                                 {bookingDetail}
