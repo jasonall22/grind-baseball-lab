@@ -74,12 +74,15 @@ type CustomerMembershipCancelRequest = {
 };
 type CustomerMembershipRecord = {
   id: string;
+  serviceId: string;
   status: string;
   serviceName: string;
   billingPeriod: string;
   priceCents: number;
   creditsPerDay: number;
   creditLimitPeriod: string;
+  creditScope: string;
+  eligibleServiceIds: string[];
   currentPeriodStart: string;
   currentPeriodEnd: string;
   startedAt: string;
@@ -243,6 +246,27 @@ function membershipCreditLabel(service: PublicBookingService) {
   if (!credits) return "Member booking credits";
   const period = membershipCreditPeriodLabel(service.membershipCreditLimitPeriod);
   return `${credits} credit${credits === 1 ? "" : "s"} per ${period}`;
+}
+
+function membershipRecordCreditLabel(membership: CustomerMembershipRecord) {
+  const credits = Math.max(0, Math.floor(Number(membership.creditsPerDay ?? 0)));
+  const period = membershipCreditPeriodLabel(membership.creditLimitPeriod);
+  return `${credits} credit${credits === 1 ? "" : "s"} per ${period}`;
+}
+
+function membershipIsAvailableForDate(membership: CustomerMembershipRecord, date: string) {
+  const start = membership.currentPeriodStart?.slice(0, 10);
+  const end = membership.currentPeriodEnd?.slice(0, 10);
+  if (start && date < start) return false;
+  if (end && date >= end) return false;
+  return true;
+}
+
+function membershipCoversService(membership: CustomerMembershipRecord, service: PublicBookingService, date: string) {
+  if (membership.status !== "Active" || membership.creditsPerDay <= 0) return false;
+  if (!membershipIsAvailableForDate(membership, date)) return false;
+  if (membership.creditScope === "all_services") return true;
+  return membership.eligibleServiceIds.includes(service.id);
 }
 
 function serviceCardDescription(service: PublicBookingService, data: PublicBookingData) {
@@ -1872,6 +1896,10 @@ export default function CustomerBookingApp() {
     () => getAvailableSlots(data, selectedService, selectedDate, needsCoach ? selectedCoachId : undefined),
     [data, needsCoach, selectedCoachId, selectedDate, selectedService]
   );
+  const membershipCredit = useMemo(() => {
+    if (!selectedService || selectedService.category === "memberships") return null;
+    return customerDashboard.memberships.find((membership) => membershipCoversService(membership, selectedService, selectedDate)) ?? null;
+  }, [customerDashboard.memberships, selectedDate, selectedService]);
   const onlineTotals = selectedService ? calculatePublicTotals(selectedService, data.settings, "online") : null;
   const inPersonTotals = selectedService ? calculatePublicTotals(selectedService, data.settings, "in-person") : null;
   const familyMembers = useMemo(() => familyMembersForAccount(parentAccount), [parentAccount]);
@@ -2331,7 +2359,7 @@ export default function CustomerBookingApp() {
     }
   }
 
-  async function submitBooking(paymentMethod: "online" | "in-person") {
+  async function submitBooking(paymentMethod: "online" | "in-person" | "membership-credit") {
     if (!selectedService || !selectedTime) return;
     if (!waiverAcceptedForCheckout) {
       setSubmitError("Please agree to the liability waiver before completing this booking.");
@@ -2683,6 +2711,16 @@ export default function CustomerBookingApp() {
                 </button>
               ) : (
                 <div className="grid gap-3">
+                  {membershipCredit ? (
+                    <button
+                      type="button"
+                      disabled={submitting || !waiverAcceptedForCheckout}
+                      onClick={() => submitBooking("membership-credit")}
+                      className="w-full rounded-[10px] bg-[#1889c4] py-4 text-[18px] font-semibold text-white disabled:opacity-60"
+                    >
+                      {submitting ? "Saving..." : "Use Membership Credit"}
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     disabled={submitting || !waiverAcceptedForCheckout}
@@ -3041,6 +3079,16 @@ export default function CustomerBookingApp() {
                       </button>
                     </div>
                     <div className="mt-4 text-[13px] text-black/45">Pay in-person total: {money(inPersonTotals.total)}</div>
+                    {membershipCredit ? (
+                      <div className="mt-5 rounded-[8px] border border-[#b9dff2] bg-[#eef8fc] px-4 py-4 text-[14px] leading-6 text-[#245f78]">
+                        <span className="font-semibold text-black">Membership credit available:</span>{" "}
+                        {membershipCredit.serviceName} includes {membershipRecordCreditLabel(membershipCredit)} for this service. Use a credit to complete this booking without payment.
+                      </div>
+                    ) : parentAccount ? (
+                      <div className="mt-5 rounded-[8px] bg-black/[0.04] px-4 py-4 text-[14px] leading-6 text-black/55">
+                        No membership credits are available for this service or date. Choose a payment option below.
+                      </div>
+                    ) : null}
                   </>
                 )}
                 {data.settings.waiverEnabled ? (
