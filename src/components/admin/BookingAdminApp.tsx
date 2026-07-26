@@ -9418,13 +9418,21 @@ function CalendarView({
       ) : null}
 
       <div className="mb-1 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="flex shrink-0 flex-nowrap items-center gap-2">
-          <CalendarToolbarButton label="Today" onClick={() => onDateChange(isoDate(new Date()))} />
-          <CalendarToolbarButton label="Back" onClick={() => onDateChange(shiftDate(activeDate, calendarMode === "week" ? -7 : -1))} />
-          <CalendarToolbarButton label="Next" onClick={() => onDateChange(shiftDate(activeDate, calendarMode === "week" ? 7 : 1))} />
+        <div className="flex max-w-full shrink-0 flex-nowrap items-center gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <CalendarToolbarButton label="Today" onClick={() => onDateChange(isoDate(new Date()))} className="min-h-11 px-3 lg:min-h-8 lg:px-4" />
+          <CalendarToolbarButton label="Back" onClick={() => onDateChange(shiftDate(activeDate, calendarMode === "week" ? -7 : -1))} className="min-h-11 px-3 lg:min-h-8 lg:px-4" />
+          <CalendarToolbarButton label="Next" onClick={() => onDateChange(shiftDate(activeDate, calendarMode === "week" ? 7 : 1))} className="min-h-11 px-3 lg:min-h-8 lg:px-4" />
+          <button
+            type="button"
+            onClick={openDatePicker}
+            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[4px] border border-black/15 bg-[#f3f3f3] px-2.5 text-[13px] font-semibold text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] lg:hidden"
+          >
+            <span>{formatCalendarHeading(activeDate)}</span>
+            <Icon name="chevron" className="h-4 w-4 rotate-90 text-black/60" />
+          </button>
         </div>
 
-        <div className="flex min-w-0 items-center gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="hidden min-w-0 items-center gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex">
           <input
             ref={dateInputRef}
             type="date"
@@ -9476,9 +9484,6 @@ function CalendarView({
         <CalendarSegmentButton active={resourceMode === "rooms"} onClick={() => changeMode("rooms")}>
           Rooms
         </CalendarSegmentButton>
-        <CalendarSegmentButton active={resourceMode === "staff"} onClick={() => changeMode("staff")}>
-          Staff
-        </CalendarSegmentButton>
         <CalendarSegmentButton active={resourceMode === "equipment"} onClick={() => changeMode("equipment")}>
           Equipment
         </CalendarSegmentButton>
@@ -9488,7 +9493,6 @@ function CalendarView({
         <CalendarSegmentButton active={calendarMode === "week"} onClick={() => setCalendarMode("week")}>
           Week
         </CalendarSegmentButton>
-        <CalendarToolbarButton label="Filter" icon="table" onClick={() => showToast("Filter View is next.")} />
       </div>
 
       {resourceMode === "rooms" ? (
