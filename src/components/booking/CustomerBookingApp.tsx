@@ -478,7 +478,7 @@ function BookingHero({
       <div className="mx-auto max-w-[1240px] overflow-hidden rounded-[10px] border border-black/10 bg-white shadow-[0_18px_45px_rgba(0,0,0,0.12)]">
         <div className="overflow-hidden bg-black">
           <Image
-            src="/membership-marketing-banner.png"
+            src="/membership-marketing-banner-layout.png"
             alt="Memberships: More reps. More swings. Monthly credits for cages, lessons, and consistent player development."
             width={1240}
             height={310}
