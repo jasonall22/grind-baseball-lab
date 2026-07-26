@@ -5111,6 +5111,38 @@ export default function BookingAdminApp({
     }
   }
 
+  async function deleteStaffMember(staffId: string) {
+    const member = state.staff.find((item) => item.id === staffId);
+    if (!member) return false;
+
+    const nextState = {
+      ...state,
+      staff: state.staff.filter((item) => item.id !== staffId),
+      staffAvailability: state.staffAvailability.filter((item) => item.staffId !== staffId),
+      bookings: state.bookings.map((booking) => (booking.staffId === staffId ? { ...booking, staffId: null } : booking)),
+    };
+
+    if (dataSource === "local") {
+      saveLocal(nextState, "Staff member deleted.");
+      return true;
+    }
+
+    setState(nextState);
+    stateToStorage(nextState);
+
+    try {
+      const { error } = await supabase.from("booking_staff_members").delete().eq("id", staffId);
+      if (error) throw error;
+      showToast("Staff member deleted.");
+      return true;
+    } catch (error) {
+      console.error(error);
+      showToast("Staff member could not be deleted.");
+      void loadFromSupabase();
+      return false;
+    }
+  }
+
   async function saveRolePermissions(nextRolePermissions: RolePermissionRecord[]) {
     const normalizedRolePermissions = normalizeRolePermissions(nextRolePermissions);
     const nextState = {
@@ -6618,6 +6650,7 @@ export default function BookingAdminApp({
               staff={state.staff}
               showToast={showToast}
               onSave={saveStaffMembers}
+              onDelete={deleteStaffMember}
             />
           ) : null}
           {view === "settings-roles" ? (
@@ -16658,11 +16691,13 @@ function StaffSettingsView({
   staff,
   showToast,
   onSave,
+  onDelete,
 }: {
   backHref: string;
   staff: StaffMember[];
   showToast: (message: string) => void;
   onSave: (nextStaff: StaffMember[], successMessage?: string) => Promise<boolean | void>;
+  onDelete: (staffId: string) => Promise<boolean | void>;
 }) {
   const [draft, setDraft] = useState(staff);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
@@ -16757,6 +16792,25 @@ function StaffSettingsView({
       setDraft(nextStaff);
       const result = await onSave(nextStaff, "Staff member updated.");
       if (result !== false) {
+        setSelectedStaffId(null);
+        setActiveDetailTab("profile");
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteSelectedMember() {
+    if (!selectedMember || saving) return;
+    const name = selectedMember.name.trim() || "this staff member";
+    const confirmed = window.confirm(`Delete ${name}? This will also remove their availability blocks.`);
+    if (!confirmed) return;
+
+    setSaving(true);
+    try {
+      const result = await onDelete(selectedMember.id);
+      if (result !== false) {
+        setDraft((current) => current.filter((member) => member.id !== selectedMember.id));
         setSelectedStaffId(null);
         setActiveDetailTab("profile");
       }
@@ -17145,8 +17199,9 @@ function StaffSettingsView({
               <div className="sticky bottom-0 flex items-center justify-between border-t border-black/10 bg-[#f4f4f4] px-5 py-5">
                 <button
                   type="button"
-                  disabled
-                  className="rounded-[4px] border border-black/10 px-5 py-3 text-[15px] font-medium text-black/25"
+                  onClick={() => void deleteSelectedMember()}
+                  disabled={saving}
+                  className="rounded-[4px] border border-red-300 px-5 py-3 text-[15px] font-medium text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Delete
                 </button>
