@@ -2094,6 +2094,18 @@ export default function CustomerBookingApp() {
     if (!selectedService || selectedService.category === "memberships") return null;
     return customerDashboard.memberships.find((membership) => membershipCoversService(membership, selectedService, selectedDate)) ?? null;
   }, [customerDashboard.memberships, selectedDate, selectedService]);
+  const memberCreditServiceIds = useMemo(() => {
+    const covered = new Set<string>();
+    customerDashboard.memberships.forEach((membership) => {
+      if (membership.status !== "Active" || membership.creditsPerDay <= 0 || !membershipIsAvailableForDate(membership, selectedDate)) return;
+      data.services.forEach((service) => {
+        if (service.category !== "memberships" && membershipCoversService(membership, service, selectedDate)) {
+          covered.add(service.id);
+        }
+      });
+    });
+    return covered;
+  }, [customerDashboard.memberships, data.services, selectedDate]);
   const onlineTotals = selectedService ? calculatePublicTotals(selectedService, data.settings, "online") : null;
   const inPersonTotals = selectedService ? calculatePublicTotals(selectedService, data.settings, "in-person") : null;
   const familyMembers = useMemo(() => familyMembersForAccount(parentAccount), [parentAccount]);
@@ -2851,32 +2863,46 @@ export default function CustomerBookingApp() {
                       <div className="mt-5 h-5 w-2/3 rounded bg-black/5" />
                     </div>
                   ))
-                : servicesForCategory.map((service) => (
-                    <button
-                      key={service.id}
-                      type="button"
-                      onClick={() => openService(service)}
-                      className="grid min-h-[150px] overflow-hidden rounded-[10px] border border-black/10 bg-white text-left shadow-[0_8px_24px_rgba(15,23,42,0.05)] transition hover:-translate-y-0.5 hover:border-black/20 hover:shadow-[0_16px_34px_rgba(15,23,42,0.11)] sm:grid-cols-[150px_1fr_auto]"
-                    >
-                      <LogoPanel compact />
-                      <div className="px-5 py-6 sm:px-6">
-                        <div className="text-[20px] font-semibold leading-tight">{service.name}</div>
-                        <div className="mt-3 text-[15px] leading-6 text-black/60">
-                          {serviceCardDescription(service, data)}
+                : servicesForCategory.map((service) => {
+                    const isCoveredByMembership = memberCreditServiceIds.has(service.id);
+                    return (
+                      <button
+                        key={service.id}
+                        type="button"
+                        onClick={() => openService(service)}
+                        className="grid min-h-[150px] overflow-hidden rounded-[10px] border border-black/10 bg-white text-left shadow-[0_8px_24px_rgba(15,23,42,0.05)] transition hover:-translate-y-0.5 hover:border-black/20 hover:shadow-[0_16px_34px_rgba(15,23,42,0.11)] sm:grid-cols-[150px_1fr_auto]"
+                      >
+                        <LogoPanel compact />
+                        <div className="px-5 py-6 sm:px-6">
+                          <div className="text-[20px] font-semibold leading-tight">{service.name}</div>
+                          <div className="mt-3 text-[15px] leading-6 text-black/60">
+                            {serviceCardDescription(service, data)}
+                          </div>
+                          <span className="mt-5 inline-flex rounded-full bg-[#eef4fb] px-4 py-1.5 text-[13px] font-semibold text-[#315f90]">
+                            {serviceCardBadge(service)}
+                          </span>
                         </div>
-                        <span className="mt-5 inline-flex rounded-full bg-[#eef4fb] px-4 py-1.5 text-[13px] font-semibold text-[#315f90]">
-                          {serviceCardBadge(service)}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between border-t border-black/10 px-5 py-4 sm:block sm:border-l sm:border-t-0 sm:px-7 sm:py-6">
-                        <div className="text-[24px] font-semibold">
-                          {money(service.price)}
-                          {service.category === "memberships" ? <span className="text-[14px] font-medium text-black/45">/{membershipPeriodLabel(service.membershipBillingPeriod)}</span> : null}
+                        <div className="flex items-center justify-between border-t border-black/10 px-5 py-4 sm:block sm:border-l sm:border-t-0 sm:px-7 sm:py-6">
+                          <div className={isCoveredByMembership ? "text-[24px] font-semibold text-[#087238]" : "text-[24px] font-semibold"}>
+                            {isCoveredByMembership ? (
+                              <>
+                                Credit
+                                <div className="mt-1 text-[12px] font-semibold uppercase tracking-[0.08em] text-[#087238]/70">Member</div>
+                              </>
+                            ) : (
+                              <>
+                                {money(service.price)}
+                                {service.category === "memberships" ? (
+                                  <span className="text-[14px] font-medium text-black/45">/{membershipPeriodLabel(service.membershipBillingPeriod)}</span>
+                                ) : null}
+                              </>
+                            )}
+                          </div>
+                          <div className="mt-0 text-[13px] font-semibold text-[#1784bd] sm:mt-8">{service.category === "memberships" ? "Join now" : "Book now"}</div>
                         </div>
-                        <div className="mt-0 text-[13px] font-semibold text-[#1784bd] sm:mt-8">{service.category === "memberships" ? "Join now" : "Book now"}</div>
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    );
+                  })}
             </div>
           ) : (
             <div className="mt-6 grid gap-4 sm:grid-cols-2">
