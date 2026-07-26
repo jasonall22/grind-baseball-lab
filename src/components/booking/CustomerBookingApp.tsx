@@ -105,6 +105,10 @@ type SignInForm = {
   email: string;
   password: string;
 };
+type ResetPasswordForm = {
+  password: string;
+  confirmPassword: string;
+};
 
 const categoryOrder: PublicBookingCategory[] = ["rentals", "lessons", "camps", "classes", "memberships", "packages"];
 const emptyAccountForm: AccountForm = {
@@ -1197,17 +1201,23 @@ function SignInModal({
   form,
   setForm,
   busy,
+  resetBusy,
   status,
   onClose,
   onSubmit,
+  onResetPassword,
 }: {
   form: SignInForm;
   setForm: Dispatch<SetStateAction<SignInForm>>;
   busy: boolean;
+  resetBusy: boolean;
   status: string;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onResetPassword: () => void;
 }) {
+  const isSuccess = status.toLowerCase().includes("sent") || status.toLowerCase().includes("updated");
+
   return (
     <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/55 px-4 py-10">
       <form
@@ -1241,6 +1251,82 @@ function SignInModal({
                 className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
               />
             </label>
+            <button
+              type="button"
+              onClick={onResetPassword}
+              disabled={busy || resetBusy}
+              className="justify-self-start text-[14px] font-semibold text-[#0b6f9f] underline underline-offset-4 disabled:opacity-50"
+            >
+              {resetBusy ? "Sending reset email..." : "Forgot password?"}
+            </button>
+          </div>
+          {status ? (
+            <div className={`mt-5 rounded-[6px] px-4 py-3 text-sm ${isSuccess ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-700"}`}>
+              {status}
+            </div>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 justify-end gap-3 border-t border-black/10 px-7 py-5">
+          <button type="button" onClick={onClose} className="h-12 rounded-[6px] border border-black/15 px-7 text-[16px] font-semibold">
+            Cancel
+          </button>
+          <button type="submit" disabled={busy} className="h-12 rounded-[6px] bg-black px-8 text-[16px] font-semibold text-white disabled:opacity-55">
+            {busy ? "Signing in..." : "Sign in"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function ResetPasswordModal({
+  form,
+  setForm,
+  busy,
+  status,
+  onClose,
+  onSubmit,
+}: {
+  form: ResetPasswordForm;
+  setForm: Dispatch<SetStateAction<ResetPasswordForm>>;
+  busy: boolean;
+  status: string;
+  onClose: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/55 px-4 py-10">
+      <form
+        onSubmit={onSubmit}
+        className="flex w-full max-w-[500px] flex-col overflow-hidden rounded-[5px] bg-white shadow-[0_20px_48px_rgba(0,0,0,0.36)]"
+      >
+        <div className="flex h-[76px] shrink-0 items-center border-b border-black/10 px-7">
+          <div className="text-[22px] font-semibold">Reset Password</div>
+          <button type="button" onClick={onClose} className="ml-auto text-[32px] leading-none text-black/45">
+            x
+          </button>
+        </div>
+        <div className="px-7 py-6">
+          <p className="text-[15px] leading-6 text-black/60">Enter a new password for your family account.</p>
+          <div className="mt-6 grid gap-4">
+            <label className="grid gap-2 text-[14px] font-medium">
+              New password
+              <input
+                type="password"
+                value={form.password}
+                onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+                className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
+              />
+            </label>
+            <label className="grid gap-2 text-[14px] font-medium">
+              Confirm password
+              <input
+                type="password"
+                value={form.confirmPassword}
+                onChange={(event) => setForm((current) => ({ ...current, confirmPassword: event.target.value }))}
+                className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
+              />
+            </label>
           </div>
           {status ? <div className="mt-5 rounded-[6px] bg-red-50 px-4 py-3 text-sm text-red-700">{status}</div> : null}
         </div>
@@ -1249,7 +1335,7 @@ function SignInModal({
             Cancel
           </button>
           <button type="submit" disabled={busy} className="h-12 rounded-[6px] bg-black px-8 text-[16px] font-semibold text-white disabled:opacity-55">
-            {busy ? "Signing in..." : "Sign in"}
+            {busy ? "Saving..." : "Save password"}
           </button>
         </div>
       </form>
@@ -1452,7 +1538,12 @@ export default function CustomerBookingApp() {
   const [showSignInModal, setShowSignInModal] = useState(false);
   const [signInForm, setSignInForm] = useState<SignInForm>({ email: "", password: "" });
   const [signInBusy, setSignInBusy] = useState(false);
+  const [passwordResetEmailBusy, setPasswordResetEmailBusy] = useState(false);
   const [signInStatus, setSignInStatus] = useState("");
+  const [showPasswordResetModal, setShowPasswordResetModal] = useState(false);
+  const [passwordResetForm, setPasswordResetForm] = useState<ResetPasswordForm>({ password: "", confirmPassword: "" });
+  const [passwordResetBusy, setPasswordResetBusy] = useState(false);
+  const [passwordResetStatus, setPasswordResetStatus] = useState("");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [showCustomerPortal, setShowCustomerPortal] = useState(false);
   const [customerDashboard, setCustomerDashboard] = useState<CustomerDashboard>(emptyCustomerDashboard);
@@ -1507,6 +1598,21 @@ export default function CustomerBookingApp() {
     return () => {
       mounted = false;
     };
+  }, []);
+
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event !== "PASSWORD_RECOVERY") return;
+
+      setShowSignInModal(false);
+      setPasswordResetForm({ password: "", confirmPassword: "" });
+      setPasswordResetStatus("");
+      setShowPasswordResetModal(true);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const selectedService = useMemo(
@@ -1794,6 +1900,66 @@ export default function CustomerBookingApp() {
       setSignInStatus(error instanceof Error ? error.message : "Could not sign in.");
     } finally {
       setSignInBusy(false);
+    }
+  }
+
+  async function sendPasswordResetEmail() {
+    if (passwordResetEmailBusy || signInBusy) return;
+
+    const email = signInForm.email.trim().toLowerCase();
+    if (!email) {
+      setSignInStatus("Enter your email first, then tap Forgot password.");
+      return;
+    }
+
+    setPasswordResetEmailBusy(true);
+    setSignInStatus("");
+    try {
+      const redirectTo = `${window.location.origin}/book`;
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+      if (error) throw error;
+
+      setSignInStatus(`Password reset email sent to ${email}.`);
+    } catch (error) {
+      setSignInStatus(error instanceof Error ? error.message : "Could not send password reset email.");
+    } finally {
+      setPasswordResetEmailBusy(false);
+    }
+  }
+
+  async function updateCustomerPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (passwordResetBusy) return;
+
+    const password = passwordResetForm.password;
+    if (password.length < 6) {
+      setPasswordResetStatus("Password must be at least 6 characters.");
+      return;
+    }
+    if (password !== passwordResetForm.confirmPassword) {
+      setPasswordResetStatus("Passwords do not match.");
+      return;
+    }
+
+    setPasswordResetBusy(true);
+    setPasswordResetStatus("");
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw error;
+
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (token) {
+        const payload = await loadParentAccount(token);
+        if (payload?.customer) applyParentAccount(payload.customer, payload.dashboard);
+      }
+
+      setPasswordResetForm({ password: "", confirmPassword: "" });
+      setShowPasswordResetModal(false);
+      setSignInStatus("Password updated. You are signed in.");
+    } catch (error) {
+      setPasswordResetStatus(error instanceof Error ? error.message : "Could not update password.");
+    } finally {
+      setPasswordResetBusy(false);
     }
   }
 
@@ -2567,9 +2733,22 @@ export default function CustomerBookingApp() {
           form={signInForm}
           setForm={setSignInForm}
           busy={signInBusy}
+          resetBusy={passwordResetEmailBusy}
           status={signInStatus}
           onClose={() => setShowSignInModal(false)}
           onSubmit={signInParentAccount}
+          onResetPassword={sendPasswordResetEmail}
+        />
+      ) : null}
+
+      {showPasswordResetModal ? (
+        <ResetPasswordModal
+          form={passwordResetForm}
+          setForm={setPasswordResetForm}
+          busy={passwordResetBusy}
+          status={passwordResetStatus}
+          onClose={() => setShowPasswordResetModal(false)}
+          onSubmit={updateCustomerPassword}
         />
       ) : null}
 
