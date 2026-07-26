@@ -4349,6 +4349,7 @@ export default function BookingAdminApp({
   const [backToAppHref, setBackToAppHref] = useState(bookingAdminRouteByView.home);
   const [showCustomerImport, setShowCustomerImport] = useState(false);
   const [bookingConflictDialog, setBookingConflictDialog] = useState<string | null>(null);
+  const [pendingDeleteService, setPendingDeleteService] = useState<Service | null>(null);
   const [calendarChargeBookingId, setCalendarChargeBookingId] = useState<string | null>(null);
   const routeServiceSection = useMemo(() => {
     const match = pathname.match(/^\/admin\/services\/([^/]+)/);
@@ -6035,11 +6036,17 @@ export default function BookingAdminApp({
       return;
     }
 
+    setPendingDeleteService(service);
+  }
+
+  async function confirmDeleteService() {
+    if (!pendingDeleteService) return;
+
+    const service = pendingDeleteService;
     const serviceCategory = service.category ?? inferServiceCategory(service.name);
     const serviceLabel = getServiceSectionSingular(serviceCategory);
     const serviceBasePath = getServiceSectionBasePath(serviceCategory);
-    const confirmed = window.confirm(`Delete this ${serviceLabel.toLowerCase()}? This cannot be undone.`);
-    if (!confirmed) return;
+    setPendingDeleteService(null);
 
     const previousState = state;
     const next = {
@@ -6870,6 +6877,35 @@ export default function BookingAdminApp({
                 className="rounded-xl bg-black px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(0,0,0,0.18)]"
               >
                 OK
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {pendingDeleteService ? (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/45 p-4">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="border-b border-black/10 px-6 py-5">
+              <h2 className="text-xl font-semibold text-black">Delete service?</h2>
+            </div>
+            <div className="px-6 py-5 text-[15px] leading-7 text-black/75">
+              Delete {pendingDeleteService.name || "this service"}? This cannot be undone.
+            </div>
+            <div className="grid grid-cols-2 gap-3 border-t border-black/10 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setPendingDeleteService(null)}
+                className="min-h-11 rounded-xl border border-black/10 bg-white px-4 text-[15px] font-semibold text-black"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmDeleteService()}
+                className="min-h-11 rounded-xl bg-red-600 px-4 text-[15px] font-semibold text-white shadow-[0_8px_24px_rgba(185,28,28,0.2)]"
+              >
+                Delete
               </button>
             </div>
           </div>
@@ -8831,6 +8867,13 @@ function CalendarView({
   const [mobileResource, setMobileResource] = useState<string>(allMobileResourcesValue);
   const [dragBookingId, setDragBookingId] = useState<string | null>(null);
   const [dragOverSlotKey, setDragOverSlotKey] = useState<string | null>(null);
+  const [pendingBookingMove, setPendingBookingMove] = useState<{
+    bookingId: string;
+    bookingName: string;
+    resource: string;
+    start: string;
+    end: string;
+  } | null>(null);
   const [slotSelection, setSlotSelection] = useState<{
     resource: string;
     anchorStart: number;
@@ -9444,25 +9487,27 @@ function CalendarView({
       return;
     }
 
-    const confirmed = window.confirm(
-      `Move ${booking.playerName || booking.serviceName || "this booking"} to ${resource} from ${timeLabel(
-        minutesToTime(startMinutes)
-      )} to ${timeLabel(minutesToTime(endMinutes))}?`
-    );
-
-    if (!confirmed) {
-      endBookingDrag();
-      return;
-    }
-
-    await onMoveBooking(booking.id, {
-      date: activeDate,
+    setPendingBookingMove({
+      bookingId: booking.id,
+      bookingName: booking.playerName || booking.serviceName || "this booking",
       resource,
       start: minutesToTime(startMinutes),
       end: minutesToTime(endMinutes),
     });
-
     endBookingDrag();
+  }
+
+  async function confirmBookingMove() {
+    if (!pendingBookingMove) return;
+
+    const move = pendingBookingMove;
+    setPendingBookingMove(null);
+    await onMoveBooking(move.bookingId, {
+      date: activeDate,
+      resource: move.resource,
+      start: move.start,
+      end: move.end,
+    });
   }
 
   async function handleOpenSlotClick(
@@ -9551,6 +9596,36 @@ function CalendarView({
             >
               Cancel
             </button>
+          </div>
+        </div>
+      ) : null}
+
+      {pendingBookingMove ? (
+        <div className="fixed inset-0 z-[96] flex items-center justify-center bg-black/45 p-4">
+          <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="border-b border-black/10 px-6 py-5">
+              <h2 className="text-xl font-semibold leading-snug text-black">Move booking?</h2>
+            </div>
+            <div className="px-6 py-5 text-[16px] font-semibold leading-7 text-black">
+              Move {pendingBookingMove.bookingName} to {pendingBookingMove.resource} from{" "}
+              {timeLabel(pendingBookingMove.start)} to {timeLabel(pendingBookingMove.end)}?
+            </div>
+            <div className="grid grid-cols-2 gap-3 border-t border-black/10 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setPendingBookingMove(null)}
+                className="min-h-11 rounded-xl border border-black/10 bg-white px-4 text-[15px] font-semibold text-black"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmBookingMove()}
+                className="min-h-11 rounded-xl bg-black px-4 text-[15px] font-semibold text-white shadow-[0_8px_24px_rgba(0,0,0,0.18)]"
+              >
+                Move
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
@@ -12245,6 +12320,7 @@ function CustomerDetailView({
   const [billingError, setBillingError] = useState("");
   const [startingCardSetup, setStartingCardSetup] = useState(false);
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
+  const [pendingRemoveCardId, setPendingRemoveCardId] = useState<string | null>(null);
   const [showAddCardModal, setShowAddCardModal] = useState(false);
   const [addCardClientSecret, setAddCardClientSecret] = useState("");
   const [showPaymentMethodModal, setShowPaymentMethodModal] = useState(false);
@@ -12289,6 +12365,7 @@ function CustomerDetailView({
     setBillingLoaded(false);
     setBillingLoading(false);
     setBillingError("");
+    setPendingRemoveCardId(null);
     setShowAddCardModal(false);
     setAddCardClientSecret("");
     setShowPaymentMethodModal(false);
@@ -12958,9 +13035,6 @@ function CustomerDetailView({
   }
 
   async function removeSavedCard(paymentMethodId: string) {
-    const confirmed = window.confirm("Remove this saved card?");
-    if (!confirmed) return;
-
     setDeletingCardId(paymentMethodId);
     try {
       const response = await fetch("/api/stripe/cards", {
@@ -12987,6 +13061,14 @@ function CustomerDetailView({
     } finally {
       setDeletingCardId(null);
     }
+  }
+
+  async function confirmRemoveSavedCard() {
+    if (!pendingRemoveCardId) return;
+
+    const paymentMethodId = pendingRemoveCardId;
+    setPendingRemoveCardId(null);
+    await removeSavedCard(paymentMethodId);
   }
 
   function resetChargeState() {
@@ -13521,7 +13603,8 @@ function CustomerDetailView({
     const billingTabs: CustomerBillingSubtab[] = ["Payments", "Wallet", "Saved Cards"];
 
     return (
-      <div className="grid gap-4">
+      <>
+        <div className="grid gap-4">
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
           <div className="rounded-2xl border border-black/10 bg-white p-5">
             <div className="flex items-start justify-between gap-4">
@@ -13735,7 +13818,7 @@ function CustomerDetailView({
                     </div>
                     <button
                       type="button"
-                      onClick={() => void removeSavedCard(card.id)}
+                      onClick={() => setPendingRemoveCardId(card.id)}
                       disabled={deletingCardId === card.id}
                       className="rounded-lg border border-black/12 px-4 py-2 text-[13px] font-medium text-black/70 transition hover:bg-black/[0.03] disabled:opacity-50"
                     >
@@ -13754,7 +13837,37 @@ function CustomerDetailView({
             )}
           </DetailPanel>
         ) : null}
-      </div>
+        </div>
+
+        {pendingRemoveCardId ? (
+          <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/45 p-4">
+            <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl">
+              <div className="border-b border-black/10 px-6 py-5">
+                <h2 className="text-xl font-semibold text-black">Remove saved card?</h2>
+              </div>
+              <div className="px-6 py-5 text-[15px] leading-7 text-black/75">
+                Remove this saved card from the customer's billing profile?
+              </div>
+              <div className="grid grid-cols-2 gap-3 border-t border-black/10 px-6 py-4">
+                <button
+                  type="button"
+                  onClick={() => setPendingRemoveCardId(null)}
+                  className="min-h-11 rounded-xl border border-black/10 bg-white px-4 text-[15px] font-semibold text-black"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void confirmRemoveSavedCard()}
+                  className="min-h-11 rounded-xl bg-red-600 px-4 text-[15px] font-semibold text-white shadow-[0_8px_24px_rgba(185,28,28,0.2)]"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </>
     );
   }
 
