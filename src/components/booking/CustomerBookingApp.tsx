@@ -2775,14 +2775,14 @@ export default function CustomerBookingApp() {
 
           {step === "player" ? (
             <div>
-              <div className="flex flex-col gap-3 rounded-[4px] bg-[#dfe8fb] px-6 py-4 text-[16px] text-[#365b97] sm:flex-row sm:items-center sm:justify-between">
-                <span>Account: create a parent account or sign in to use saved family details.</span>
-                {!parentAccount ? (
+              {!parentAccount ? (
+                <div className="flex flex-col gap-3 rounded-[4px] bg-[#dfe8fb] px-6 py-4 text-[16px] text-[#365b97] sm:flex-row sm:items-center sm:justify-between">
+                  <span>Account: create a parent account or sign in to use saved family details.</span>
                   <button type="button" onClick={openSignInModal} className="shrink-0 font-semibold text-[#244b86] underline underline-offset-4">
                     Sign in
                   </button>
-                ) : null}
-              </div>
+                </div>
+              ) : null}
               {needsCoach ? (
                 <div className="mt-8">
                   <div className="text-[15px]">Hitting Coach</div>
