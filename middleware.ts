@@ -22,8 +22,9 @@ function isPublicPath(pathname: string) {
     pathname.startsWith("/sitemap") ||
     pathname.startsWith("/images") ||
     pathname.startsWith("/icons") ||
+    pathname.startsWith("/waivers") ||
     pathname.startsWith("/logo") ||
-    pathname.match(/\.(png|jpg|jpeg|svg|gif|webp|ico)$/)
+    pathname.match(/\.(png|jpg|jpeg|svg|gif|webp|ico|pdf)$/)
   ) {
     return true;
   }
