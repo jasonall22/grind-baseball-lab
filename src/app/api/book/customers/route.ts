@@ -445,16 +445,6 @@ export async function POST(req: Request) {
       }
     }
 
-    const existingCustomer = await supabase
-      .from("booking_customers")
-      .select("id")
-      .eq("email", email)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (existingCustomer.error) throw existingCustomer.error;
-
     const customerPatch = {
       parent_name: parentName,
       player_name: playerName,
@@ -469,17 +459,9 @@ export async function POST(req: Request) {
       notes: "Created from public parent account signup.",
     };
 
-    let customerId = (existingCustomer.data as { id?: string } | null)?.id ?? null;
-
-    if (customerId) {
-      const updateResult = await supabase.from("booking_customers").update(customerPatch).eq("id", customerId).select("id").single();
-      if (updateResult.error) throw updateResult.error;
-      customerId = (updateResult.data as { id: string }).id;
-    } else {
-      const insertResult = await supabase.from("booking_customers").insert(customerPatch).select("id").single();
-      if (insertResult.error) throw insertResult.error;
-      customerId = (insertResult.data as { id: string }).id;
-    }
+    const insertResult = await supabase.from("booking_customers").insert(customerPatch).select("id").single();
+    if (insertResult.error) throw insertResult.error;
+    const customerId = (insertResult.data as { id: string }).id;
 
     return NextResponse.json({
       ok: true,
