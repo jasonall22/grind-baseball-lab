@@ -2520,7 +2520,7 @@ export default function CustomerBookingApp() {
                         type="button"
                         onClick={() => {
                           setAccountMenuOpen(false);
-                          window.location.assign("/admin");
+                          window.location.assign("/admin/home");
                         }}
                         className="block w-full border-b border-black/10 px-4 py-3 text-left text-[15px] font-semibold hover:bg-black/[0.04]"
                       >
