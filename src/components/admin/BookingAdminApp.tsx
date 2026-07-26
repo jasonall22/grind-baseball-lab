@@ -10165,7 +10165,7 @@ function CalendarView({
                         const isDesktopPaid = !isUnavailableBlock && (booking.paid || booking.paidByMembershipCredit);
                         const isDesktopUnpaid = !isUnavailableBlock && !isDesktopPaid && booking.status !== "Cancelled";
                         const desktopInitials = initialsFromName(customer?.name || bookingTitle);
-                        const textPaddingClass = isDesktopPaid ? "pr-[58px]" : isDesktopUnpaid ? "pr-9" : "pr-2";
+                        const textPaddingClass = isDesktopPaid ? "pr-[70px]" : isDesktopUnpaid ? "pr-9" : "pr-2";
 
                         return (
                           <button
@@ -10188,7 +10188,7 @@ function CalendarView({
                               </div>
                             </div>
                             {isDesktopPaid || isDesktopUnpaid ? (
-                              <div className="absolute right-[5px] top-1/2 h-[32px] w-[48px] -translate-y-1/2">
+                              <div className="absolute right-[5px] top-1/2 h-[32px] w-[60px] -translate-y-1/2">
                               {isDesktopPaid ? (
                                 <>
                                   <span className="absolute left-[1px] top-[15px] text-[20px] font-semibold leading-none text-white">$</span>
