@@ -9236,6 +9236,32 @@ function CalendarView({
     setDragOverSlotKey((current) => (current === slotKey ? null : current));
   }
 
+  function dragTargetStartForResource(resource: string) {
+    const prefix = `${activeDate}-${resource}-`;
+    if (!dragOverSlotKey?.startsWith(prefix)) return null;
+
+    const start = Number(dragOverSlotKey.slice(prefix.length));
+    return Number.isFinite(start) ? start : null;
+  }
+
+  function handleColumnDragOver(event: React.DragEvent<HTMLElement>, resource: string) {
+    if (!dragBookingId) return;
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    const startMinutes = slotStartFromClientY(
+      event.currentTarget,
+      event.clientY,
+      visibleCalendarRange.start,
+      visibleCalendarRange.end
+    );
+    setDragOverSlotKey(calendarDropSlotKey(resource, startMinutes));
+  }
+
+  function handleColumnDragLeave(resource: string) {
+    setDragOverSlotKey((current) => (current?.startsWith(`${activeDate}-${resource}-`) ? null : current));
+  }
+
   async function handleSlotDrop(
     event: React.DragEvent<HTMLElement>,
     resource: string,
@@ -9629,6 +9655,31 @@ function CalendarView({
                             </button>
                           );
                         })}
+                        {dragBookingId ? (() => {
+                          const dropStart = dragTargetStartForResource(resource);
+                          const dropTop =
+                            dropStart === null
+                              ? null
+                              : ((dropStart - visibleCalendarRange.start) / 30) * mobileSlotHeight + 1;
+
+                          return (
+                            <div
+                              className="absolute inset-0 z-20"
+                              onDragOver={(event) => handleColumnDragOver(event, resource)}
+                              onDragLeave={() => handleColumnDragLeave(resource)}
+                              onDrop={(event) =>
+                                void handleSlotDrop(event, resource, visibleCalendarRange.start, visibleCalendarRange.end)
+                              }
+                            >
+                              {dropTop !== null ? (
+                                <div
+                                  className="pointer-events-none absolute left-[2px] right-[2px] rounded-md border border-black/40 bg-[#d7f4e5]/70 ring-2 ring-black/25"
+                                  style={{ top: dropTop, height: mobileSlotHeight - 2 }}
+                                />
+                              ) : null}
+                            </div>
+                          );
+                        })() : null}
                       </div>
                     ))}
                   </div>
@@ -9828,8 +9879,33 @@ function CalendarView({
                               </div>
                             ) : null}
                           </button>
+                          );
+                        })}
+                      {dragBookingId ? (() => {
+                        const dropStart = dragTargetStartForResource(resource);
+                        const dropTop =
+                          dropStart === null
+                            ? null
+                            : ((dropStart - visibleCalendarRange.start) / 30) * slotHeight + 1;
+
+                        return (
+                          <div
+                            className="absolute inset-0 z-20"
+                            onDragOver={(event) => handleColumnDragOver(event, resource)}
+                            onDragLeave={() => handleColumnDragLeave(resource)}
+                            onDrop={(event) =>
+                              void handleSlotDrop(event, resource, visibleCalendarRange.start, visibleCalendarRange.end)
+                            }
+                          >
+                            {dropTop !== null ? (
+                              <div
+                                className="pointer-events-none absolute left-[1px] right-[1px] rounded-[4px] border border-black/35 bg-[#c8e9ff]/70 ring-2 ring-black/25"
+                                style={{ top: dropTop, height: slotHeight - 2 }}
+                              />
+                            ) : null}
+                          </div>
                         );
-                      })}
+                      })() : null}
                     </div>
                   );
                 })}
