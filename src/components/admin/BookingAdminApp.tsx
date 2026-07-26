@@ -10168,7 +10168,7 @@ function CalendarView({
                         const isDesktopPaid = !isUnavailableBlock && (booking.paid || booking.paidByMembershipCredit);
                         const isDesktopUnpaid = !isUnavailableBlock && !isDesktopPaid && booking.status !== "Cancelled";
                         const desktopInitials = initialsFromName(customer?.name || bookingTitle);
-                        const textPaddingClass = isDesktopPaid ? "pr-14" : isCompactBooking ? "pr-7" : "pr-16";
+                        const textPaddingClass = isDesktopPaid ? "pr-12" : isCompactBooking ? "pr-8" : "pr-16";
 
                         return (
                           <button
@@ -10191,9 +10191,7 @@ function CalendarView({
                               </div>
                             </div>
                             {desktopStatusBadge || isDesktopPaid || isDesktopUnpaid ? (
-                              <div
-                                className={`absolute right-[5px] flex items-center ${isCompactBooking ? "top-1/2 -translate-y-1/2 gap-[3px]" : "top-2 gap-1"}`}
-                              >
+                              <div className={`absolute ${isCompactBooking ? "right-[4px] top-[5px] h-[28px] w-[38px]" : "right-[5px] top-2 flex items-center gap-1"}`}>
                               {desktopStatusBadge ? (
                                 <span
                                   className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.04em] ${desktopStatusBadge.className}`}
@@ -10203,26 +10201,26 @@ function CalendarView({
                               ) : null}
                               {isDesktopPaid ? (
                                 <>
-                                  <span className="shrink-0 text-[20px] font-semibold leading-none text-white">$</span>
+                                  <span className="absolute left-0 top-[12px] text-[20px] font-semibold leading-none text-white">$</span>
                                   <span
                                     title="Paid"
-                                    className="absolute right-[25px] top-[-7px] grid h-4 w-4 shrink-0 place-items-center rounded-full bg-[#23994a] text-white ring-1 ring-white/55"
+                                    className="absolute left-[12px] top-[-1px] grid h-4 w-4 place-items-center rounded-full bg-[#23994a] text-white ring-1 ring-white/55"
                                   >
                                     <Icon name="check" className="h-2.5 w-2.5" />
                                   </span>
-                                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-black/55 bg-[#e5e7eb] text-[11px] font-semibold text-black">
+                                  <span className="absolute right-0 top-[8px] grid h-7 w-7 place-items-center rounded-full border border-black/55 bg-[#e5e7eb] text-[11px] font-semibold text-black">
                                     {desktopInitials}
                                   </span>
                                 </>
                               ) : null}
                               {isDesktopUnpaid ? (
-                                <Icon name="dollar-off" className="h-6 w-6 shrink-0 text-white" />
+                                <Icon name="dollar-off" className={isCompactBooking ? "absolute right-0 top-[6px] h-6 w-6 text-white" : "h-6 w-6 shrink-0 text-white"} />
                               ) : null}
                               </div>
                             ) : null}
                             <div
                               className={`truncate font-semibold ${textPaddingClass} ${
-                                isCompactBooking ? "-mt-[1px] text-[13px] leading-[1.05]" : "mt-1 text-[15px] leading-none"
+                                isCompactBooking ? "-mt-[1px] text-[12px] leading-[1.05]" : "mt-1 text-[15px] leading-none"
                               }`}
                             >
                               {bookingTitle}
@@ -10230,7 +10228,7 @@ function CalendarView({
                             {isCompactBooking && isUnavailableBlock ? null : (
                               <div
                                 className={`truncate font-medium ${tone.subClass} ${textPaddingClass} ${
-                                  isCompactBooking ? "-mt-[1px] text-[10px] leading-[1.05]" : "mt-0.5 text-[11px] leading-none"
+                                  isCompactBooking ? "-mt-[1px] text-[9px] leading-[1.05]" : "mt-0.5 text-[11px] leading-none"
                                 }`}
                               >
                                 {bookingDetail}
