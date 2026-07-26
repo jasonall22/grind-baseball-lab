@@ -9,6 +9,11 @@ export type PublicBookingSettings = {
   phone: string;
   taxRates: Array<{ id: string; name: string; percentage: string | number }>;
   customFees: Array<{ id: string; name: string; amount: string | number }>;
+  waiverEnabled: boolean;
+  waiverDocumentUrl: string;
+  waiverDocumentName: string;
+  waiverIntro: string;
+  waiverAllowInPerson: boolean;
 };
 
 export type PublicBookingResource = {
@@ -124,6 +129,12 @@ export const fallbackPublicBookingData: PublicBookingData = {
     phone: "+19415250880",
     taxRates: [{ id: "tax-state", name: "State Tax", percentage: "7" }],
     customFees: [{ id: "fee-service", name: "Service Fee", amount: "3.5" }],
+    waiverEnabled: true,
+    waiverDocumentUrl: "/waivers/the-grind-baseball-lab-waiver-2026.pdf",
+    waiverDocumentName: "The Grind Baseball Lab Waiver 2026.pdf",
+    waiverIntro:
+      "Please review and agree to The Grind Baseball Lab liability waiver before completing a booking or membership purchase.",
+    waiverAllowInPerson: true,
   },
   resources: [
     { id: "cage-1", name: "Cage 1", sortOrder: 1, scheduleId: "working-hours" },

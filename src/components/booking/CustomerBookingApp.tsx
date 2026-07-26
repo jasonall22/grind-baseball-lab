@@ -32,6 +32,13 @@ const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : 
 type BookingStep = "overview" | "player" | "time" | "summary" | "done";
 type TimeChoice = { start: string; end: string; resourceId: string; resourceName: string };
 type MembershipCardSetup = { clientSecret: string; setupIntentId: string; customerId: string };
+type FamilyMember = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  name: string;
+  age: string;
+};
 type ParentAccount = {
   id?: string;
   parentName: string;
@@ -39,6 +46,8 @@ type ParentAccount = {
   playerAge?: string;
   email: string;
   phone: string;
+  familyMembers?: FamilyMember[];
+  waiverAgreed?: boolean;
 };
 type CustomerBookingRecord = {
   id: string;
@@ -100,6 +109,7 @@ type AccountForm = {
   playerFirstName: string;
   playerLastName: string;
   playerAge: string;
+  waiverAgreed: boolean;
 };
 type SignInForm = {
   email: string;
@@ -122,6 +132,7 @@ const emptyAccountForm: AccountForm = {
   playerFirstName: "",
   playerLastName: "",
   playerAge: "",
+  waiverAgreed: false,
 };
 
 function emptyCustomerDashboard(): CustomerDashboard {
@@ -143,6 +154,39 @@ function todayIso() {
 
 function fullName(firstName: string, lastName: string) {
   return [firstName, lastName].map((value) => value.trim()).filter(Boolean).join(" ");
+}
+
+function normalizeFamilyMembers(value?: FamilyMember[]) {
+  return (value ?? []).filter((member) => member.name.trim());
+}
+
+function familyMembersForAccount(account: ParentAccount | null): FamilyMember[] {
+  if (!account) return [];
+  const saved = normalizeFamilyMembers(account.familyMembers);
+  if (saved.length) return saved;
+
+  return account.playerName
+    ? [
+        {
+          id: "primary-player",
+          firstName: account.playerName.split(" ")[0] || account.playerName,
+          lastName: account.playerName.split(" ").slice(1).join(" "),
+          name: account.playerName,
+          age: account.playerAge || "",
+        },
+      ]
+    : [];
+}
+
+function buildFamilyMember(firstName: string, lastName: string, age: string): FamilyMember {
+  const name = fullName(firstName, lastName);
+  return {
+    id: `player-${Date.now()}`,
+    firstName: firstName.trim(),
+    lastName: lastName.trim(),
+    name,
+    age: age.trim(),
+  };
 }
 
 function durationLabel(minutes: number) {
@@ -777,6 +821,7 @@ function CustomerPortalModal({
   status,
   onClose,
   onRefresh,
+  onAddPlayer,
   onMembershipDetails,
   onPrintMembershipReceipt,
   onRequestMembershipCancel,
@@ -787,10 +832,37 @@ function CustomerPortalModal({
   status: string;
   onClose: () => void;
   onRefresh: () => void;
+  onAddPlayer: (member: FamilyMember) => Promise<void>;
   onMembershipDetails: (membership: CustomerMembershipRecord) => void;
   onPrintMembershipReceipt: (membership: CustomerMembershipRecord) => void;
   onRequestMembershipCancel: (membership: CustomerMembershipRecord) => void;
 }) {
+  const [playerForm, setPlayerForm] = useState({ firstName: "", lastName: "", age: "" });
+  const [playerStatus, setPlayerStatus] = useState("");
+  const [playerBusy, setPlayerBusy] = useState(false);
+  const familyMembers = familyMembersForAccount(account);
+
+  async function submitPlayer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const member = buildFamilyMember(playerForm.firstName, playerForm.lastName, playerForm.age);
+    if (!member.name) {
+      setPlayerStatus("Enter the player's name.");
+      return;
+    }
+
+    setPlayerBusy(true);
+    setPlayerStatus("");
+    try {
+      await onAddPlayer(member);
+      setPlayerForm({ firstName: "", lastName: "", age: "" });
+      setPlayerStatus("Player added.");
+    } catch (error) {
+      setPlayerStatus(error instanceof Error ? error.message : "Could not add player.");
+    } finally {
+      setPlayerBusy(false);
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/55 px-4 py-8">
       <div className="flex max-h-[calc(100vh-64px)] w-full max-w-[860px] flex-col overflow-hidden rounded-[5px] bg-[#f6f7f9] shadow-[0_20px_48px_rgba(0,0,0,0.36)]">
@@ -827,6 +899,53 @@ function CustomerPortalModal({
               {status}
             </div>
           ) : null}
+
+          <section className="mt-6">
+            <div className="text-[20px] font-semibold">Players</div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {familyMembers.map((member) => (
+                <div key={member.id} className="rounded-[8px] border border-black/10 bg-white px-4 py-4">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#bebebe] text-[14px] font-semibold text-white">
+                      {initials(member.name)}
+                    </span>
+                    <div>
+                      <div className="text-[16px] font-semibold">{member.name}</div>
+                      {member.age ? <div className="mt-1 text-[13px] text-black/55">{member.age} years old</div> : null}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <form onSubmit={submitPlayer} className="mt-4 rounded-[8px] border border-dashed border-black/15 bg-white px-4 py-4">
+              <div className="text-[15px] font-semibold">Add player</div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_90px_auto]">
+                <input
+                  value={playerForm.firstName}
+                  onChange={(event) => setPlayerForm((current) => ({ ...current, firstName: event.target.value }))}
+                  placeholder="First name"
+                  className="h-11 rounded-[5px] border border-black/15 px-3 text-[15px]"
+                />
+                <input
+                  value={playerForm.lastName}
+                  onChange={(event) => setPlayerForm((current) => ({ ...current, lastName: event.target.value }))}
+                  placeholder="Last name"
+                  className="h-11 rounded-[5px] border border-black/15 px-3 text-[15px]"
+                />
+                <input
+                  inputMode="numeric"
+                  value={playerForm.age}
+                  onChange={(event) => setPlayerForm((current) => ({ ...current, age: event.target.value.replace(/\D/g, "") }))}
+                  placeholder="Age"
+                  className="h-11 rounded-[5px] border border-black/15 px-3 text-[15px]"
+                />
+                <button type="submit" disabled={playerBusy} className="h-11 rounded-[6px] bg-black px-4 text-[14px] font-semibold text-white disabled:opacity-55">
+                  {playerBusy ? "Adding..." : "Add"}
+                </button>
+              </div>
+              {playerStatus ? <div className="mt-3 text-[13px] text-black/55">{playerStatus}</div> : null}
+            </form>
+          </section>
 
           <section className="mt-6">
             <div className="text-[20px] font-semibold">Memberships</div>
@@ -1085,6 +1204,7 @@ function ParentAccountModal({
   setForm,
   busy,
   status,
+  waiverSettings,
   onClose,
   onSubmit,
 }: {
@@ -1092,6 +1212,7 @@ function ParentAccountModal({
   setForm: Dispatch<SetStateAction<AccountForm>>;
   busy: boolean;
   status: string;
+  waiverSettings: PublicBookingData["settings"];
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
@@ -1183,6 +1304,32 @@ function ParentAccountModal({
               </label>
             </div>
           </div>
+
+          {waiverSettings.waiverEnabled ? (
+            <div className="mt-6 rounded-[8px] border border-[#b9dff2] bg-[#eef8fc] px-4 py-4">
+              <div className="text-[15px] font-semibold">Liability Waiver</div>
+              <p className="mt-2 text-[14px] leading-6 text-[#245f78]">{waiverSettings.waiverIntro}</p>
+              {waiverSettings.waiverDocumentUrl ? (
+                <a
+                  href={waiverSettings.waiverDocumentUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-3 inline-flex text-[14px] font-semibold text-[#0b6f9f] underline underline-offset-4"
+                >
+                  View {waiverSettings.waiverDocumentName || "liability waiver"}
+                </a>
+              ) : null}
+              <label className="mt-4 flex items-start gap-3 text-[14px] font-semibold text-black">
+                <input
+                  type="checkbox"
+                  checked={form.waiverAgreed}
+                  onChange={(event) => setForm((current) => ({ ...current, waiverAgreed: event.target.checked }))}
+                  className="mt-1 h-5 w-5 accent-black"
+                />
+                I have read and agree to the liability waiver for my family and the player listed above.
+              </label>
+            </div>
+          ) : null}
 
           {status ? <div className="mt-5 rounded-[6px] bg-red-50 px-4 py-3 text-sm text-red-700">{status}</div> : null}
         </div>
@@ -1565,6 +1712,7 @@ export default function CustomerBookingApp() {
   const [selectedPlayer, setSelectedPlayer] = useState("Yourself");
   const [form, setForm] = useState({ parentName: "", playerName: "Yourself", email: "", phone: "" });
   const [parentAccount, setParentAccount] = useState<ParentAccount | null>(null);
+  const [transactionWaiverAgreed, setTransactionWaiverAgreed] = useState(false);
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [accountForm, setAccountForm] = useState<AccountForm>(emptyAccountForm);
   const [accountBusy, setAccountBusy] = useState(false);
@@ -1706,6 +1854,9 @@ export default function CustomerBookingApp() {
   );
   const onlineTotals = selectedService ? calculatePublicTotals(selectedService, data.settings, "online") : null;
   const inPersonTotals = selectedService ? calculatePublicTotals(selectedService, data.settings, "in-person") : null;
+  const familyMembers = useMemo(() => familyMembersForAccount(parentAccount), [parentAccount]);
+  const waiverRequiredForCheckout = Boolean(data.settings.waiverEnabled && !parentAccount?.waiverAgreed);
+  const waiverAcceptedForCheckout = !waiverRequiredForCheckout || transactionWaiverAgreed;
 
   useEffect(() => {
     if (!needsCoach) {
@@ -1716,6 +1867,10 @@ export default function CustomerBookingApp() {
       setSelectedCoachId("");
     }
   }, [coachOptions, needsCoach, selectedCoachId]);
+
+  useEffect(() => {
+    setTransactionWaiverAgreed(false);
+  }, [selectedServiceId, parentAccount?.id, parentAccount?.waiverAgreed]);
 
   useEffect(() => {
     function closeAccountMenu(event: MouseEvent) {
@@ -1788,7 +1943,8 @@ export default function CustomerBookingApp() {
   }
 
   function applyParentAccount(account: ParentAccount, dashboard?: CustomerDashboard) {
-    const playerName = account.playerName || "Yourself";
+    const primaryPlayer = familyMembersForAccount(account)[0];
+    const playerName = primaryPlayer?.name || account.playerName || "Yourself";
     setParentAccount(account);
     if (dashboard) setCustomerDashboard(dashboard);
     setSelectedPlayer(playerName);
@@ -1798,6 +1954,54 @@ export default function CustomerBookingApp() {
       email: account.email,
       phone: account.phone,
     });
+  }
+
+  async function saveFamilyMembers(nextFamilyMembers: FamilyMember[], selectMember?: FamilyMember) {
+    const sessionResult = await supabase.auth.getSession();
+    const token = sessionResult.data.session?.access_token;
+    if (!token) throw new Error("Please sign in again.");
+
+    const response = await fetch("/api/book/customers", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ familyMembers: nextFamilyMembers }),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Could not save player.");
+
+    const account = payload.customer as ParentAccount;
+    applyParentAccount(account, customerDashboard);
+    if (selectMember) {
+      setSelectedPlayer(selectMember.name);
+      setForm({
+        parentName: account.parentName,
+        playerName: selectMember.name,
+        email: account.email,
+        phone: account.phone,
+      });
+    }
+  }
+
+  async function saveWaiverAgreement() {
+    if (!parentAccount || parentAccount.waiverAgreed || !transactionWaiverAgreed) return;
+    const sessionResult = await supabase.auth.getSession();
+    const token = sessionResult.data.session?.access_token;
+    if (!token) return;
+
+    const response = await fetch("/api/book/customers", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ waiverAgreed: true }),
+    });
+    if (!response.ok) return;
+    const payload = await response.json();
+    if (payload.customer) setParentAccount(payload.customer as ParentAccount);
   }
 
   async function signOut() {
@@ -2066,6 +2270,11 @@ export default function CustomerBookingApp() {
     try {
       const parentName = fullName(accountForm.parentFirstName, accountForm.parentLastName);
       const playerName = fullName(accountForm.playerFirstName, accountForm.playerLastName);
+      if (data.settings.waiverEnabled && !accountForm.waiverAgreed) {
+        setAccountStatus("Please agree to the liability waiver before creating an account.");
+        return;
+      }
+      const firstPlayer = buildFamilyMember(accountForm.playerFirstName, accountForm.playerLastName, accountForm.playerAge);
       const response = await fetch("/api/book/customers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2073,6 +2282,8 @@ export default function CustomerBookingApp() {
           ...accountForm,
           parentName,
           playerName,
+          familyMembers: firstPlayer.name ? [firstPlayer] : [],
+          waiverAgreed: accountForm.waiverAgreed,
         }),
       });
       const payload = await response.json();
@@ -2088,15 +2299,8 @@ export default function CustomerBookingApp() {
         return;
       }
 
-      setParentAccount(account);
       setCustomerDashboard(emptyCustomerDashboard());
-      setSelectedPlayer(account.playerName);
-      setForm({
-        parentName: account.parentName,
-        playerName: account.playerName,
-        email: account.email,
-        phone: account.phone,
-      });
+      applyParentAccount(account, emptyCustomerDashboard());
       setAccountForm((current) => ({ ...current, password: "" }));
       setShowAccountModal(false);
     } catch (error) {
@@ -2108,6 +2312,10 @@ export default function CustomerBookingApp() {
 
   async function submitBooking(paymentMethod: "online" | "in-person") {
     if (!selectedService || !selectedTime) return;
+    if (!waiverAcceptedForCheckout) {
+      setSubmitError("Please agree to the liability waiver before completing this booking.");
+      return;
+    }
     setSubmitting(true);
     setSubmitError("");
     try {
@@ -2126,6 +2334,7 @@ export default function CustomerBookingApp() {
           email: form.email,
           phone: form.phone,
           paymentMethod,
+          waiverAgreed: parentAccount?.waiverAgreed || transactionWaiverAgreed,
         }),
       });
       const payload = await response.json();
@@ -2144,6 +2353,7 @@ export default function CustomerBookingApp() {
           },
         ],
       }));
+      void saveWaiverAgreement();
       setStep("done");
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Could not create booking.");
@@ -2154,6 +2364,10 @@ export default function CustomerBookingApp() {
 
   async function submitMembershipPurchase(setupIntentId?: string) {
     if (!selectedService || selectedService.category !== "memberships") return;
+    if (!waiverAcceptedForCheckout) {
+      setSubmitError("Please agree to the liability waiver before purchasing this membership.");
+      return;
+    }
 
     setSubmitting(true);
     setSubmitError("");
@@ -2170,6 +2384,7 @@ export default function CustomerBookingApp() {
           email: form.email,
           phone: form.phone,
           setupIntentId,
+          waiverAgreed: parentAccount?.waiverAgreed || transactionWaiverAgreed,
         }),
       });
 
@@ -2200,6 +2415,7 @@ export default function CustomerBookingApp() {
       }
 
       setMembershipCardSetup(null);
+      void saveWaiverAgreement();
       setStep("done");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not start membership purchase.";
@@ -2438,7 +2654,7 @@ export default function CustomerBookingApp() {
               isMembership ? (
                 <button
                   type="button"
-                  disabled={submitting}
+                  disabled={submitting || !waiverAcceptedForCheckout}
                   onClick={() => submitMembershipPurchase()}
                   className="w-full rounded-[10px] bg-[#3a3432] py-4 text-[18px] font-semibold text-white disabled:opacity-60"
                 >
@@ -2448,7 +2664,7 @@ export default function CustomerBookingApp() {
                 <div className="grid gap-3">
                   <button
                     type="button"
-                    disabled={submitting}
+                    disabled={submitting || !waiverAcceptedForCheckout}
                     onClick={() => submitBooking("online")}
                     className="w-full rounded-[10px] bg-[#3a3432] py-4 text-[18px] font-semibold text-white disabled:opacity-60"
                   >
@@ -2456,7 +2672,7 @@ export default function CustomerBookingApp() {
                   </button>
                   <button
                     type="button"
-                    disabled={submitting}
+                    disabled={submitting || !waiverAcceptedForCheckout}
                     onClick={() => submitBooking("in-person")}
                     className="w-full rounded-[10px] border border-black/20 py-4 text-[18px] font-semibold disabled:opacity-60"
                   >
@@ -2552,27 +2768,41 @@ export default function CustomerBookingApp() {
               </div>
               <div className="mt-6 flex flex-wrap gap-4">
                 {parentAccount ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedPlayer(parentAccount.playerName);
-                      setForm({
-                        parentName: parentAccount.parentName,
-                        playerName: parentAccount.playerName,
-                        email: parentAccount.email,
-                        phone: parentAccount.phone,
-                      });
-                    }}
-                    className={`h-[310px] w-[190px] rounded-[8px] border px-5 py-7 text-center ${
-                      selectedPlayer === parentAccount.playerName ? "border-black shadow-[inset_0_0_0_1px_black]" : "border-black/15"
-                    }`}
-                  >
-                    <span className="mx-auto flex h-[126px] w-[126px] items-center justify-center rounded-full bg-[#bebebe] text-[26px] text-white">
-                      {initials(parentAccount.playerName)}
-                    </span>
-                    <span className="mt-5 block text-[18px]">{parentAccount.playerName}</span>
-                    {parentAccount.playerAge ? <span className="mt-6 block text-[14px]">{parentAccount.playerAge} years old</span> : null}
-                  </button>
+                  <>
+                    {familyMembers.map((member) => (
+                      <button
+                        key={member.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedPlayer(member.name);
+                          setForm({
+                            parentName: parentAccount.parentName,
+                            playerName: member.name,
+                            email: parentAccount.email,
+                            phone: parentAccount.phone,
+                          });
+                        }}
+                        className={`h-[310px] w-[190px] rounded-[8px] border px-5 py-7 text-center ${
+                          selectedPlayer === member.name ? "border-black shadow-[inset_0_0_0_1px_black]" : "border-black/15"
+                        }`}
+                      >
+                        <span className="mx-auto flex h-[126px] w-[126px] items-center justify-center rounded-full bg-[#bebebe] text-[26px] text-white">
+                          {initials(member.name)}
+                        </span>
+                        <span className="mt-5 block text-[18px]">{member.name}</span>
+                        {member.age ? <span className="mt-6 block text-[14px]">{member.age} years old</span> : null}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={openCustomerPortal}
+                      className="flex h-[310px] w-[190px] flex-col items-center justify-center rounded-[8px] border border-dashed border-black/25 px-5 py-7 text-center hover:border-black"
+                    >
+                      <span className="flex h-[80px] w-[80px] items-center justify-center rounded-full bg-black text-[34px] text-white">+</span>
+                      <span className="mt-5 block text-[18px] font-semibold">Add player</span>
+                      <span className="mt-4 block text-[14px] leading-5 text-black/55">Add another child to this family account.</span>
+                    </button>
+                  </>
                 ) : (
                   <>
                     <button
@@ -2792,6 +3022,37 @@ export default function CustomerBookingApp() {
                     <div className="mt-4 text-[13px] text-black/45">Pay in-person total: {money(inPersonTotals.total)}</div>
                   </>
                 )}
+                {data.settings.waiverEnabled ? (
+                  <div className="mt-6 rounded-[8px] border border-[#b9dff2] bg-[#eef8fc] px-4 py-4">
+                    <div className="text-[15px] font-semibold">Liability Waiver</div>
+                    {parentAccount?.waiverAgreed ? (
+                      <div className="mt-2 text-[14px] text-[#245f78]">Waiver already agreed for this family account.</div>
+                    ) : (
+                      <>
+                        <p className="mt-2 text-[14px] leading-6 text-[#245f78]">{data.settings.waiverIntro}</p>
+                        {data.settings.waiverDocumentUrl ? (
+                          <a
+                            href={data.settings.waiverDocumentUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-3 inline-flex text-[14px] font-semibold text-[#0b6f9f] underline underline-offset-4"
+                          >
+                            View {data.settings.waiverDocumentName || "liability waiver"}
+                          </a>
+                        ) : null}
+                        <label className="mt-4 flex items-start gap-3 text-[14px] font-semibold text-black">
+                          <input
+                            type="checkbox"
+                            checked={transactionWaiverAgreed}
+                            onChange={(event) => setTransactionWaiverAgreed(event.target.checked)}
+                            className="mt-1 h-5 w-5 accent-black"
+                          />
+                          I have read and agree to the liability waiver for this purchase.
+                        </label>
+                      </>
+                    )}
+                  </div>
+                ) : null}
                 {submitError ? <div className="mt-4 rounded-[6px] bg-red-50 px-4 py-3 text-sm text-red-700">{submitError}</div> : null}
               </div>
             </div>
@@ -2817,6 +3078,7 @@ export default function CustomerBookingApp() {
           setForm={setAccountForm}
           busy={accountBusy}
           status={accountStatus}
+          waiverSettings={data.settings}
           onClose={() => setShowAccountModal(false)}
           onSubmit={createParentAccount}
         />
@@ -2855,6 +3117,7 @@ export default function CustomerBookingApp() {
           status={customerPortalStatus}
           onClose={() => setShowCustomerPortal(false)}
           onRefresh={refreshCustomerAccount}
+          onAddPlayer={(member) => saveFamilyMembers([...familyMembers, member], member)}
           onMembershipDetails={setSelectedMembershipDetails}
           onPrintMembershipReceipt={printMembershipReceipt}
           onRequestMembershipCancel={openMembershipCancelRequest}

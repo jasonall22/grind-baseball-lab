@@ -48,6 +48,19 @@ type CreateCustomerBody = {
   email?: string;
   phone?: string;
   password?: string;
+  familyMembers?: unknown;
+  waiverAgreed?: boolean;
+};
+type UpdateCustomerBody = {
+  familyMembers?: unknown;
+  waiverAgreed?: boolean;
+};
+type FamilyMember = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  name: string;
+  age: string;
 };
 type CustomerDashboardResponse = {
   upcomingBookings: Array<Record<string, unknown>>;
@@ -78,6 +91,35 @@ function isExistingUserError(error: QueryError) {
   return message.includes("already registered") || message.includes("already been registered") || message.includes("already exists");
 }
 
+function normalizeFamilyMembers(value: unknown): FamilyMember[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item, index) => {
+      if (!item || typeof item !== "object") return null;
+      const record = item as Record<string, unknown>;
+      const firstName = clean(record.firstName);
+      const lastName = clean(record.lastName);
+      const name = clean(record.name) || [firstName, lastName].filter(Boolean).join(" ").trim();
+      if (!name) return null;
+
+      return {
+        id: clean(record.id) || `player-${Date.now()}-${index}`,
+        firstName: firstName || name.split(" ")[0] || name,
+        lastName: lastName || name.split(" ").slice(1).join(" "),
+        name,
+        age: clean(record.age),
+      };
+    })
+    .filter((item): item is FamilyMember => Boolean(item));
+}
+
+async function waiverIsRequired(supabase: CustomerSupabaseClient) {
+  const settingsResult = await supabase.from("booking_settings").select("waiver_enabled").eq("key", "default").maybeSingle();
+  if (settingsResult.error) throw settingsResult.error;
+  return Boolean((settingsResult.data as { waiver_enabled?: boolean } | null)?.waiver_enabled);
+}
+
 export async function GET(req: Request) {
   try {
     const authHeader = req.headers.get("authorization") ?? "";
@@ -92,7 +134,7 @@ export async function GET(req: Request) {
     const email = clean(user.email).toLowerCase();
     const customerResult = await supabase
       .from("booking_customers")
-      .select("id,parent_name,player_name,email,phone,age")
+      .select("id,parent_name,player_name,email,phone,age,family_members,waiver_agreed")
       .eq("email", email)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -101,7 +143,16 @@ export async function GET(req: Request) {
     if (customerResult.error) throw customerResult.error;
 
     const customer = customerResult.data as
-      | { id?: string; parent_name?: string; player_name?: string; email?: string; phone?: string; age?: number | null }
+      | {
+          id?: string;
+          parent_name?: string;
+          player_name?: string;
+          email?: string;
+          phone?: string;
+          age?: number | null;
+          family_members?: unknown;
+          waiver_agreed?: boolean | null;
+        }
       | null;
     const metadata = user.user_metadata ?? {};
     const metadataName = clean(metadata.full_name);
@@ -248,6 +299,8 @@ export async function GET(req: Request) {
         playerAge: customer?.age === null || customer?.age === undefined ? "" : String(customer.age),
         email,
         phone: clean(customer?.phone),
+        familyMembers: normalizeFamilyMembers(customer?.family_members),
+        waiverAgreed: Boolean(customer?.waiver_agreed),
       },
       dashboard,
     });
@@ -271,6 +324,7 @@ export async function POST(req: Request) {
     const email = clean(body.email).toLowerCase();
     const phone = clean(body.phone);
     const password = String(body.password ?? "");
+    const familyMembers = normalizeFamilyMembers(body.familyMembers);
 
     if (!parentName) return badRequest("Enter the parent name.");
     if (!playerName) return badRequest("Enter the player name.");
@@ -279,6 +333,19 @@ export async function POST(req: Request) {
     if (ageValue !== null && (!Number.isFinite(ageValue) || ageValue < 0)) return badRequest("Enter a valid player age.");
 
     const supabase = getSupabaseAdmin() as unknown as CustomerSupabaseClient;
+    if ((await waiverIsRequired(supabase)) && body.waiverAgreed !== true) {
+      return badRequest("Agree to the liability waiver before creating a parent account.");
+    }
+
+    const primaryFamilyMember: FamilyMember = {
+      id: familyMembers[0]?.id || `player-${Date.now()}`,
+      firstName: playerFirstName || playerName.split(" ")[0] || playerName,
+      lastName: playerLastName || playerName.split(" ").slice(1).join(" "),
+      name: playerName,
+      age: playerAge,
+    };
+    const savedFamilyMembers = familyMembers.length ? familyMembers : [primaryFamilyMember];
+
     const authResult = await supabase.auth.admin.createUser({
       email,
       password,
@@ -330,6 +397,8 @@ export async function POST(req: Request) {
       email,
       phone,
       age: ageValue,
+      family_members: savedFamilyMembers,
+      waiver_agreed: Boolean(body.waiverAgreed),
       notes: "Created from public parent account signup.",
     };
 
@@ -355,10 +424,79 @@ export async function POST(req: Request) {
         playerAge,
         email,
         phone,
+        familyMembers: savedFamilyMembers,
+        waiverAgreed: Boolean(body.waiverAgreed),
       },
     });
   } catch (error) {
     console.error(error);
     return badRequest(error instanceof Error ? error.message : "Could not create parent account.", 500);
+  }
+}
+
+export async function PATCH(req: Request) {
+  try {
+    const authHeader = req.headers.get("authorization") ?? "";
+    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+    if (!token) return badRequest("Sign in to update your account.", 401);
+
+    const body = (await req.json()) as UpdateCustomerBody;
+    const supabase = getSupabaseAdmin() as unknown as CustomerSupabaseClient;
+    const userResult = await supabase.auth.getUser(token);
+    if (userResult.error || !userResult.data.user) return badRequest("Sign in to update your account.", 401);
+
+    const email = clean(userResult.data.user.email).toLowerCase();
+    const customerResult = await supabase
+      .from("booking_customers")
+      .select("id,family_members,waiver_agreed")
+      .eq("email", email)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (customerResult.error) throw customerResult.error;
+    const customer = customerResult.data as { id?: string; family_members?: unknown; waiver_agreed?: boolean | null } | null;
+    if (!customer?.id) return badRequest("Could not find your family account.", 404);
+
+    const patch: Record<string, unknown> = {};
+    if (body.familyMembers !== undefined) patch.family_members = normalizeFamilyMembers(body.familyMembers);
+    if (body.waiverAgreed === true) patch.waiver_agreed = true;
+    if (!Object.keys(patch).length) return badRequest("Nothing to update.");
+
+    const updateResult = await supabase
+      .from("booking_customers")
+      .update(patch)
+      .eq("id", customer.id)
+      .select("id,parent_name,player_name,email,phone,age,family_members,waiver_agreed")
+      .single();
+
+    if (updateResult.error) throw updateResult.error;
+    const updated = updateResult.data as {
+      id: string;
+      parent_name?: string;
+      player_name?: string;
+      email?: string;
+      phone?: string;
+      age?: number | null;
+      family_members?: unknown;
+      waiver_agreed?: boolean | null;
+    };
+
+    return NextResponse.json({
+      ok: true,
+      customer: {
+        id: updated.id,
+        parentName: clean(updated.parent_name),
+        playerName: clean(updated.player_name),
+        playerAge: updated.age === null || updated.age === undefined ? "" : String(updated.age),
+        email: clean(updated.email) || email,
+        phone: clean(updated.phone),
+        familyMembers: normalizeFamilyMembers(updated.family_members),
+        waiverAgreed: Boolean(updated.waiver_agreed),
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    return badRequest(error instanceof Error ? error.message : "Could not update parent account.", 500);
   }
 }

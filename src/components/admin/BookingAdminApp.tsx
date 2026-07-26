@@ -1356,11 +1356,11 @@ const defaultState: AppState = {
     email: "info@grindbaseballlab.com",
   },
   policies: {
-    waiverEnabled: false,
-    waiverDocumentUrl: "",
-    waiverDocumentName: "Liability Waiver",
+    waiverEnabled: true,
+    waiverDocumentUrl: "/waivers/the-grind-baseball-lab-waiver-2026.pdf",
+    waiverDocumentName: "The Grind Baseball Lab Waiver 2026.pdf",
     waiverIntro:
-      "By clicking Agree & Continue, you confirm that the customer has had the opportunity to review this waiver and has agreed to its terms with full consent.",
+      "Please review and agree to The Grind Baseball Lab liability waiver before completing a booking or membership purchase.",
     waiverAllowInPerson: true,
   },
   registration: {
@@ -18260,6 +18260,62 @@ function SettingsView({
                     label="Toggle liability waiver"
                   />
                   <span className="text-[15px] font-medium text-black">On</span>
+                </div>
+                <div className="mt-7 grid gap-4">
+                  <div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="application/pdf,.pdf"
+                      className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) {
+                          void handleWaiverFile(file);
+                        }
+                        event.currentTarget.value = "";
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploadingWaiver}
+                      className="rounded-[5px] border border-black/15 px-4 py-2 text-[14px] font-semibold text-[#456796] disabled:opacity-60"
+                    >
+                      {isUploadingWaiver ? "Uploading..." : draft.policies.waiverDocumentUrl ? "Replace waiver PDF" : "Upload waiver PDF"}
+                    </button>
+                    {draft.policies.waiverDocumentUrl ? (
+                      <a
+                        href={draft.policies.waiverDocumentUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-3 block text-[13px] font-semibold text-[#456796] underline underline-offset-4"
+                      >
+                        {draft.policies.waiverDocumentName || "Liability waiver.pdf"}
+                      </a>
+                    ) : (
+                      <div className="mt-3 text-[13px] text-black/50">No waiver PDF uploaded yet.</div>
+                    )}
+                    {waiverUploadError ? <div className="mt-2 text-[13px] text-red-600">{waiverUploadError}</div> : null}
+                  </div>
+                  <label className="grid gap-2 text-[13px] font-medium text-black">
+                    Waiver message
+                    <textarea
+                      value={draft.policies.waiverIntro}
+                      onChange={(event) => updatePolicies({ waiverIntro: event.target.value })}
+                      rows={3}
+                      className="resize-none rounded-[5px] border border-black/15 px-3 py-2 text-[14px] font-normal outline-none focus:border-black"
+                    />
+                  </label>
+                  <label className="flex items-center gap-3 text-[14px] font-medium text-black">
+                    <input
+                      type="checkbox"
+                      checked={draft.policies.waiverAllowInPerson}
+                      onChange={(event) => updatePolicies({ waiverAllowInPerson: event.target.checked })}
+                      className="h-5 w-5 accent-black"
+                    />
+                    Allow staff to collect waiver signatures in person
+                  </label>
                 </div>
               </div>
             </>

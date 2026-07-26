@@ -18,6 +18,7 @@ type QueryBuilder<T = unknown> = PromiseLike<QueryResult<T>> & {
   order(column: string, options?: { ascending?: boolean }): QueryBuilder<T>;
   limit(count: number): QueryBuilder<T>;
   insert(values: unknown): QueryBuilder<T>;
+  update(values: unknown): QueryBuilder<T>;
   single(): Promise<QueryResult<T>>;
   maybeSingle(): Promise<QueryResult<T>>;
 };
@@ -37,6 +38,7 @@ type CreateBookingBody = {
   email?: string;
   phone?: string;
   paymentMethod?: "online" | "in-person";
+  waiverAgreed?: boolean;
 };
 
 function badRequest(message: string, status = 400) {
@@ -142,10 +144,10 @@ export async function POST(req: Request) {
 
     const supabase = getSupabaseAdmin() as unknown as PublicSupabaseClient;
     const existingCustomer = submittedCustomerId
-      ? await supabase.from("booking_customers").select("id").eq("id", submittedCustomerId).maybeSingle()
+      ? await supabase.from("booking_customers").select("id,waiver_agreed").eq("id", submittedCustomerId).maybeSingle()
       : await supabase
           .from("booking_customers")
-          .select("id")
+          .select("id,waiver_agreed")
           .eq("email", email)
           .order("created_at", { ascending: false })
           .limit(1)
@@ -153,7 +155,11 @@ export async function POST(req: Request) {
 
     if (existingCustomer.error) throw existingCustomer.error;
 
-    let customerId = (existingCustomer.data as { id?: string } | null)?.id;
+    let customerId = (existingCustomer.data as { id?: string; waiver_agreed?: boolean | null } | null)?.id;
+    const existingWaiverAgreed = Boolean((existingCustomer.data as { waiver_agreed?: boolean | null } | null)?.waiver_agreed);
+    if (data.settings.waiverEnabled && !existingWaiverAgreed && body.waiverAgreed !== true) {
+      return badRequest("Agree to the liability waiver before completing this booking.");
+    }
 
     if (!customerId) {
       const customerResult = await supabase
@@ -163,6 +169,7 @@ export async function POST(req: Request) {
           player_name: playerName,
           email,
           phone,
+          waiver_agreed: Boolean(body.waiverAgreed),
           notes: "Created from public booking page.",
         })
         .select("id")
@@ -170,6 +177,9 @@ export async function POST(req: Request) {
 
       if (customerResult.error) throw customerResult.error;
       customerId = (customerResult.data as { id: string }).id;
+    } else if (body.waiverAgreed === true && !existingWaiverAgreed) {
+      const waiverResult = await supabase.from("booking_customers").update({ waiver_agreed: true }).eq("id", customerId);
+      if (waiverResult.error) throw waiverResult.error;
     }
 
     const bookingResult = await supabase

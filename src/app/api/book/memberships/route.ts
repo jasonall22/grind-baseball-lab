@@ -12,6 +12,7 @@ type PurchaseMembershipBody = {
   email?: string;
   phone?: string;
   setupIntentId?: string;
+  waiverAgreed?: boolean;
 };
 
 function badRequest(message: string, status = 400) {
@@ -93,6 +94,10 @@ export async function POST(req: Request) {
     }
 
     const supabase = getSupabaseAdmin() as any;
+    const settingsResult = await supabase.from("booking_settings").select("waiver_enabled").eq("key", "default").maybeSingle();
+    if (settingsResult.error) throw settingsResult.error;
+    const waiverRequired = Boolean(settingsResult.data?.waiver_enabled);
+
     const serviceResult = await supabase
       .from("booking_services")
       .select(
@@ -108,10 +113,10 @@ export async function POST(req: Request) {
     }
 
     const customerLookup = submittedCustomerId
-      ? await supabase.from("booking_customers").select("id").eq("id", submittedCustomerId).maybeSingle()
+      ? await supabase.from("booking_customers").select("id,waiver_agreed").eq("id", submittedCustomerId).maybeSingle()
       : await supabase
           .from("booking_customers")
-          .select("id")
+          .select("id,waiver_agreed")
           .eq("email", email)
           .order("created_at", { ascending: false })
           .limit(1)
@@ -119,7 +124,11 @@ export async function POST(req: Request) {
 
     if (customerLookup.error) throw customerLookup.error;
 
-    let customerId = (customerLookup.data as { id?: string } | null)?.id;
+    let customerId = (customerLookup.data as { id?: string; waiver_agreed?: boolean | null } | null)?.id;
+    const existingWaiverAgreed = Boolean((customerLookup.data as { waiver_agreed?: boolean | null } | null)?.waiver_agreed);
+    if (waiverRequired && !existingWaiverAgreed && body.waiverAgreed !== true) {
+      return badRequest("Agree to the liability waiver before purchasing this membership.");
+    }
 
     if (customerId) {
       const updateResult = await supabase
@@ -129,6 +138,7 @@ export async function POST(req: Request) {
           player_name: playerName,
           email,
           phone,
+          ...(body.waiverAgreed === true ? { waiver_agreed: true } : {}),
         })
         .eq("id", customerId);
       if (updateResult.error) throw updateResult.error;
@@ -140,6 +150,7 @@ export async function POST(req: Request) {
           player_name: playerName,
           email,
           phone,
+          waiver_agreed: Boolean(body.waiverAgreed),
           notes: "Created from public membership checkout.",
         })
         .select("id")
