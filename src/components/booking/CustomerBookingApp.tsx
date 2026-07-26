@@ -476,7 +476,7 @@ function BookingHero({
   return (
     <section className="bg-white px-4 py-5 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-[1240px] overflow-hidden rounded-[10px] border border-black/10 bg-white shadow-[0_18px_45px_rgba(0,0,0,0.12)]">
-        <div className="overflow-hidden bg-black">
+        <div className="relative overflow-hidden bg-black">
           <Image
             src="/membership-marketing-banner-layout-v2.png"
             alt="Memberships: More reps. More swings. Monthly credits for cages, lessons, and consistent player development."
@@ -485,6 +485,13 @@ function BookingHero({
             className="h-auto w-full"
             priority
           />
+          <button
+            type="button"
+            onClick={() => onSelectCategory("memberships")}
+            className="absolute bottom-[7%] right-[7%] rounded-[6px] bg-[#1784bd] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-white shadow-[0_10px_24px_rgba(0,0,0,0.35)] transition hover:-translate-y-0.5 hover:bg-[#0f76aa] sm:px-5 sm:py-2.5 sm:text-[13px]"
+          >
+            Become a Member
+          </button>
         </div>
 
         <div className="grid gap-5 border-t border-black/10 px-5 py-5 sm:px-7 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
