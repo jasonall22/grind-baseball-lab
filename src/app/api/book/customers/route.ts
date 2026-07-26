@@ -379,7 +379,10 @@ export async function POST(req: Request) {
     const parentName = clean(body.parentName) || [parentFirstName, parentLastName].filter(Boolean).join(" ").trim();
     const playerFirstName = clean(body.playerFirstName);
     const playerLastName = clean(body.playerLastName);
-    const playerName = clean(body.playerName) || [playerFirstName, playerLastName].filter(Boolean).join(" ").trim();
+    const submittedPlayerName = clean(body.playerName) || [playerFirstName, playerLastName].filter(Boolean).join(" ").trim();
+    const playerName = submittedPlayerName || parentName;
+    const effectivePlayerFirstName = playerFirstName || parentFirstName || playerName.split(" ")[0] || playerName;
+    const effectivePlayerLastName = playerLastName || parentLastName || playerName.split(" ").slice(1).join(" ");
     const birthDateParts = parseBirthDateParts(body.playerBirthDate);
     const legacyPlayerAge = clean(body.playerAge);
     const ageValue = birthDateParts.age ?? (legacyPlayerAge ? Number.parseInt(legacyPlayerAge, 10) : null);
@@ -388,8 +391,7 @@ export async function POST(req: Request) {
     const password = String(body.password ?? "");
     const familyMembers = normalizeFamilyMembers(body.familyMembers);
 
-    if (!parentName) return badRequest("Enter the parent name.");
-    if (!playerName) return badRequest("Enter the player name.");
+    if (!parentName) return badRequest("Enter the account holder name.");
     if (!email || !email.includes("@")) return badRequest("Enter a valid email.");
     if (password.length < 6) return badRequest("Password must be at least 6 characters.");
     if (body.playerBirthDate && !birthDateParts.birthDate) return badRequest("Enter a valid player DOB.");
@@ -402,8 +404,8 @@ export async function POST(req: Request) {
 
     const primaryFamilyMember: FamilyMember = {
       id: familyMembers[0]?.id || `player-${Date.now()}`,
-      firstName: playerFirstName || playerName.split(" ")[0] || playerName,
-      lastName: playerLastName || playerName.split(" ").slice(1).join(" "),
+      firstName: effectivePlayerFirstName,
+      lastName: effectivePlayerLastName,
       name: playerName,
       birthDate: birthDateParts.birthDate,
       age: "",

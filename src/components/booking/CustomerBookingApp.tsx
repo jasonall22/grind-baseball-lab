@@ -1275,7 +1275,7 @@ function ParentAccountModal({
         className="flex max-h-[calc(100vh-64px)] w-full max-w-[720px] flex-col overflow-hidden rounded-[5px] bg-white shadow-[0_20px_48px_rgba(0,0,0,0.36)]"
       >
         <div className="flex h-[76px] shrink-0 items-center border-b border-black/10 px-7">
-          <div className="text-[22px] font-semibold">Create Parent Account</div>
+          <div className="text-[22px] font-semibold">Create Account</div>
           <button type="button" onClick={onClose} className="ml-auto text-[32px] leading-none text-black/45">
             x
           </button>
@@ -1283,7 +1283,7 @@ function ParentAccountModal({
         <div className="min-h-0 flex-1 overflow-y-auto px-7 py-6">
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="grid gap-2 text-[14px] font-medium">
-              Parent first name
+              First name
               <input
                 value={form.parentFirstName}
                 onChange={(event) => setForm((current) => ({ ...current, parentFirstName: event.target.value }))}
@@ -1291,7 +1291,7 @@ function ParentAccountModal({
               />
             </label>
             <label className="grid gap-2 text-[14px] font-medium">
-              Parent last name
+              Last name
               <input
                 value={form.parentLastName}
                 onChange={(event) => setForm((current) => ({ ...current, parentLastName: event.target.value }))}
@@ -1327,7 +1327,10 @@ function ParentAccountModal({
           </div>
 
           <div className="mt-8 border-t border-black/10 pt-6">
-            <div className="text-[18px] font-semibold">Player</div>
+            <div className="text-[18px] font-semibold">Player (optional)</div>
+            <p className="mt-2 text-[14px] leading-6 text-black/60">
+              Leave this blank if the account holder is booking for themselves.
+            </p>
             <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_1fr_160px]">
               <label className="grid gap-2 text-[14px] font-medium">
                 First name
@@ -1378,7 +1381,7 @@ function ParentAccountModal({
                   onChange={(event) => setForm((current) => ({ ...current, waiverAgreed: event.target.checked }))}
                   className="mt-1 h-5 w-5 accent-black"
                 />
-                I have read and agree to the liability waiver for my family and the player listed above.
+                I have read and agree to the liability waiver for myself, my family, and any player listed above.
               </label>
             </div>
           ) : null}
@@ -2325,12 +2328,14 @@ export default function CustomerBookingApp() {
     setAccountStatus("");
     try {
       const parentName = fullName(accountForm.parentFirstName, accountForm.parentLastName);
-      const playerName = fullName(accountForm.playerFirstName, accountForm.playerLastName);
+      const playerName = fullName(accountForm.playerFirstName, accountForm.playerLastName) || parentName;
+      const playerFirstName = accountForm.playerFirstName.trim() || accountForm.parentFirstName.trim();
+      const playerLastName = accountForm.playerLastName.trim() || accountForm.parentLastName.trim();
       if (data.settings.waiverEnabled && !accountForm.waiverAgreed) {
         setAccountStatus("Please agree to the liability waiver before creating an account.");
         return;
       }
-      const firstPlayer = buildFamilyMember(accountForm.playerFirstName, accountForm.playerLastName, accountForm.playerBirthDate);
+      const firstPlayer = buildFamilyMember(playerFirstName, playerLastName, accountForm.playerBirthDate);
       const response = await fetch("/api/book/customers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2338,6 +2343,8 @@ export default function CustomerBookingApp() {
           ...accountForm,
           parentName,
           playerName,
+          playerFirstName,
+          playerLastName,
           playerBirthDate: accountForm.playerBirthDate ? isoDateToUs(accountForm.playerBirthDate) : "",
           familyMembers: firstPlayer.name ? [firstPlayer] : [],
           waiverAgreed: accountForm.waiverAgreed,
