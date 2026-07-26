@@ -488,10 +488,19 @@ function BookingHero({
           <button
             type="button"
             onClick={() => onSelectCategory("memberships")}
-            className="absolute bottom-[7%] right-[7%] rounded-[6px] bg-[#1784bd] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-white shadow-[0_10px_24px_rgba(0,0,0,0.35)] transition hover:-translate-y-0.5 hover:bg-[#0f76aa] sm:px-5 sm:py-2.5 sm:text-[13px]"
+            className="absolute bottom-[7%] right-[7%] hidden rounded-[6px] bg-[#1784bd] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.08em] text-white shadow-[0_10px_24px_rgba(0,0,0,0.35)] transition hover:-translate-y-0.5 hover:bg-[#0f76aa] md:inline-flex lg:px-5 lg:py-2.5 lg:text-[13px]"
           >
             Become a Member
           </button>
+          <div className="border-t border-[#1784bd] bg-black px-4 py-3 md:hidden">
+            <button
+              type="button"
+              onClick={() => onSelectCategory("memberships")}
+              className="w-full rounded-[6px] bg-[#1784bd] px-4 py-2.5 text-[12px] font-bold uppercase tracking-[0.08em] text-white shadow-[0_10px_24px_rgba(0,0,0,0.28)]"
+            >
+              Become a Member
+            </button>
+          </div>
         </div>
 
         <div className="grid gap-5 border-t border-black/10 px-5 py-5 sm:px-7 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
