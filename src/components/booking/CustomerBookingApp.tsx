@@ -2159,7 +2159,7 @@ export default function CustomerBookingApp() {
             ) : step === "player" ? (
               <button
                 type="button"
-                disabled={!form.parentName || !form.playerName || !form.email || (needsCoach && !selectedCoachId)}
+                disabled={!parentAccount || !form.parentName || !form.playerName || !form.email || (needsCoach && !selectedCoachId)}
                 onClick={() => setStep(isMembership ? "summary" : "time")}
                 className="w-full rounded-[10px] bg-[#272322] py-4 text-[18px] font-semibold text-white disabled:bg-black/12 disabled:text-black/30"
               >
@@ -2296,7 +2296,12 @@ export default function CustomerBookingApp() {
                     type="button"
                     onClick={() => {
                       setSelectedPlayer(parentAccount.playerName);
-                      setForm((current) => ({ ...current, playerName: parentAccount.playerName }));
+                      setForm({
+                        parentName: parentAccount.parentName,
+                        playerName: parentAccount.playerName,
+                        email: parentAccount.email,
+                        phone: parentAccount.phone,
+                      });
                     }}
                     className={`h-[310px] w-[190px] rounded-[8px] border px-5 py-7 text-center ${
                       selectedPlayer === parentAccount.playerName ? "border-black shadow-[inset_0_0_0_1px_black]" : "border-black/15"
@@ -2334,24 +2339,46 @@ export default function CustomerBookingApp() {
                   </>
                 )}
               </div>
-              <div className="mt-8 grid gap-4 sm:grid-cols-2">
-                <label className="grid gap-2 text-[14px] font-medium">
-                  Parent name
-                  <input className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]" value={form.parentName} onChange={(event) => setForm({ ...form, parentName: event.target.value })} />
-                </label>
-                <label className="grid gap-2 text-[14px] font-medium">
-                  {isMembership ? "Membership for" : "Player name"}
-                  <input className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]" value={form.playerName} onChange={(event) => setForm({ ...form, playerName: event.target.value })} />
-                </label>
-                <label className="grid gap-2 text-[14px] font-medium">
-                  Email
-                  <input className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
-                </label>
-                <label className="grid gap-2 text-[14px] font-medium">
-                  Phone
-                  <input className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
-                </label>
-              </div>
+              {parentAccount ? (
+                <div className="mt-8 grid gap-4 sm:grid-cols-2">
+                  <label className="grid gap-2 text-[14px] font-medium">
+                    Parent name
+                    <input
+                      readOnly
+                      className="h-12 cursor-default rounded-[5px] border border-black/10 bg-black/[0.035] px-4 text-[16px] text-black/70"
+                      value={form.parentName}
+                    />
+                  </label>
+                  <label className="grid gap-2 text-[14px] font-medium">
+                    {isMembership ? "Membership for" : "Player name"}
+                    <input
+                      readOnly
+                      className="h-12 cursor-default rounded-[5px] border border-black/10 bg-black/[0.035] px-4 text-[16px] text-black/70"
+                      value={form.playerName}
+                    />
+                  </label>
+                  <label className="grid gap-2 text-[14px] font-medium">
+                    Email
+                    <input
+                      readOnly
+                      className="h-12 cursor-default rounded-[5px] border border-black/10 bg-black/[0.035] px-4 text-[16px] text-black/70"
+                      value={form.email}
+                    />
+                  </label>
+                  <label className="grid gap-2 text-[14px] font-medium">
+                    Phone
+                    <input
+                      readOnly
+                      className="h-12 cursor-default rounded-[5px] border border-black/10 bg-black/[0.035] px-4 text-[16px] text-black/70"
+                      value={form.phone}
+                    />
+                  </label>
+                </div>
+              ) : (
+                <div className="mt-8 rounded-[8px] border border-dashed border-black/15 bg-black/[0.03] px-5 py-5 text-[15px] leading-6 text-black/60">
+                  Sign in or create a parent account to auto-fill these booking details.
+                </div>
+              )}
             </div>
           ) : null}
 
