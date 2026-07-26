@@ -2809,6 +2809,17 @@ function normalizeMembershipCancelRequestRow(row: BookingMembershipCancelRequest
   };
 }
 
+function paymentDescriptionLabel(payment: BillingPayment) {
+  const description = payment.description?.trim();
+  if (!description) return "Stripe payment";
+
+  if (/\[membership:[^\]]+\]/i.test(description) || /^Cancellation requested\.?/i.test(description)) {
+    return "Membership cancellation requested";
+  }
+
+  return description.replace(/\[membership:[^\]]+\]\s*/gi, "").trim() || "Stripe payment";
+}
+
 type MembershipCreditSettingsSource =
   | Pick<Service, "membershipCreditsPerDay" | "membershipCreditLimitPeriod" | "membershipCreditScope" | "membershipEligibleServiceIds">
   | null
@@ -13281,7 +13292,7 @@ function CustomerDetailView({
                   <div key={payment.id} className="grid gap-3 px-5 py-4 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-center">
                     <div className="min-w-0">
                       <div className="text-[14px] font-medium text-black">
-                        {payment.description || "Stripe payment"}
+                        {paymentDescriptionLabel(payment)}
                       </div>
                       <div className="mt-1 text-[13px] text-black/55">
                         {paymentDateLabel(payment.processedAt || payment.createdAt)}
