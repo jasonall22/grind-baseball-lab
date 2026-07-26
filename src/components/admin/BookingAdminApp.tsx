@@ -8843,6 +8843,15 @@ function CalendarView({
   } | null>(null);
   const dragClickGuardRef = useRef(false);
   const slotSelectionClickGuardRef = useRef(false);
+  const slotLongPressRef = useRef<{
+    timer: number;
+    pointerId: number;
+    pointerType: string;
+    resource: string;
+    element: HTMLElement;
+    startClientY: number;
+    currentClientY: number;
+  } | null>(null);
   const dateInputRef = useRef<HTMLInputElement | null>(null);
   const mobileDayScrollRef = useRef<HTMLDivElement | null>(null);
   const desktopDayScrollRef = useRef<HTMLDivElement | null>(null);
@@ -9045,6 +9054,12 @@ function CalendarView({
     };
   }, [slotSelection]);
 
+  useEffect(() => {
+    return () => {
+      cancelSlotLongPress();
+    };
+  }, []);
+
   function openDatePicker() {
     setVisibleDatePickerMonth(startOfMonth(parseLocalDate(activeDate)));
     setShowDatePicker(true);
@@ -9177,26 +9192,28 @@ function CalendarView({
     return { start, end };
   }
 
-  function startSlotSelection(
-    event: React.PointerEvent<HTMLElement>,
-    resource: string,
-    segmentStart: number,
-    segmentEnd: number
-  ) {
-    if (event.button !== 0 || dragBookingId) return;
+  function cancelSlotLongPress() {
+    if (!slotLongPressRef.current) return;
 
-    event.preventDefault();
-    event.currentTarget.setPointerCapture?.(event.pointerId);
+    window.clearTimeout(slotLongPressRef.current.timer);
+    slotLongPressRef.current = null;
+    slotSelectionClickGuardRef.current = true;
+    window.setTimeout(() => {
+      slotSelectionClickGuardRef.current = false;
+    }, 200);
+  }
 
-    const columnElement = calendarColumnFromElement(event.currentTarget);
+  function beginSlotSelection(element: HTMLElement, clientY: number, resource: string) {
+    const columnElement = calendarColumnFromElement(element);
     const startMinutes = slotStartFromClientY(
       columnElement,
-      event.clientY,
+      clientY,
       visibleCalendarRange.start,
       visibleCalendarRange.end
     );
     const bounds = availableSelectionBounds(resource, startMinutes);
     const boundedStart = Math.max(bounds.start, Math.min(Math.max(bounds.start, bounds.end - 30), startMinutes));
+
     setSlotSelection({
       resource,
       anchorStart: boundedStart,
@@ -9209,32 +9226,83 @@ function CalendarView({
     });
   }
 
+  function startSlotSelection(
+    event: React.PointerEvent<HTMLElement>,
+    resource: string,
+    segmentStart: number,
+    segmentEnd: number
+  ) {
+    if (event.button !== 0 || dragBookingId) return;
+
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+
+    if (event.pointerType === "touch" || event.pointerType === "pen") {
+      cancelSlotLongPress();
+      const element = event.currentTarget;
+      const pointerId = event.pointerId;
+      const startClientY = event.clientY;
+      slotLongPressRef.current = {
+        timer: window.setTimeout(() => {
+          const pending = slotLongPressRef.current;
+          if (!pending || pending.pointerId !== pointerId) return;
+
+          beginSlotSelection(pending.element, pending.startClientY, pending.resource);
+          updateSlotSelectionFromElement(pending.element, pending.currentClientY, pending.resource);
+          slotLongPressRef.current = null;
+        }, 1000),
+        pointerId,
+        pointerType: event.pointerType,
+        resource,
+        element,
+        startClientY,
+        currentClientY: event.clientY,
+      };
+      return;
+    }
+
+    beginSlotSelection(event.currentTarget, event.clientY, resource);
+  }
+
+  function updateSlotSelectionFromElement(element: HTMLElement, clientY: number, resource: string) {
+    setSlotSelection((current) => {
+      if (!current || current.resource !== resource || dragBookingId) return current;
+
+      const columnElement = calendarColumnFromElement(element);
+      const boundaryMinutes = slotBoundaryFromClientY(
+        columnElement,
+        clientY,
+        visibleCalendarRange.start,
+        visibleCalendarRange.end
+      );
+      const range = slotSelectionRange(current, boundaryMinutes);
+
+      return {
+        ...current,
+        ...range,
+        hasDragged:
+          current.hasDragged ||
+          range.start !== current.anchorStart ||
+          range.end !== current.anchorEnd,
+      };
+    });
+  }
+
   function updateSlotSelection(
     event: React.PointerEvent<HTMLElement>,
     resource: string,
     segmentStart: number,
     segmentEnd: number
   ) {
+    if (slotLongPressRef.current?.pointerId === event.pointerId) {
+      slotLongPressRef.current.currentClientY = event.clientY;
+    }
+
     if (!slotSelection || slotSelection.resource !== resource || dragBookingId) return;
 
     event.preventDefault();
 
-    const columnElement = calendarColumnFromElement(event.currentTarget);
-    const boundaryMinutes = slotBoundaryFromClientY(
-      columnElement,
-      event.clientY,
-      visibleCalendarRange.start,
-      visibleCalendarRange.end
-    );
-    const range = slotSelectionRange(slotSelection, boundaryMinutes);
-    setSlotSelection({
-      ...slotSelection,
-      ...range,
-      hasDragged:
-        slotSelection.hasDragged ||
-        range.start !== slotSelection.anchorStart ||
-        range.end !== slotSelection.anchorEnd,
-    });
+    updateSlotSelectionFromElement(event.currentTarget, event.clientY, resource);
   }
 
   function finishSlotSelection(
@@ -9243,6 +9311,12 @@ function CalendarView({
     segmentStart: number,
     segmentEnd: number
   ) {
+    if (slotLongPressRef.current?.pointerId === event.pointerId) {
+      cancelSlotLongPress();
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+      return;
+    }
+
     if (!slotSelection || slotSelection.resource !== resource || dragBookingId) return;
 
     event.preventDefault();
@@ -9722,6 +9796,7 @@ function CalendarView({
                                 onPointerMove={(event) => updateSlotSelection(event, resource, renderedStart, renderedEnd)}
                                 onPointerEnter={(event) => updateSlotSelection(event, resource, renderedStart, renderedEnd)}
                                 onPointerUp={(event) => finishSlotSelection(event, resource, renderedStart, renderedEnd)}
+                                onPointerCancel={cancelSlotLongPress}
                                 onDragOver={(event) => handleSlotDragOver(event, resource, renderedStart)}
                                 onDragLeave={() => handleSlotDragLeave(resource, renderedStart)}
                                 onDrop={(event) => void handleSlotDrop(event, resource, renderedStart, renderedEnd)}
@@ -9960,6 +10035,7 @@ function CalendarView({
                               onPointerMove={(event) => updateSlotSelection(event, resource, renderedStart, renderedEnd)}
                               onPointerEnter={(event) => updateSlotSelection(event, resource, renderedStart, renderedEnd)}
                               onPointerUp={(event) => finishSlotSelection(event, resource, renderedStart, renderedEnd)}
+                              onPointerCancel={cancelSlotLongPress}
                               onDragOver={(event) => handleSlotDragOver(event, resource, renderedStart)}
                               onDragLeave={() => handleSlotDragLeave(resource, renderedStart)}
                               onDrop={(event) => void handleSlotDrop(event, resource, renderedStart, renderedEnd)}
