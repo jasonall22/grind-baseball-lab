@@ -10194,7 +10194,7 @@ function CalendarView({
                                 </>
                               ) : null}
                               {isDesktopUnpaid ? (
-                                <Icon name="dollar-off" className="absolute right-[5px] top-[5px] h-6 w-6 text-white" />
+                                <Icon name="dollar-off" className="absolute right-[7px] top-[6px] h-5 w-5 text-white" />
                               ) : null}
                               </div>
                             ) : null}
