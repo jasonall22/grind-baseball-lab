@@ -11454,9 +11454,9 @@ function FamilyMemberModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/45 p-4">
-      <div className="w-full max-w-[604px] overflow-visible rounded-xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-black/10 px-6 py-5">
+    <div className="fixed inset-0 z-[90] flex items-start justify-center bg-black/45 p-3 sm:items-center sm:p-4">
+      <div className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-[520px] flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className="flex shrink-0 items-center justify-between border-b border-black/10 px-5 py-4">
           <h3 className="text-[18px] font-medium text-black">{initialMember ? "Edit Member" : "Add Member"}</h3>
           <button
             type="button"
@@ -11468,8 +11468,8 @@ function FamilyMemberModal({
           </button>
         </div>
 
-        <div className="px-6 py-5">
-          <div className="flex flex-col items-center pb-4">
+        <div className="min-h-0 overflow-y-auto px-5 py-4">
+          <div className="flex flex-col items-center pb-3">
             <input
               ref={photoInputRef}
               type="file"
@@ -11481,16 +11481,16 @@ function FamilyMemberModal({
                 event.currentTarget.value = "";
               }}
             />
-            <PhotoUploadAvatar preview={photoPreview} onPick={() => photoInputRef.current?.click()} />
+            <PhotoUploadAvatar preview={photoPreview} onPick={() => photoInputRef.current?.click()} size="compact" />
           </div>
 
-          <div className="grid gap-5">
+          <div className="grid gap-4">
             <label className="grid gap-2">
               <span className="text-sm font-medium text-black/85">First Name</span>
               <input
                 value={firstName}
                 onChange={(event) => setFirstName(event.target.value)}
-                className="min-h-11 rounded-md border border-black/15 px-4 text-[15px] outline-none"
+                className="min-h-10 rounded-md border border-black/15 px-4 text-[15px] outline-none"
               />
             </label>
 
@@ -11499,7 +11499,7 @@ function FamilyMemberModal({
               <input
                 value={lastName}
                 onChange={(event) => setLastName(event.target.value)}
-                className="min-h-11 rounded-md border border-black/15 px-4 text-[15px] outline-none"
+                className="min-h-10 rounded-md border border-black/15 px-4 text-[15px] outline-none"
               />
             </label>
 
@@ -11508,7 +11508,7 @@ function FamilyMemberModal({
               <select
                 value={relationship}
                 onChange={(event) => setRelationship(event.target.value)}
-                className="min-h-11 rounded-md border border-black/15 px-4 text-[15px] outline-none"
+                className="min-h-10 rounded-md border border-black/15 px-4 text-[15px] outline-none"
               >
                 {["Unspecified", "Child", "Parent", "Sibling", "Spouse", "Guardian", "Relative"].map((option) => (
                   <option key={option} value={option}>
@@ -11523,7 +11523,7 @@ function FamilyMemberModal({
               <select
                 value={gender}
                 onChange={(event) => setGender(event.target.value)}
-                className="min-h-11 rounded-md border border-black/15 px-4 text-[15px] outline-none"
+                className="min-h-10 rounded-md border border-black/15 px-4 text-[15px] outline-none"
               >
                 {["Unspecified", "Male", "Female", "Non-binary"].map((option) => (
                   <option key={option} value={option}>
@@ -11542,7 +11542,7 @@ function FamilyMemberModal({
                   placeholder="MM/DD/YYYY"
                   inputMode="numeric"
                   maxLength={10}
-                  className="min-h-11 w-full rounded-md border border-black/15 px-4 pr-11 text-[15px] outline-none"
+                  className="min-h-10 w-full rounded-md border border-black/15 px-4 pr-11 text-[15px] outline-none"
                 />
                 <button
                   type="button"
@@ -11678,7 +11678,7 @@ function FamilyMemberModal({
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-4 border-t border-black/10 px-6 py-4">
+        <div className="flex shrink-0 items-center justify-end gap-4 border-t border-black/10 px-5 py-3">
           <button type="button" onClick={onClose} className="text-[15px] font-medium text-black/65">
             Cancel
           </button>
