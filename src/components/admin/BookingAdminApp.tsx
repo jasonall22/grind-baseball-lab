@@ -3029,6 +3029,12 @@ function familyMemberDisplayName(member: FamilyMember) {
   return `${member.firstName} ${member.lastName}`.trim();
 }
 
+function isCustomerSelfFamilyMember(member: FamilyMember, customer: Customer) {
+  const memberName = normalizedPersonName(familyMemberDisplayName(member));
+  const customerName = normalizedPersonName(customer.name);
+  return Boolean(memberName && customerName && memberName === customerName);
+}
+
 function membershipRecordsForBookingCustomer(
   customerMembershipsByCustomerId: Record<string, CustomerMembershipRecord[]>,
   customers: Customer[],
@@ -12102,13 +12108,14 @@ function CustomerDetailView({
   const birthDate = customerBirthDate(customer);
   const age = calculateAge(customer.birthYear, customer.birthMonth, customer.birthDay);
   const familyMembers = customer.familyMembers;
+  const visibleFamilyMembers = familyMembers.filter((member) => !isCustomerSelfFamilyMember(member, customer));
   const primaryPlayerLabel =
     customer.player.trim() && customer.player.trim() !== customer.name.trim() ? customer.player.trim() : "";
   const relatedKidNames = Array.from(
     new Set(
       [
         primaryPlayerLabel,
-        ...familyMembers
+        ...visibleFamilyMembers
           .map((member) => `${member.firstName} ${member.lastName}`.trim())
           .filter(Boolean),
       ].filter(Boolean)
@@ -12353,9 +12360,13 @@ function CustomerDetailView({
   }
 
   async function saveFamilyMembers(nextFamilyMembers: FamilyMember[], message: string) {
+    const sanitizedFamilyMembers = nextFamilyMembers.filter(
+      (member) => !isCustomerSelfFamilyMember(member, currentCustomer)
+    );
+
     return saveCustomerPatch(
       {
-        familyMembers: nextFamilyMembers,
+        familyMembers: sanitizedFamilyMembers,
       },
       message
     );
@@ -13006,9 +13017,9 @@ function CustomerDetailView({
               </button>
             }
           >
-            {familyMembers.length ? (
+            {visibleFamilyMembers.length ? (
               <div className="divide-y divide-black/10">
-                {familyMembers.map((member) => {
+                {visibleFamilyMembers.map((member) => {
                   const memberName = [member.firstName, member.lastName].filter(Boolean).join(" ");
                   const memberMeta = [
                     member.gender !== "Unspecified" ? member.gender : "",
@@ -13039,7 +13050,7 @@ function CustomerDetailView({
                           label="Delete"
                           onClick={() => {
                             void saveFamilyMembers(
-                              familyMembers.filter((item) => item.id !== member.id),
+                              visibleFamilyMembers.filter((item) => item.id !== member.id),
                               "Family member removed."
                             );
                           }}
@@ -13855,8 +13866,8 @@ function CustomerDetailView({
           }}
           onSave={async (member) => {
             const nextFamilyMembers = editingFamilyMember
-              ? familyMembers.map((item) => (item.id === member.id ? member : item))
-              : [...familyMembers, member];
+              ? visibleFamilyMembers.map((item) => (item.id === member.id ? member : item))
+              : [...visibleFamilyMembers, member];
             const saved = await saveFamilyMembers(
               nextFamilyMembers,
               editingFamilyMember ? "Family member updated." : "Family member added."
