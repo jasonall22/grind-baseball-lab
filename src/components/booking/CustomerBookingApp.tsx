@@ -46,8 +46,12 @@ type ParentAccount = {
   playerName: string;
   playerAge?: string;
   playerBirthDate?: string;
+  gender?: string;
   email: string;
   phone: string;
+  emergencyContactName?: string;
+  emergencyContactEmail?: string;
+  emergencyContactPhone?: string;
   familyMembers?: FamilyMember[];
   waiverAgreed?: boolean;
   isAdmin?: boolean;
@@ -115,6 +119,10 @@ type AccountForm = {
   playerFirstName: string;
   playerLastName: string;
   playerBirthDate: string;
+  gender: string;
+  emergencyContactName: string;
+  emergencyContactEmail: string;
+  emergencyContactPhone: string;
   waiverAgreed: boolean;
 };
 type SignInForm = {
@@ -138,6 +146,10 @@ const emptyAccountForm: AccountForm = {
   playerFirstName: "",
   playerLastName: "",
   playerBirthDate: "",
+  gender: "",
+  emergencyContactName: "",
+  emergencyContactEmail: "",
+  emergencyContactPhone: "",
   waiverAgreed: false,
 };
 
@@ -1324,14 +1336,35 @@ function ParentAccountModal({
                 className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
               />
             </label>
+            <label className="grid gap-2 text-[14px] font-medium">
+              DOB
+              <input
+                type="date"
+                value={form.playerBirthDate}
+                onChange={(event) => setForm((current) => ({ ...current, playerBirthDate: event.target.value }))}
+                className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
+              />
+            </label>
+            <label className="grid gap-2 text-[14px] font-medium">
+              Gender
+              <select
+                value={form.gender}
+                onChange={(event) => setForm((current) => ({ ...current, gender: event.target.value }))}
+                className="h-12 rounded-[5px] border border-black/20 bg-white px-4 text-[16px]"
+              >
+                <option value="">Select</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+              </select>
+            </label>
           </div>
 
           <div className="mt-8 border-t border-black/10 pt-6">
-            <div className="text-[18px] font-semibold">Player (optional)</div>
+            <div className="text-[18px] font-semibold">Player name (optional)</div>
             <p className="mt-2 text-[14px] leading-6 text-black/60">
               Leave this blank if the account holder is booking for themselves.
             </p>
-            <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_1fr_160px]">
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <label className="grid gap-2 text-[14px] font-medium">
                 First name
                 <input
@@ -1348,12 +1381,34 @@ function ParentAccountModal({
                   className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
                 />
               </label>
+            </div>
+          </div>
+
+          <div className="mt-8 border-t border-black/10 pt-6">
+            <div className="text-[18px] font-semibold">Emergency Contact</div>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <label className="grid gap-2 text-[14px] font-medium">
-                DOB
+                Name
                 <input
-                  type="date"
-                  value={form.playerBirthDate}
-                  onChange={(event) => setForm((current) => ({ ...current, playerBirthDate: event.target.value }))}
+                  value={form.emergencyContactName}
+                  onChange={(event) => setForm((current) => ({ ...current, emergencyContactName: event.target.value }))}
+                  className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
+                />
+              </label>
+              <label className="grid gap-2 text-[14px] font-medium">
+                Phone
+                <input
+                  value={form.emergencyContactPhone}
+                  onChange={(event) => setForm((current) => ({ ...current, emergencyContactPhone: event.target.value }))}
+                  className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
+                />
+              </label>
+              <label className="grid gap-2 text-[14px] font-medium sm:col-span-2">
+                Email <span className="text-black/45">(optional)</span>
+                <input
+                  type="email"
+                  value={form.emergencyContactEmail}
+                  onChange={(event) => setForm((current) => ({ ...current, emergencyContactEmail: event.target.value }))}
                   className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
                 />
               </label>
@@ -2331,6 +2386,18 @@ export default function CustomerBookingApp() {
       const playerName = fullName(accountForm.playerFirstName, accountForm.playerLastName) || parentName;
       const playerFirstName = accountForm.playerFirstName.trim() || accountForm.parentFirstName.trim();
       const playerLastName = accountForm.playerLastName.trim() || accountForm.parentLastName.trim();
+      if (!accountForm.playerBirthDate) {
+        setAccountStatus("Enter the DOB.");
+        return;
+      }
+      if (!accountForm.gender) {
+        setAccountStatus("Select Male or Female.");
+        return;
+      }
+      if (!accountForm.emergencyContactName.trim() || !accountForm.emergencyContactPhone.trim()) {
+        setAccountStatus("Enter an emergency contact name and phone.");
+        return;
+      }
       if (data.settings.waiverEnabled && !accountForm.waiverAgreed) {
         setAccountStatus("Please agree to the liability waiver before creating an account.");
         return;

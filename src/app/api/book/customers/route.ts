@@ -46,9 +46,13 @@ type CreateCustomerBody = {
   playerName?: string;
   playerAge?: string;
   playerBirthDate?: string;
+  gender?: string;
   email?: string;
   phone?: string;
   password?: string;
+  emergencyContactName?: string;
+  emergencyContactEmail?: string;
+  emergencyContactPhone?: string;
   familyMembers?: unknown;
   waiverAgreed?: boolean;
 };
@@ -187,7 +191,7 @@ export async function GET(req: Request) {
     const isAdmin = clean((profileResult.data as { role?: string } | null)?.role) === "admin";
     const customerResult = await supabase
       .from("booking_customers")
-      .select("id,parent_name,player_name,email,phone,age,birth_year,birth_month,birth_day,family_members,waiver_agreed")
+      .select("id,parent_name,player_name,email,phone,age,birth_year,birth_month,birth_day,gender,emergency_contact_name,emergency_contact_email,emergency_contact_phone,family_members,waiver_agreed")
       .eq("email", email)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -206,6 +210,10 @@ export async function GET(req: Request) {
           birth_year?: number | null;
           birth_month?: number | null;
           birth_day?: number | null;
+          gender?: string | null;
+          emergency_contact_name?: string | null;
+          emergency_contact_email?: string | null;
+          emergency_contact_phone?: string | null;
           family_members?: unknown;
           waiver_agreed?: boolean | null;
         }
@@ -357,8 +365,12 @@ export async function GET(req: Request) {
         playerName: clean(customer?.player_name),
         playerAge: customer?.age === null || customer?.age === undefined ? "" : String(customer.age),
         playerBirthDate: formatBirthDate(customer?.birth_year, customer?.birth_month, customer?.birth_day),
+        gender: clean(customer?.gender),
         email,
         phone: clean(customer?.phone),
+        emergencyContactName: clean(customer?.emergency_contact_name),
+        emergencyContactEmail: clean(customer?.emergency_contact_email),
+        emergencyContactPhone: clean(customer?.emergency_contact_phone),
         familyMembers: normalizeFamilyMembers(customer?.family_members),
         waiverAgreed: Boolean(customer?.waiver_agreed),
         isAdmin,
@@ -386,16 +398,22 @@ export async function POST(req: Request) {
     const birthDateParts = parseBirthDateParts(body.playerBirthDate);
     const legacyPlayerAge = clean(body.playerAge);
     const ageValue = birthDateParts.age ?? (legacyPlayerAge ? Number.parseInt(legacyPlayerAge, 10) : null);
+    const gender = clean(body.gender);
     const email = clean(body.email).toLowerCase();
     const phone = clean(body.phone);
     const password = String(body.password ?? "");
+    const emergencyContactName = clean(body.emergencyContactName);
+    const emergencyContactEmail = clean(body.emergencyContactEmail).toLowerCase();
+    const emergencyContactPhone = clean(body.emergencyContactPhone);
     const familyMembers = normalizeFamilyMembers(body.familyMembers);
 
     if (!parentName) return badRequest("Enter the account holder name.");
+    if (!birthDateParts.birthDate) return badRequest("Enter a valid DOB.");
+    if (!["Male", "Female"].includes(gender)) return badRequest("Select Male or Female.");
     if (!email || !email.includes("@")) return badRequest("Enter a valid email.");
     if (password.length < 6) return badRequest("Password must be at least 6 characters.");
-    if (body.playerBirthDate && !birthDateParts.birthDate) return badRequest("Enter a valid player DOB.");
-    if (ageValue !== null && (!Number.isFinite(ageValue) || ageValue < 0)) return badRequest("Enter a valid player DOB.");
+    if (ageValue !== null && (!Number.isFinite(ageValue) || ageValue < 0)) return badRequest("Enter a valid DOB.");
+    if (!emergencyContactName || !emergencyContactPhone) return badRequest("Enter an emergency contact name and phone.");
 
     const supabase = getSupabaseAdmin() as unknown as CustomerSupabaseClient;
     if ((await waiverIsRequired(supabase)) && body.waiverAgreed !== true) {
@@ -456,6 +474,10 @@ export async function POST(req: Request) {
       birth_year: birthDateParts.year,
       birth_month: birthDateParts.month,
       birth_day: birthDateParts.day,
+      gender,
+      emergency_contact_name: emergencyContactName,
+      emergency_contact_email: emergencyContactEmail || null,
+      emergency_contact_phone: emergencyContactPhone,
       family_members: savedFamilyMembers,
       waiver_agreed: Boolean(body.waiverAgreed),
       notes: "Created from public parent account signup.",
@@ -474,8 +496,12 @@ export async function POST(req: Request) {
         playerName,
         playerAge: ageValue === null ? "" : String(ageValue),
         playerBirthDate: birthDateParts.birthDate,
+        gender,
         email,
         phone,
+        emergencyContactName,
+        emergencyContactEmail,
+        emergencyContactPhone,
         familyMembers: savedFamilyMembers,
         waiverAgreed: Boolean(body.waiverAgreed),
       },
@@ -519,7 +545,7 @@ export async function PATCH(req: Request) {
       .from("booking_customers")
       .update(patch)
       .eq("id", customer.id)
-      .select("id,parent_name,player_name,email,phone,age,birth_year,birth_month,birth_day,family_members,waiver_agreed")
+      .select("id,parent_name,player_name,email,phone,age,birth_year,birth_month,birth_day,gender,emergency_contact_name,emergency_contact_email,emergency_contact_phone,family_members,waiver_agreed")
       .single();
 
     if (updateResult.error) throw updateResult.error;
@@ -533,6 +559,10 @@ export async function PATCH(req: Request) {
       birth_year?: number | null;
       birth_month?: number | null;
       birth_day?: number | null;
+      gender?: string | null;
+      emergency_contact_name?: string | null;
+      emergency_contact_email?: string | null;
+      emergency_contact_phone?: string | null;
       family_members?: unknown;
       waiver_agreed?: boolean | null;
     };
@@ -545,8 +575,12 @@ export async function PATCH(req: Request) {
         playerName: clean(updated.player_name),
         playerAge: updated.age === null || updated.age === undefined ? "" : String(updated.age),
         playerBirthDate: formatBirthDate(updated.birth_year, updated.birth_month, updated.birth_day),
+        gender: clean(updated.gender),
         email: clean(updated.email) || email,
         phone: clean(updated.phone),
+        emergencyContactName: clean(updated.emergency_contact_name),
+        emergencyContactEmail: clean(updated.emergency_contact_email),
+        emergencyContactPhone: clean(updated.emergency_contact_phone),
         familyMembers: normalizeFamilyMembers(updated.family_members),
         waiverAgreed: Boolean(updated.waiver_agreed),
       },
