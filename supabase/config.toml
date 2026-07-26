@@ -258,7 +258,7 @@ otp_expiry = 3600
 # content_path = "./supabase/templates/invite.html"
 
 [auth.email.template.recovery]
-subject = "Reset your Grind Baseball Lab password"
+subject = "{{ .Token }} is your Grind Baseball Lab reset code"
 content_path = "./supabase/templates/recovery.html"
 
 # Uncomment to customize notification email template
