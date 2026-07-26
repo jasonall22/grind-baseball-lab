@@ -3561,16 +3561,6 @@ function bookingTonePresentation(booking: Booking, service?: Service | null) {
     };
   }
 
-  if (booking.status === "Pending") {
-    return {
-      containerClass: "bg-[#d97706] text-white",
-      timeClass: "text-white/80",
-      subClass: "text-white/85",
-      borderClass: "border-black/20",
-      style: undefined,
-    };
-  }
-
   const backgroundColor = normalizeCalendarColor(service?.calendarColor ?? booking.calendarColor);
   const isLight = isLightCalendarColor(backgroundColor);
 
