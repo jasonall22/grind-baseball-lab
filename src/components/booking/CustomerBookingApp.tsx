@@ -50,6 +50,7 @@ type ParentAccount = {
   phone: string;
   familyMembers?: FamilyMember[];
   waiverAgreed?: boolean;
+  isAdmin?: boolean;
 };
 type CustomerBookingRecord = {
   id: string;
@@ -2514,6 +2515,18 @@ export default function CustomerBookingApp() {
                       <div className="text-[15px] font-semibold">{parentAccount.parentName}</div>
                       <div className="mt-1 truncate text-[13px] text-black/55">{parentAccount.email}</div>
                     </div>
+                    {parentAccount.isAdmin ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAccountMenuOpen(false);
+                          window.location.assign("/admin");
+                        }}
+                        className="block w-full border-b border-black/10 px-4 py-3 text-left text-[15px] font-semibold hover:bg-black/[0.04]"
+                      >
+                        Admin Dashboard
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       onClick={openCustomerPortal}

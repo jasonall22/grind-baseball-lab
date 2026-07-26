@@ -182,6 +182,9 @@ export async function GET(req: Request) {
 
     const user = userResult.data.user;
     const email = clean(user.email).toLowerCase();
+    const profileResult = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+    if (profileResult.error) throw profileResult.error;
+    const isAdmin = clean((profileResult.data as { role?: string } | null)?.role) === "admin";
     const customerResult = await supabase
       .from("booking_customers")
       .select("id,parent_name,player_name,email,phone,age,birth_year,birth_month,birth_day,family_members,waiver_agreed")
@@ -358,6 +361,7 @@ export async function GET(req: Request) {
         phone: clean(customer?.phone),
         familyMembers: normalizeFamilyMembers(customer?.family_members),
         waiverAgreed: Boolean(customer?.waiver_agreed),
+        isAdmin,
       },
       dashboard,
     });
