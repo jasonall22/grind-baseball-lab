@@ -300,7 +300,7 @@ type BookingPolicies = AppState["policies"];
 
 type ModalSaveChange =
   | { type: "service"; item: Service }
-  | { type: "booking"; item: Booking }
+  | { type: "booking"; item: Booking; preserveMembershipCredit?: boolean }
   | { type: "customer"; item: Customer }
   | { type: "campaign"; item: Campaign }
   | { type: "product"; item: Product };
@@ -2573,46 +2573,48 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
         throw new Error("That membership does not belong to this customer.");
       }
 
-      let creditMembershipService: MembershipCreditSettingsSource = null;
-      if (creditMembership.membershipServiceId) {
-        const membershipServiceResult = await supabase
-          .from("booking_services")
-          .select("membership_credits_per_day, membership_credit_limit_period, membership_credit_scope, membership_eligible_service_ids")
-          .eq("id", creditMembership.membershipServiceId)
-          .maybeSingle();
+      if (!change.preserveMembershipCredit) {
+        let creditMembershipService: MembershipCreditSettingsSource = null;
+        if (creditMembership.membershipServiceId) {
+          const membershipServiceResult = await supabase
+            .from("booking_services")
+            .select("membership_credits_per_day, membership_credit_limit_period, membership_credit_scope, membership_eligible_service_ids")
+            .eq("id", creditMembership.membershipServiceId)
+            .maybeSingle();
 
-        if (membershipServiceResult.error) throw membershipServiceResult.error;
-        if (membershipServiceResult.data) {
-          creditMembershipService = normalizeMembershipCreditSettingsRow(
-            membershipServiceResult.data as BookingServiceRow
+          if (membershipServiceResult.error) throw membershipServiceResult.error;
+          if (membershipServiceResult.data) {
+            creditMembershipService = normalizeMembershipCreditSettingsRow(
+              membershipServiceResult.data as BookingServiceRow
+            );
+          }
+        }
+
+        if (!membershipCanUseCredit(creditMembership, item.serviceId, item.date, creditMembershipService)) {
+          throw new Error("That membership cannot be used for this service.");
+        }
+
+        const creditSettings = membershipCreditSettings(creditMembership, creditMembershipService);
+        const creditRange = membershipCreditLimitPeriodRange(item.date, creditSettings.creditLimitPeriod);
+        const ledgerResult = await supabase
+          .from("booking_membership_credit_ledger")
+          .select("*")
+          .eq("customer_membership_id", item.membershipCreditMembershipId)
+          .gte("credit_date", creditRange.start)
+          .lte("credit_date", creditRange.end);
+
+        if (ledgerResult.error) throw ledgerResult.error;
+
+        const ledgerEntries = ((ledgerResult.data ?? []) as BookingMembershipCreditLedgerRow[]).map(
+          normalizeMembershipCreditLedgerRow
+        );
+        if (membershipCreditRemaining(creditMembership, item.date, ledgerEntries, item.id, creditMembershipService) < 1) {
+          throw new Error(
+            `That membership has no credits remaining for this ${membershipCreditLimitPeriodLabel(
+              creditSettings.creditLimitPeriod
+            )}.`
           );
         }
-      }
-
-      if (!membershipCanUseCredit(creditMembership, item.serviceId, item.date, creditMembershipService)) {
-        throw new Error("That membership cannot be used for this service.");
-      }
-
-      const creditSettings = membershipCreditSettings(creditMembership, creditMembershipService);
-      const creditRange = membershipCreditLimitPeriodRange(item.date, creditSettings.creditLimitPeriod);
-      const ledgerResult = await supabase
-        .from("booking_membership_credit_ledger")
-        .select("*")
-        .eq("customer_membership_id", item.membershipCreditMembershipId)
-        .gte("credit_date", creditRange.start)
-        .lte("credit_date", creditRange.end);
-
-      if (ledgerResult.error) throw ledgerResult.error;
-
-      const ledgerEntries = ((ledgerResult.data ?? []) as BookingMembershipCreditLedgerRow[]).map(
-        normalizeMembershipCreditLedgerRow
-      );
-      if (membershipCreditRemaining(creditMembership, item.date, ledgerEntries, item.id, creditMembershipService) < 1) {
-        throw new Error(
-          `That membership has no credits remaining for this ${membershipCreditLimitPeriodLabel(
-            creditSettings.creditLimitPeriod
-          )}.`
-        );
       }
     }
 
@@ -4963,7 +4965,10 @@ export default function BookingAdminApp({
     setState(next);
 
     try {
-      await upsertModalChange({ type: "booking", item: movedBooking }, resourceIdsByName);
+      await upsertModalChange(
+        { type: "booking", item: movedBooking, preserveMembershipCredit: Boolean(currentBooking.membershipCreditMembershipId) },
+        resourceIdsByName
+      );
       showToast("Booking moved.");
       return true;
     } catch (error) {
