@@ -8846,6 +8846,8 @@ function CalendarView({
   const desktopDayScrollRef = useRef<HTMLDivElement | null>(null);
   const mobileDayTimeTargetRef = useRef<HTMLDivElement | null>(null);
   const desktopDayTimeTargetRef = useRef<HTMLDivElement | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [visibleDatePickerMonth, setVisibleDatePickerMonth] = useState(() => startOfMonth(parseLocalDate(activeDate)));
   const dayName = weekdayName(activeDate);
   const scheduleCollection = schedules.length ? schedules : defaultState.schedules;
   const defaultSchedule =
@@ -8920,6 +8922,7 @@ function CalendarView({
     [activeDate, selectedScheduleForMobile]
   );
   const week = useMemo(() => weekDates(activeDate), [activeDate]);
+  const datePickerDays = useMemo(() => buildCalendarDays(visibleDatePickerMonth), [visibleDatePickerMonth]);
   const weekBookings = useMemo(() => {
     return week.map((date) => ({
       date,
@@ -9041,17 +9044,13 @@ function CalendarView({
   }, [slotSelection]);
 
   function openDatePicker() {
-    const input = dateInputRef.current as HTMLInputElement | null;
-    if (!input) return;
-    const pickerInput = input as HTMLInputElement & { showPicker?: () => void };
+    setVisibleDatePickerMonth(startOfMonth(parseLocalDate(activeDate)));
+    setShowDatePicker(true);
+  }
 
-    if (typeof pickerInput.showPicker === "function") {
-      pickerInput.showPicker();
-      return;
-    }
-
-    input.focus();
-    input.click();
+  function chooseCalendarDate(date: Date) {
+    onDateChange(isoDate(date));
+    setShowDatePicker(false);
   }
 
   function changeMode(next: "rooms" | "staff" | "equipment") {
@@ -9342,6 +9341,82 @@ function CalendarView({
 
   return (
     <section className="min-h-screen px-6 py-8 lg:px-7">
+      {showDatePicker ? (
+        <div
+          className="fixed inset-0 z-[95] flex items-start justify-center bg-black/35 px-4 pt-24 sm:items-center sm:pt-0"
+          onClick={() => setShowDatePicker(false)}
+        >
+          <div
+            className="w-full max-w-[340px] rounded-2xl border border-black/10 bg-white p-4 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setVisibleDatePickerMonth((current) => addMonths(current, -1))}
+                className="grid h-10 w-10 place-items-center rounded-full border border-black/10 text-black/65"
+                aria-label="Previous month"
+              >
+                <Icon name="chevron" className="h-4 w-4 rotate-90" />
+              </button>
+              <div className="text-center">
+                <div className="text-[17px] font-semibold text-black">
+                  {visibleDatePickerMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+                </div>
+                <div className="mt-0.5 text-[12px] font-medium uppercase tracking-[0.12em] text-black/40">
+                  Select date
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setVisibleDatePickerMonth((current) => addMonths(current, 1))}
+                className="grid h-10 w-10 place-items-center rounded-full border border-black/10 text-black/65"
+                aria-label="Next month"
+              >
+                <Icon name="chevron" className="h-4 w-4 -rotate-90" />
+              </button>
+            </div>
+
+            <div className="mt-5 grid grid-cols-7 text-center text-[12px] font-semibold text-black/45">
+              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+                <div key={day}>{day.slice(0, 1)}</div>
+              ))}
+            </div>
+
+            <div className="mt-3 grid grid-cols-7 gap-y-2 text-center">
+              {datePickerDays.map((day) => {
+                const value = isoDate(day.date);
+                const isSelected = value === activeDate;
+                const isToday = value === isoDate(new Date());
+
+                return (
+                  <button
+                    key={day.key}
+                    type="button"
+                    onClick={() => chooseCalendarDate(day.date)}
+                    className={[
+                      "mx-auto grid h-10 w-10 place-items-center rounded-full text-[14px] font-semibold transition",
+                      day.isCurrentMonth ? "text-black" : "text-black/25",
+                      isSelected ? "bg-black text-white" : isToday ? "border border-[#1f8fc8] text-[#1f8fc8]" : "hover:bg-black/[0.05]",
+                    ].join(" ")}
+                  >
+                    {day.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowDatePicker(false)}
+              className="mt-5 w-full rounded-xl border border-black/10 px-4 py-3 text-[15px] font-semibold text-black"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="mb-1 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex shrink-0 flex-nowrap items-center gap-2">
           <CalendarToolbarButton label="Today" onClick={() => onDateChange(isoDate(new Date()))} />
