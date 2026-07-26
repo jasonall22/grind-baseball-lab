@@ -1615,6 +1615,25 @@ export default function CustomerBookingApp() {
     return () => subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    const currentUrl = new URL(window.location.href);
+    const hashParams = new URLSearchParams(currentUrl.hash.replace(/^#/, ""));
+    const errorCode = currentUrl.searchParams.get("error_code") || hashParams.get("error_code");
+    const errorDescription = currentUrl.searchParams.get("error_description") || hashParams.get("error_description");
+
+    if (!errorCode && !errorDescription) return;
+
+    const isExpiredResetLink = errorCode === "otp_expired" || errorDescription?.toLowerCase().includes("expired");
+    setShowPasswordResetModal(false);
+    setShowSignInModal(true);
+    setSignInStatus(
+      isExpiredResetLink
+        ? "That password reset link is invalid or expired. Enter your email and tap Forgot password to send a fresh link."
+        : errorDescription || "We could not complete that sign-in link. Please try again."
+    );
+    window.history.replaceState(null, "", currentUrl.pathname);
+  }, []);
+
   const selectedService = useMemo(
     () => data.services.find((service) => service.id === selectedServiceId) ?? null,
     [data.services, selectedServiceId]
