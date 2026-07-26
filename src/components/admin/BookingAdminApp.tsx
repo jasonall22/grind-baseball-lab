@@ -9043,7 +9043,15 @@ function CalendarView({
   function openDatePicker() {
     const input = dateInputRef.current as HTMLInputElement | null;
     if (!input) return;
-    (input as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+    const pickerInput = input as HTMLInputElement & { showPicker?: () => void };
+
+    if (typeof pickerInput.showPicker === "function") {
+      pickerInput.showPicker();
+      return;
+    }
+
+    input.focus();
+    input.click();
   }
 
   function changeMode(next: "rooms" | "staff" | "equipment") {
