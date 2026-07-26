@@ -711,7 +711,14 @@ function ModalShell({
   );
 }
 
+function customerBookingStatusLabel(status: string) {
+  if (!status || status === "Pending" || status === "Confirmed") return "";
+  return status;
+}
+
 function BookingSummaryCard({ booking }: { booking: CustomerBookingRecord }) {
+  const statusLabel = customerBookingStatusLabel(booking.status);
+
   return (
     <div className="rounded-[8px] border border-black/10 bg-white px-4 py-4 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -719,7 +726,7 @@ function BookingSummaryCard({ booking }: { booking: CustomerBookingRecord }) {
           <div className="text-[17px] font-semibold">{booking.serviceName}</div>
           <div className="mt-1 text-[14px] text-black/55">{booking.playerName || "Player"}</div>
         </div>
-        <span className="rounded-full bg-black/[0.06] px-3 py-1 text-[12px] font-semibold text-black/65">{booking.status}</span>
+        {statusLabel ? <span className="rounded-full bg-black/[0.06] px-3 py-1 text-[12px] font-semibold text-black/65">{statusLabel}</span> : null}
       </div>
       <div className="mt-4 grid gap-2 text-[14px] text-black/65 sm:grid-cols-2">
         <div>{formatLongDate(booking.date)}</div>
