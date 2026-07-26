@@ -1636,6 +1636,8 @@ type IconName =
   | "file"
   | "table"
   | "check"
+  | "dollar"
+  | "dollar-off"
   | "camera"
   | "search"
   | "chevron"
@@ -1675,6 +1677,8 @@ const iconPaths: Record<IconName, string[]> = {
   file: ["M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z", "M14 2v6h6"],
   table: ["M4 6h16", "M4 12h16", "M4 18h16", "M8 4v16", "M16 4v16"],
   check: ["M5 12.5 10 17l9-10"],
+  dollar: ["M12 3v18", "M17 7.5A6.5 6.5 0 0 0 12 5c-3 0-5 1.3-5 3s1.1 2.8 5 3.2c3.9.6 5 1.7 5 3.3s-2 3-5 3a7 7 0 0 1-5.5-2"],
+  "dollar-off": ["M4 4l16 16", "M12 3v3.5", "M12 17.5V21", "M17 7.5A6.5 6.5 0 0 0 12 5c-1.1 0-2.1.2-2.9.5", "M7.2 9.4c.5 1 1.8 1.6 4.8 2.1", "M14.8 12.9c1.6.7 2.2 1.6 2.2 2.6 0 1.7-2 3-5 3-2.2 0-4-.6-5.5-2"],
   camera: ["M4 7h3l1.4-2h7.2L17 7h3v12H4Z", "M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"],
   search: ["M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z", "m21 21-4.3-4.3"],
   chevron: ["m9 18 6-6-6-6"],
@@ -3825,6 +3829,15 @@ function splitName(value: string) {
 
 function joinName(first: string, last: string) {
   return [first.trim(), last.trim()].filter(Boolean).join(" ");
+}
+
+function initialsFromName(value: string, fallback = "CU") {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return fallback;
+  return parts
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
 }
 
 function normalizeCsvHeader(value: string) {
@@ -10136,7 +10149,6 @@ function CalendarView({
                         const service = servicesById.get(booking.serviceId);
                         const statusBadge = bookingStatusBadge(booking);
                         const tone = bookingTonePresentation(booking, service);
-                        const paymentIndicator = bookingPaymentIndicator(booking);
                         const durationMinutes = Math.max(30, segment.end - segment.start);
                         const isCompactBooking = durationMinutes <= 30;
                         const desktopStatusBadge = isCompactBooking ? null : statusBadge;
@@ -10153,6 +10165,10 @@ function CalendarView({
                           isCompactBooking && !isUnavailableBlock && coachName
                             ? `${bookingSubtitle} - ${coachName}`
                             : bookingSubtitle;
+                        const isDesktopPaid = !isUnavailableBlock && (booking.paid || booking.paidByMembershipCredit);
+                        const isDesktopUnpaid = !isUnavailableBlock && !isDesktopPaid && booking.status !== "Cancelled";
+                        const desktopInitials = initialsFromName(customer?.name || bookingTitle);
+                        const textPaddingClass = isDesktopPaid ? "pr-14" : isCompactBooking ? "pr-7" : "pr-16";
 
                         return (
                           <button
@@ -10167,14 +10183,14 @@ function CalendarView({
                             } ${isDraggingBooking ? "cursor-grabbing opacity-60 ring-2 ring-black ring-offset-2" : "cursor-grab"}`}
                             style={{ top, height, ...tone.style }}
                           >
-                            <div className={isCompactBooking ? "pr-7" : "pr-16"}>
+                            <div className={textPaddingClass}>
                               <div
                                 className={`truncate ${isCompactBooking ? "text-[10px]" : "text-[10px]"} ${tone.timeClass} font-semibold leading-none`}
                               >
                                 {timeLabel(minutesToTime(segment.start))} - {timeLabel(minutesToTime(segment.end))}
                               </div>
                             </div>
-                            {desktopStatusBadge || paymentIndicator ? (
+                            {desktopStatusBadge || isDesktopPaid || isDesktopUnpaid ? (
                               <div className={`absolute right-1 top-1 flex items-center ${isCompactBooking ? "gap-0.5" : "gap-1"}`}>
                               {desktopStatusBadge ? (
                                 <span
@@ -10183,18 +10199,27 @@ function CalendarView({
                                   {desktopStatusBadge.label}
                                 </span>
                               ) : null}
-                              {paymentIndicator ? (
-                                <span
-                                  title={paymentIndicator.label}
-                                  className={`grid ${isCompactBooking ? "h-4 w-4" : "h-5 w-5"} shrink-0 place-items-center rounded-full ${paymentIndicator.className}`}
-                                >
-                                  <Icon name={paymentIndicator.icon} className={isCompactBooking ? "h-2.5 w-2.5" : "h-3 w-3"} />
-                                </span>
+                              {isDesktopPaid ? (
+                                <>
+                                  <Icon name="dollar" className="mt-3 h-4 w-4 shrink-0 text-white" />
+                                  <span
+                                    title="Paid"
+                                    className="absolute right-6 top-[-2px] grid h-4 w-4 shrink-0 place-items-center rounded-full bg-[#23994a] text-white ring-1 ring-white/55"
+                                  >
+                                    <Icon name="check" className="h-2.5 w-2.5" />
+                                  </span>
+                                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-black/45 bg-[#e5e7eb] text-[10px] font-semibold text-black">
+                                    {desktopInitials}
+                                  </span>
+                                </>
+                              ) : null}
+                              {isDesktopUnpaid ? (
+                                <Icon name="dollar-off" className="mt-2 h-5 w-5 shrink-0 text-white" />
                               ) : null}
                               </div>
                             ) : null}
                             <div
-                              className={`truncate font-semibold ${isCompactBooking ? "pr-7" : "pr-16"} ${
+                              className={`truncate font-semibold ${textPaddingClass} ${
                                 isCompactBooking ? "-mt-[1px] text-[13px] leading-[1.05]" : "mt-1 text-[15px] leading-none"
                               }`}
                             >
@@ -10202,7 +10227,7 @@ function CalendarView({
                             </div>
                             {isCompactBooking && isUnavailableBlock ? null : (
                               <div
-                                className={`truncate font-medium ${tone.subClass} ${isCompactBooking ? "pr-7" : "pr-16"} ${
+                                className={`truncate font-medium ${tone.subClass} ${textPaddingClass} ${
                                   isCompactBooking ? "-mt-[1px] text-[10px] leading-[1.05]" : "mt-0.5 text-[11px] leading-none"
                                 }`}
                               >
