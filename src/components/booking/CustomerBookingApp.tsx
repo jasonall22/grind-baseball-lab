@@ -38,6 +38,7 @@ type FamilyMember = {
   lastName: string;
   name: string;
   birthDate: string;
+  gender?: string;
   age?: string;
 };
 type ParentAccount = {
@@ -135,6 +136,13 @@ type ResetPasswordForm = {
   password: string;
   confirmPassword: string;
 };
+type ChildForm = {
+  firstName: string;
+  lastName: string;
+  birthDate: string;
+  gender: string;
+};
+type ChildSetupStep = "prompt" | "child" | "another";
 
 const categoryOrder: PublicBookingCategory[] = ["rentals", "lessons", "camps", "classes", "memberships", "packages"];
 const emptyAccountForm: AccountForm = {
@@ -151,6 +159,12 @@ const emptyAccountForm: AccountForm = {
   emergencyContactEmail: "",
   emergencyContactPhone: "",
   waiverAgreed: false,
+};
+const emptyChildForm: ChildForm = {
+  firstName: "",
+  lastName: "",
+  birthDate: "",
+  gender: "",
 };
 
 function emptyCustomerDashboard(): CustomerDashboard {
@@ -197,24 +211,10 @@ function normalizeFamilyMembers(value?: FamilyMember[]) {
 
 function familyMembersForAccount(account: ParentAccount | null): FamilyMember[] {
   if (!account) return [];
-  const saved = normalizeFamilyMembers(account.familyMembers);
-  if (saved.length) return saved;
-
-  return account.playerName
-    ? [
-        {
-          id: "primary-player",
-          firstName: account.playerName.split(" ")[0] || account.playerName,
-          lastName: account.playerName.split(" ").slice(1).join(" "),
-          name: account.playerName,
-          birthDate: account.playerBirthDate || "",
-          age: account.playerAge || "",
-        },
-      ]
-    : [];
+  return normalizeFamilyMembers(account.familyMembers);
 }
 
-function buildFamilyMember(firstName: string, lastName: string, birthDate: string): FamilyMember {
+function buildFamilyMember(firstName: string, lastName: string, birthDate: string, gender = ""): FamilyMember {
   const name = fullName(firstName, lastName);
   return {
     id: `player-${Date.now()}`,
@@ -222,6 +222,7 @@ function buildFamilyMember(firstName: string, lastName: string, birthDate: strin
     lastName: lastName.trim(),
     name,
     birthDate: birthDate ? isoDateToUs(birthDate) : "",
+    gender: gender.trim(),
   };
 }
 
@@ -901,16 +902,24 @@ function CustomerPortalModal({
   onPrintMembershipReceipt: (membership: CustomerMembershipRecord) => void;
   onRequestMembershipCancel: (membership: CustomerMembershipRecord) => void;
 }) {
-  const [playerForm, setPlayerForm] = useState({ firstName: "", lastName: "", birthDate: "" });
+  const [playerForm, setPlayerForm] = useState<ChildForm>(emptyChildForm);
   const [playerStatus, setPlayerStatus] = useState("");
   const [playerBusy, setPlayerBusy] = useState(false);
   const familyMembers = familyMembersForAccount(account);
 
   async function submitPlayer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const member = buildFamilyMember(playerForm.firstName, playerForm.lastName, playerForm.birthDate);
+    const member = buildFamilyMember(playerForm.firstName, playerForm.lastName, playerForm.birthDate, playerForm.gender);
     if (!member.name) {
       setPlayerStatus("Enter the player's name.");
+      return;
+    }
+    if (!playerForm.birthDate) {
+      setPlayerStatus("Enter the player's DOB.");
+      return;
+    }
+    if (!playerForm.gender) {
+      setPlayerStatus("Select Male or Female.");
       return;
     }
 
@@ -918,7 +927,7 @@ function CustomerPortalModal({
     setPlayerStatus("");
     try {
       await onAddPlayer(member);
-      setPlayerForm({ firstName: "", lastName: "", birthDate: "" });
+      setPlayerForm(emptyChildForm);
       setPlayerStatus("Player added.");
     } catch (error) {
       setPlayerStatus(error instanceof Error ? error.message : "Could not add player.");
@@ -943,7 +952,7 @@ function CustomerPortalModal({
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-[8px] border border-black/10 bg-white px-4 py-4">
             <div>
               <div className="text-[17px] font-semibold">{account.parentName}</div>
-              <div className="mt-1 text-[14px] text-black/55">Player: {account.playerName || "Not set"}</div>
+              <div className="mt-1 text-[14px] text-black/55">Account holder</div>
             </div>
             <button
               type="button"
@@ -967,6 +976,11 @@ function CustomerPortalModal({
           <section className="mt-6">
             <div className="text-[20px] font-semibold">Players</div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {!familyMembers.length ? (
+                <div className="rounded-[8px] border border-dashed border-black/15 bg-white px-4 py-5 text-[14px] text-black/55">
+                  No children added yet.
+                </div>
+              ) : null}
               {familyMembers.map((member) => (
                 <div key={member.id} className="rounded-[8px] border border-black/10 bg-white px-4 py-4">
                   <div className="flex items-center gap-3">
@@ -983,7 +997,7 @@ function CustomerPortalModal({
             </div>
             <form onSubmit={submitPlayer} className="mt-4 rounded-[8px] border border-dashed border-black/15 bg-white px-4 py-4">
               <div className="text-[15px] font-semibold">Add player</div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_160px_auto]">
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_160px_140px_auto]">
                 <input
                   value={playerForm.firstName}
                   onChange={(event) => setPlayerForm((current) => ({ ...current, firstName: event.target.value }))}
@@ -1003,6 +1017,16 @@ function CustomerPortalModal({
                   aria-label="Date of birth"
                   className="h-11 rounded-[5px] border border-black/15 px-3 text-[15px]"
                 />
+                <select
+                  value={playerForm.gender}
+                  onChange={(event) => setPlayerForm((current) => ({ ...current, gender: event.target.value }))}
+                  aria-label="Gender"
+                  className="h-11 rounded-[5px] border border-black/15 bg-white px-3 text-[15px]"
+                >
+                  <option value="">Gender</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                </select>
                 <button type="submit" disabled={playerBusy} className="h-11 rounded-[6px] bg-black px-4 text-[14px] font-semibold text-white disabled:opacity-55">
                   {playerBusy ? "Adding..." : "Add"}
                 </button>
@@ -1360,31 +1384,6 @@ function ParentAccountModal({
           </div>
 
           <div className="mt-8 border-t border-black/10 pt-6">
-            <div className="text-[18px] font-semibold">Player name (optional)</div>
-            <p className="mt-2 text-[14px] leading-6 text-black/60">
-              Leave this blank if the account holder is booking for themselves.
-            </p>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <label className="grid gap-2 text-[14px] font-medium">
-                First name
-                <input
-                  value={form.playerFirstName}
-                  onChange={(event) => setForm((current) => ({ ...current, playerFirstName: event.target.value }))}
-                  className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
-                />
-              </label>
-              <label className="grid gap-2 text-[14px] font-medium">
-                Last name
-                <input
-                  value={form.playerLastName}
-                  onChange={(event) => setForm((current) => ({ ...current, playerLastName: event.target.value }))}
-                  className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
-                />
-              </label>
-            </div>
-          </div>
-
-          <div className="mt-8 border-t border-black/10 pt-6">
             <div className="text-[18px] font-semibold">Emergency Contact</div>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <label className="grid gap-2 text-[14px] font-medium">
@@ -1436,7 +1435,7 @@ function ParentAccountModal({
                   onChange={(event) => setForm((current) => ({ ...current, waiverAgreed: event.target.checked }))}
                   className="mt-1 h-5 w-5 accent-black"
                 />
-                I have read and agree to the liability waiver for myself, my family, and any player listed above.
+                I have read and agree to the liability waiver for myself and my family.
               </label>
             </div>
           ) : null}
@@ -1450,6 +1449,130 @@ function ParentAccountModal({
           <button type="submit" disabled={busy} className="h-12 rounded-[6px] bg-black px-8 text-[16px] font-semibold text-white disabled:opacity-55">
             {busy ? "Creating..." : "Create account"}
           </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function ChildrenSetupModal({
+  step,
+  childForm,
+  setChildForm,
+  busy,
+  status,
+  onClose,
+  onStartChild,
+  onSubmitChild,
+  onFinish,
+}: {
+  step: ChildSetupStep;
+  childForm: ChildForm;
+  setChildForm: Dispatch<SetStateAction<ChildForm>>;
+  busy: boolean;
+  status: string;
+  onClose: () => void;
+  onStartChild: () => void;
+  onSubmitChild: (event: FormEvent<HTMLFormElement>) => void;
+  onFinish: () => void;
+}) {
+  const title = step === "child" ? "Add Child" : step === "another" ? "Child Added" : "Add Children?";
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/55 px-4 py-10">
+      <form
+        onSubmit={onSubmitChild}
+        className="flex w-full max-w-[560px] flex-col overflow-hidden rounded-[5px] bg-white shadow-[0_20px_48px_rgba(0,0,0,0.36)]"
+      >
+        <div className="flex h-[76px] shrink-0 items-center border-b border-black/10 px-7">
+          <div className="text-[22px] font-semibold">{title}</div>
+          <button type="button" onClick={onClose} className="ml-auto text-[32px] leading-none text-black/45">
+            x
+          </button>
+        </div>
+
+        <div className="px-7 py-6">
+          {step === "prompt" ? (
+            <>
+              <p className="text-[16px] leading-7 text-black/70">Do you need to add children to this account?</p>
+              <p className="mt-2 text-[14px] leading-6 text-black/55">
+                Choose yes if you will book cages, lessons, or memberships for a child. Choose no if the account holder books for themselves.
+              </p>
+            </>
+          ) : null}
+
+          {step === "another" ? (
+            <>
+              <p className="text-[16px] leading-7 text-black/70">That child was added to the family account.</p>
+              <p className="mt-2 text-[14px] leading-6 text-black/55">Do you have another child to add?</p>
+            </>
+          ) : null}
+
+          {step === "child" ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="grid gap-2 text-[14px] font-medium">
+                First name
+                <input
+                  value={childForm.firstName}
+                  onChange={(event) => setChildForm((current) => ({ ...current, firstName: event.target.value }))}
+                  className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
+                />
+              </label>
+              <label className="grid gap-2 text-[14px] font-medium">
+                Last name
+                <input
+                  value={childForm.lastName}
+                  onChange={(event) => setChildForm((current) => ({ ...current, lastName: event.target.value }))}
+                  className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
+                />
+              </label>
+              <label className="grid gap-2 text-[14px] font-medium">
+                DOB
+                <input
+                  type="date"
+                  value={childForm.birthDate}
+                  onChange={(event) => setChildForm((current) => ({ ...current, birthDate: event.target.value }))}
+                  className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
+                />
+              </label>
+              <label className="grid gap-2 text-[14px] font-medium">
+                Gender
+                <select
+                  value={childForm.gender}
+                  onChange={(event) => setChildForm((current) => ({ ...current, gender: event.target.value }))}
+                  className="h-12 rounded-[5px] border border-black/20 bg-white px-4 text-[16px]"
+                >
+                  <option value="">Select</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                </select>
+              </label>
+            </div>
+          ) : null}
+
+          {status ? <div className="mt-5 rounded-[6px] bg-red-50 px-4 py-3 text-sm text-red-700">{status}</div> : null}
+        </div>
+
+        <div className="flex shrink-0 justify-end gap-3 border-t border-black/10 px-7 py-5">
+          {step === "child" ? (
+            <>
+              <button type="button" onClick={onFinish} className="h-12 rounded-[6px] border border-black/15 px-7 text-[16px] font-semibold">
+                Skip
+              </button>
+              <button type="submit" disabled={busy} className="h-12 rounded-[6px] bg-black px-8 text-[16px] font-semibold text-white disabled:opacity-55">
+                {busy ? "Adding..." : "Add child"}
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" onClick={onFinish} className="h-12 rounded-[6px] border border-black/15 px-7 text-[16px] font-semibold">
+                No
+              </button>
+              <button type="button" onClick={onStartChild} className="h-12 rounded-[6px] bg-black px-8 text-[16px] font-semibold text-white">
+                Yes
+              </button>
+            </>
+          )}
         </div>
       </form>
     </div>
@@ -1827,6 +1950,11 @@ export default function CustomerBookingApp() {
   const [accountForm, setAccountForm] = useState<AccountForm>(emptyAccountForm);
   const [accountBusy, setAccountBusy] = useState(false);
   const [accountStatus, setAccountStatus] = useState("");
+  const [showChildrenSetupModal, setShowChildrenSetupModal] = useState(false);
+  const [childrenSetupStep, setChildrenSetupStep] = useState<ChildSetupStep>("prompt");
+  const [childForm, setChildForm] = useState<ChildForm>(emptyChildForm);
+  const [childSetupBusy, setChildSetupBusy] = useState(false);
+  const [childSetupStatus, setChildSetupStatus] = useState("");
   const [showSignInModal, setShowSignInModal] = useState(false);
   const [signInForm, setSignInForm] = useState<SignInForm>({ email: "", password: "" });
   const [signInBusy, setSignInBusy] = useState(false);
@@ -1969,6 +2097,7 @@ export default function CustomerBookingApp() {
   const onlineTotals = selectedService ? calculatePublicTotals(selectedService, data.settings, "online") : null;
   const inPersonTotals = selectedService ? calculatePublicTotals(selectedService, data.settings, "in-person") : null;
   const familyMembers = useMemo(() => familyMembersForAccount(parentAccount), [parentAccount]);
+  const accountHolderPlayerName = parentAccount?.playerName || parentAccount?.parentName || "Yourself";
   const waiverRequiredForCheckout = Boolean(data.settings.waiverEnabled && !parentAccount?.waiverAgreed);
   const waiverAcceptedForCheckout = !waiverRequiredForCheckout || transactionWaiverAgreed;
 
@@ -2020,15 +2149,12 @@ export default function CustomerBookingApp() {
 
   function openAccountModal() {
     setAccountStatus("");
-    const playerName = form.playerName === "Yourself" ? "" : form.playerName;
     setAccountForm((current) => ({
       ...current,
       parentFirstName: current.parentFirstName || form.parentName.split(" ")[0] || "",
       parentLastName: current.parentLastName || form.parentName.split(" ").slice(1).join(" "),
       email: current.email || form.email,
       phone: current.phone || form.phone,
-      playerFirstName: current.playerFirstName || playerName.split(" ")[0] || "",
-      playerLastName: current.playerLastName || playerName.split(" ").slice(1).join(" "),
     }));
     setShowAccountModal(true);
   }
@@ -2057,8 +2183,7 @@ export default function CustomerBookingApp() {
   }
 
   function applyParentAccount(account: ParentAccount, dashboard?: CustomerDashboard) {
-    const primaryPlayer = familyMembersForAccount(account)[0];
-    const playerName = primaryPlayer?.name || account.playerName || "Yourself";
+    const playerName = account.playerName || account.parentName || "Yourself";
     setParentAccount(account);
     if (dashboard) setCustomerDashboard(dashboard);
     setSelectedPlayer(playerName);
@@ -2096,6 +2221,49 @@ export default function CustomerBookingApp() {
         email: account.email,
         phone: account.phone,
       });
+    }
+  }
+
+  function finishChildrenSetup() {
+    setShowChildrenSetupModal(false);
+    setChildrenSetupStep("prompt");
+    setChildForm(emptyChildForm);
+    setChildSetupStatus("");
+  }
+
+  function startChildEntry() {
+    setChildSetupStatus("");
+    setChildForm(emptyChildForm);
+    setChildrenSetupStep("child");
+  }
+
+  async function submitSignupChild(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const member = buildFamilyMember(childForm.firstName, childForm.lastName, childForm.birthDate, childForm.gender);
+    if (!member.name) {
+      setChildSetupStatus("Enter the child's name.");
+      return;
+    }
+    if (!childForm.birthDate) {
+      setChildSetupStatus("Enter the child's DOB.");
+      return;
+    }
+    if (!childForm.gender) {
+      setChildSetupStatus("Select Male or Female.");
+      return;
+    }
+
+    setChildSetupBusy(true);
+    setChildSetupStatus("");
+    try {
+      const existingChildren = familyMembersForAccount(parentAccount);
+      await saveFamilyMembers([...existingChildren, member], member);
+      setChildForm(emptyChildForm);
+      setChildrenSetupStep("another");
+    } catch (error) {
+      setChildSetupStatus(error instanceof Error ? error.message : "Could not add child.");
+    } finally {
+      setChildSetupBusy(false);
     }
   }
 
@@ -2383,9 +2551,6 @@ export default function CustomerBookingApp() {
     setAccountStatus("");
     try {
       const parentName = fullName(accountForm.parentFirstName, accountForm.parentLastName);
-      const playerName = fullName(accountForm.playerFirstName, accountForm.playerLastName) || parentName;
-      const playerFirstName = accountForm.playerFirstName.trim() || accountForm.parentFirstName.trim();
-      const playerLastName = accountForm.playerLastName.trim() || accountForm.parentLastName.trim();
       if (!accountForm.playerBirthDate) {
         setAccountStatus("Enter the DOB.");
         return;
@@ -2402,18 +2567,17 @@ export default function CustomerBookingApp() {
         setAccountStatus("Please agree to the liability waiver before creating an account.");
         return;
       }
-      const firstPlayer = buildFamilyMember(playerFirstName, playerLastName, accountForm.playerBirthDate);
       const response = await fetch("/api/book/customers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...accountForm,
           parentName,
-          playerName,
-          playerFirstName,
-          playerLastName,
+          playerName: parentName,
+          playerFirstName: accountForm.parentFirstName.trim(),
+          playerLastName: accountForm.parentLastName.trim(),
           playerBirthDate: accountForm.playerBirthDate ? isoDateToUs(accountForm.playerBirthDate) : "",
-          familyMembers: firstPlayer.name ? [firstPlayer] : [],
+          familyMembers: [],
           waiverAgreed: accountForm.waiverAgreed,
         }),
       });
@@ -2434,6 +2598,10 @@ export default function CustomerBookingApp() {
       applyParentAccount(account, emptyCustomerDashboard());
       setAccountForm((current) => ({ ...current, password: "" }));
       setShowAccountModal(false);
+      setChildSetupStatus("");
+      setChildForm(emptyChildForm);
+      setChildrenSetupStep("prompt");
+      setShowChildrenSetupModal(true);
     } catch (error) {
       setAccountStatus(error instanceof Error ? error.message : "Could not create parent account.");
     } finally {
@@ -2922,6 +3090,27 @@ export default function CustomerBookingApp() {
               <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(150px,170px))]">
                 {parentAccount ? (
                   <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPlayer(accountHolderPlayerName);
+                        setForm({
+                          parentName: parentAccount.parentName,
+                          playerName: accountHolderPlayerName,
+                          email: parentAccount.email,
+                          phone: parentAccount.phone,
+                        });
+                      }}
+                      className={`min-h-[184px] rounded-[8px] border px-4 py-5 text-center ${
+                        selectedPlayer === accountHolderPlayerName ? "border-black shadow-[inset_0_0_0_1px_black]" : "border-black/15"
+                      }`}
+                    >
+                      <span className="mx-auto flex h-[86px] w-[86px] items-center justify-center rounded-full bg-[#1f1b1b] text-[22px] text-white sm:h-[96px] sm:w-[96px]">
+                        {initials(accountHolderPlayerName)}
+                      </span>
+                      <span className="mt-4 block text-[16px] font-semibold leading-tight">{accountHolderPlayerName}</span>
+                      <span className="mt-3 block text-[13px] text-black/60">Account holder</span>
+                    </button>
                     {familyMembers.map((member) => (
                       <button
                         key={member.id}
@@ -3244,6 +3433,20 @@ export default function CustomerBookingApp() {
           waiverSettings={data.settings}
           onClose={() => setShowAccountModal(false)}
           onSubmit={createParentAccount}
+        />
+      ) : null}
+
+      {showChildrenSetupModal ? (
+        <ChildrenSetupModal
+          step={childrenSetupStep}
+          childForm={childForm}
+          setChildForm={setChildForm}
+          busy={childSetupBusy}
+          status={childSetupStatus}
+          onClose={finishChildrenSetup}
+          onStartChild={startChildEntry}
+          onSubmitChild={submitSignupChild}
+          onFinish={finishChildrenSetup}
         />
       ) : null}
 

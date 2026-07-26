@@ -66,6 +66,7 @@ type FamilyMember = {
   lastName: string;
   name: string;
   birthDate: string;
+  gender?: string;
   age: string;
 };
 type CustomerDashboardResponse = {
@@ -147,25 +148,27 @@ function formatBirthDate(year: unknown, month: unknown, day: unknown) {
 function normalizeFamilyMembers(value: unknown): FamilyMember[] {
   if (!Array.isArray(value)) return [];
 
-  return value
-    .map((item, index) => {
-      if (!item || typeof item !== "object") return null;
-      const record = item as Record<string, unknown>;
-      const firstName = clean(record.firstName);
-      const lastName = clean(record.lastName);
-      const name = clean(record.name) || [firstName, lastName].filter(Boolean).join(" ").trim();
-      if (!name) return null;
+  const members: FamilyMember[] = [];
+  value.forEach((item, index) => {
+    if (!item || typeof item !== "object") return;
+    const record = item as Record<string, unknown>;
+    const firstName = clean(record.firstName);
+    const lastName = clean(record.lastName);
+    const name = clean(record.name) || [firstName, lastName].filter(Boolean).join(" ").trim();
+    if (!name) return;
 
-      return {
-        id: clean(record.id) || `player-${Date.now()}-${index}`,
-        firstName: firstName || name.split(" ")[0] || name,
-        lastName: lastName || name.split(" ").slice(1).join(" "),
-        name,
-        birthDate: normalizeBirthDate(record.birthDate),
-        age: clean(record.age),
-      };
-    })
-    .filter((item): item is FamilyMember => Boolean(item));
+    members.push({
+      id: clean(record.id) || `player-${Date.now()}-${index}`,
+      firstName: firstName || name.split(" ")[0] || name,
+      lastName: lastName || name.split(" ").slice(1).join(" "),
+      name,
+      birthDate: normalizeBirthDate(record.birthDate),
+      gender: clean(record.gender),
+      age: clean(record.age),
+    });
+  });
+
+  return members;
 }
 
 async function waiverIsRequired(supabase: CustomerSupabaseClient) {
@@ -393,8 +396,6 @@ export async function POST(req: Request) {
     const playerLastName = clean(body.playerLastName);
     const submittedPlayerName = clean(body.playerName) || [playerFirstName, playerLastName].filter(Boolean).join(" ").trim();
     const playerName = submittedPlayerName || parentName;
-    const effectivePlayerFirstName = playerFirstName || parentFirstName || playerName.split(" ")[0] || playerName;
-    const effectivePlayerLastName = playerLastName || parentLastName || playerName.split(" ").slice(1).join(" ");
     const birthDateParts = parseBirthDateParts(body.playerBirthDate);
     const legacyPlayerAge = clean(body.playerAge);
     const ageValue = birthDateParts.age ?? (legacyPlayerAge ? Number.parseInt(legacyPlayerAge, 10) : null);
@@ -420,15 +421,7 @@ export async function POST(req: Request) {
       return badRequest("Agree to the liability waiver before creating a parent account.");
     }
 
-    const primaryFamilyMember: FamilyMember = {
-      id: familyMembers[0]?.id || `player-${Date.now()}`,
-      firstName: effectivePlayerFirstName,
-      lastName: effectivePlayerLastName,
-      name: playerName,
-      birthDate: birthDateParts.birthDate,
-      age: "",
-    };
-    const savedFamilyMembers = familyMembers.length ? familyMembers : [primaryFamilyMember];
+    const savedFamilyMembers = familyMembers;
 
     const authResult = await supabase.auth.admin.createUser({
       email,
