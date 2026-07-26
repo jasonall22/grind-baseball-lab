@@ -106,6 +106,8 @@ type SignInForm = {
   password: string;
 };
 type ResetPasswordForm = {
+  email: string;
+  token: string;
   password: string;
   confirmPassword: string;
 };
@@ -1282,6 +1284,7 @@ function SignInModal({
 function ResetPasswordModal({
   form,
   setForm,
+  requiresCode,
   busy,
   status,
   onClose,
@@ -1289,11 +1292,14 @@ function ResetPasswordModal({
 }: {
   form: ResetPasswordForm;
   setForm: Dispatch<SetStateAction<ResetPasswordForm>>;
+  requiresCode: boolean;
   busy: boolean;
   status: string;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const isInfo = status.toLowerCase().includes("code") || status.toLowerCase().includes("check");
+
   return (
     <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/55 px-4 py-10">
       <form
@@ -1307,8 +1313,32 @@ function ResetPasswordModal({
           </button>
         </div>
         <div className="px-7 py-6">
-          <p className="text-[15px] leading-6 text-black/60">Enter a new password for your family account.</p>
+          <p className="text-[15px] leading-6 text-black/60">
+            {requiresCode ? "Enter the reset code from your email and choose a new password." : "Enter a new password for your family account."}
+          </p>
           <div className="mt-6 grid gap-4">
+            {requiresCode ? (
+              <>
+                <label className="grid gap-2 text-[14px] font-medium">
+                  Email
+                  <input
+                    type="email"
+                    value={form.email}
+                    onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+                    className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
+                  />
+                </label>
+                <label className="grid gap-2 text-[14px] font-medium">
+                  Reset code
+                  <input
+                    inputMode="numeric"
+                    value={form.token}
+                    onChange={(event) => setForm((current) => ({ ...current, token: event.target.value.replace(/\D/g, "").slice(0, 8) }))}
+                    className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px] tracking-[0.2em]"
+                  />
+                </label>
+              </>
+            ) : null}
             <label className="grid gap-2 text-[14px] font-medium">
               New password
               <input
@@ -1328,7 +1358,11 @@ function ResetPasswordModal({
               />
             </label>
           </div>
-          {status ? <div className="mt-5 rounded-[6px] bg-red-50 px-4 py-3 text-sm text-red-700">{status}</div> : null}
+          {status ? (
+            <div className={`mt-5 rounded-[6px] px-4 py-3 text-sm ${isInfo ? "bg-sky-50 text-sky-800" : "bg-red-50 text-red-700"}`}>
+              {status}
+            </div>
+          ) : null}
         </div>
         <div className="flex shrink-0 justify-end gap-3 border-t border-black/10 px-7 py-5">
           <button type="button" onClick={onClose} className="h-12 rounded-[6px] border border-black/15 px-7 text-[16px] font-semibold">
@@ -1541,7 +1575,8 @@ export default function CustomerBookingApp() {
   const [passwordResetEmailBusy, setPasswordResetEmailBusy] = useState(false);
   const [signInStatus, setSignInStatus] = useState("");
   const [showPasswordResetModal, setShowPasswordResetModal] = useState(false);
-  const [passwordResetForm, setPasswordResetForm] = useState<ResetPasswordForm>({ password: "", confirmPassword: "" });
+  const [passwordResetRequiresCode, setPasswordResetRequiresCode] = useState(false);
+  const [passwordResetForm, setPasswordResetForm] = useState<ResetPasswordForm>({ email: "", token: "", password: "", confirmPassword: "" });
   const [passwordResetBusy, setPasswordResetBusy] = useState(false);
   const [passwordResetStatus, setPasswordResetStatus] = useState("");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
@@ -1607,7 +1642,8 @@ export default function CustomerBookingApp() {
       if (event !== "PASSWORD_RECOVERY") return;
 
       setShowSignInModal(false);
-      setPasswordResetForm({ password: "", confirmPassword: "" });
+      setPasswordResetRequiresCode(false);
+      setPasswordResetForm({ email: "", token: "", password: "", confirmPassword: "" });
       setPasswordResetStatus("");
       setShowPasswordResetModal(true);
     });
@@ -1624,15 +1660,34 @@ export default function CustomerBookingApp() {
     if (!errorCode && !errorDescription) return;
 
     const isExpiredResetLink = errorCode === "otp_expired" || errorDescription?.toLowerCase().includes("expired");
+    const isResetIntent = currentUrl.searchParams.get("reset") === "password" || hashParams.get("reset") === "password";
     setShowPasswordResetModal(false);
-    setShowSignInModal(true);
+    setShowSignInModal(!isResetIntent);
+    if (isResetIntent) {
+      setPasswordResetRequiresCode(true);
+      setPasswordResetForm((current) => ({ ...current, email: signInForm.email }));
+      setPasswordResetStatus("Enter the reset code from your email to finish changing your password.");
+      setShowPasswordResetModal(true);
+    }
     setSignInStatus(
       isExpiredResetLink
         ? "That password reset link is invalid or expired. Enter your email and tap Forgot password to send a fresh link."
         : errorDescription || "We could not complete that sign-in link. Please try again."
     );
     window.history.replaceState(null, "", currentUrl.pathname);
-  }, []);
+  }, [signInForm.email]);
+
+  useEffect(() => {
+    const currentUrl = new URL(window.location.href);
+    if (currentUrl.searchParams.get("reset") !== "password") return;
+
+    setShowSignInModal(false);
+    setPasswordResetRequiresCode(true);
+    setPasswordResetForm((current) => ({ ...current, email: signInForm.email }));
+    setPasswordResetStatus("Enter the reset code from your email to finish changing your password.");
+    setShowPasswordResetModal(true);
+    window.history.replaceState(null, "", currentUrl.pathname);
+  }, [signInForm.email]);
 
   const selectedService = useMemo(
     () => data.services.find((service) => service.id === selectedServiceId) ?? null,
@@ -1938,7 +1993,11 @@ export default function CustomerBookingApp() {
       const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
       if (error) throw error;
 
-      setSignInStatus(`Password reset email sent to ${email}.`);
+      setPasswordResetRequiresCode(true);
+      setPasswordResetForm({ email, token: "", password: "", confirmPassword: "" });
+      setPasswordResetStatus("Check your email for the reset code, then enter it here.");
+      setShowSignInModal(false);
+      setShowPasswordResetModal(true);
     } catch (error) {
       setSignInStatus(error instanceof Error ? error.message : "Could not send password reset email.");
     } finally {
@@ -1951,6 +2010,12 @@ export default function CustomerBookingApp() {
     if (passwordResetBusy) return;
 
     const password = passwordResetForm.password;
+    const email = passwordResetForm.email.trim().toLowerCase();
+    const resetCode = passwordResetForm.token.trim();
+    if (passwordResetRequiresCode && (!email || !resetCode)) {
+      setPasswordResetStatus("Enter your email and the reset code from the email.");
+      return;
+    }
     if (password.length < 6) {
       setPasswordResetStatus("Password must be at least 6 characters.");
       return;
@@ -1963,6 +2028,15 @@ export default function CustomerBookingApp() {
     setPasswordResetBusy(true);
     setPasswordResetStatus("");
     try {
+      if (passwordResetRequiresCode) {
+        const verifyResult = await supabase.auth.verifyOtp({
+          email,
+          token: resetCode,
+          type: "recovery",
+        });
+        if (verifyResult.error) throw verifyResult.error;
+      }
+
       const { error } = await supabase.auth.updateUser({ password });
       if (error) throw error;
 
@@ -1972,7 +2046,8 @@ export default function CustomerBookingApp() {
         if (payload?.customer) applyParentAccount(payload.customer, payload.dashboard);
       }
 
-      setPasswordResetForm({ password: "", confirmPassword: "" });
+      setPasswordResetRequiresCode(false);
+      setPasswordResetForm({ email: "", token: "", password: "", confirmPassword: "" });
       setShowPasswordResetModal(false);
       setSignInStatus("Password updated. You are signed in.");
     } catch (error) {
@@ -2764,6 +2839,7 @@ export default function CustomerBookingApp() {
         <ResetPasswordModal
           form={passwordResetForm}
           setForm={setPasswordResetForm}
+          requiresCode={passwordResetRequiresCode}
           busy={passwordResetBusy}
           status={passwordResetStatus}
           onClose={() => setShowPasswordResetModal(false)}
