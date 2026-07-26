@@ -503,36 +503,36 @@ function BookingHero({
           </div>
         </div>
 
-        <div className="grid gap-5 border-t border-black/10 px-5 py-5 sm:px-7 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+        <div className="grid gap-4 border-t border-black/10 px-4 py-4 sm:gap-5 sm:px-7 sm:py-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
           <div className="min-w-0">
-            <div className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#1784bd]">Book Online</div>
-            <h2 className="mt-2 text-[30px] font-semibold leading-tight tracking-normal sm:text-[38px]">{settings.facilityName}</h2>
-            <div className="mt-4 flex flex-wrap gap-2 text-[14px] font-semibold text-black/65">
+            <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#1784bd] sm:text-[12px] sm:tracking-[0.16em]">Book Online</div>
+            <h2 className="mt-2 text-[25px] font-semibold leading-[1.08] tracking-normal sm:text-[38px]">{settings.facilityName}</h2>
+            <div className="mt-4 grid gap-2 text-[13px] font-semibold text-black/65 sm:flex sm:flex-wrap sm:text-[14px]">
               <a
                 href={directionsHref(settings.address)}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-full border border-black/10 bg-[#f7f8fa] px-4 py-2 transition hover:border-[#1784bd]/35 hover:bg-[#eef8fc] hover:text-[#0b6f9f]"
+                className="min-w-0 rounded-full border border-black/10 bg-[#f7f8fa] px-3 py-2 text-center leading-snug transition hover:border-[#1784bd]/35 hover:bg-[#eef8fc] hover:text-[#0b6f9f] sm:px-4 sm:text-left"
               >
                 {settings.address}
               </a>
-              <span className="inline-flex overflow-hidden rounded-full border border-black/10 bg-[#f7f8fa]">
+              <span className="inline-flex min-w-0 overflow-hidden rounded-full border border-black/10 bg-[#f7f8fa]">
                 <a
                   href={phoneHref(settings.phone, "call")}
-                  className="px-4 py-2 transition hover:bg-[#eef8fc] hover:text-[#0b6f9f]"
+                  className="min-w-0 flex-1 px-3 py-2 text-center transition hover:bg-[#eef8fc] hover:text-[#0b6f9f] sm:flex-none sm:px-4"
                 >
                   {settings.phone}
                 </a>
                 <a
                   href={phoneHref(settings.phone, "text")}
-                  className="border-l border-black/10 px-3 py-2 transition hover:bg-[#eef8fc] hover:text-[#0b6f9f]"
+                  className="border-l border-black/10 px-3 py-2 text-center transition hover:bg-[#eef8fc] hover:text-[#0b6f9f]"
                 >
                   Text
                 </a>
               </span>
               <span
                 className={[
-                  "rounded-full border px-4 py-2",
+                  "rounded-full border px-3 py-2 text-center leading-snug sm:px-4 sm:text-left",
                   hoursStatus.isOpen ? "border-emerald-100 bg-emerald-50" : "border-red-100 bg-red-50",
                 ].join(" ")}
               >
@@ -541,12 +541,12 @@ function BookingHero({
               </span>
             </div>
           </div>
-          <div className="flex flex-wrap gap-3 lg:justify-end">
+          <div className="grid gap-2 sm:flex sm:flex-wrap sm:gap-3 lg:justify-end">
             {showSignIn ? (
               <button
                 type="button"
                 onClick={onSignIn}
-                className="rounded-[6px] border border-[#1784bd]/25 bg-[#eef8fc] px-5 py-3 text-[15px] font-semibold text-[#0b6f9f] transition hover:-translate-y-0.5 hover:bg-[#e3f3fa]"
+                className="w-full rounded-[6px] border border-[#1784bd]/25 bg-[#eef8fc] px-4 py-3 text-[14px] font-semibold text-[#0b6f9f] transition hover:-translate-y-0.5 hover:bg-[#e3f3fa] sm:w-auto sm:px-5 sm:text-[15px]"
               >
                 Sign in
               </button>
@@ -554,14 +554,14 @@ function BookingHero({
             <button
               type="button"
               onClick={() => onSelectCategory("rentals")}
-              className="rounded-[6px] bg-black px-5 py-3 text-[15px] font-semibold text-white shadow-[0_10px_24px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:bg-[#1f1f1f]"
+              className="w-full rounded-[6px] bg-black px-4 py-3 text-[14px] font-semibold text-white shadow-[0_10px_24px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:bg-[#1f1f1f] sm:w-auto sm:px-5 sm:text-[15px]"
             >
               Book cage time
             </button>
             <button
               type="button"
               onClick={() => onSelectCategory("lessons")}
-              className="rounded-[6px] border border-black/15 bg-white px-5 py-3 text-[15px] font-semibold text-black transition hover:-translate-y-0.5 hover:bg-[#f5f6f7]"
+              className="w-full rounded-[6px] border border-black/15 bg-white px-4 py-3 text-[14px] font-semibold text-black transition hover:-translate-y-0.5 hover:bg-[#f5f6f7] sm:w-auto sm:px-5 sm:text-[15px]"
             >
               Book a lesson
             </button>
