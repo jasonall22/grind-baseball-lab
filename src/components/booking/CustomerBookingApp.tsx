@@ -2106,6 +2106,19 @@ export default function CustomerBookingApp() {
     });
     return covered;
   }, [customerDashboard.memberships, data.services, selectedDate]);
+  const orderedServicesForCategory = useMemo(
+    () =>
+      servicesForCategory
+        .map((service, index) => ({ service, index }))
+        .sort((left, right) => {
+          const leftCovered = memberCreditServiceIds.has(left.service.id);
+          const rightCovered = memberCreditServiceIds.has(right.service.id);
+          if (leftCovered !== rightCovered) return leftCovered ? -1 : 1;
+          return left.index - right.index;
+        })
+        .map((item) => item.service),
+    [memberCreditServiceIds, servicesForCategory]
+  );
   const onlineTotals = selectedService ? calculatePublicTotals(selectedService, data.settings, "online") : null;
   const inPersonTotals = selectedService ? calculatePublicTotals(selectedService, data.settings, "in-person") : null;
   const familyMembers = useMemo(() => familyMembersForAccount(parentAccount), [parentAccount]);
@@ -2863,7 +2876,7 @@ export default function CustomerBookingApp() {
                       <div className="mt-5 h-5 w-2/3 rounded bg-black/5" />
                     </div>
                   ))
-                : servicesForCategory.map((service) => {
+                : orderedServicesForCategory.map((service) => {
                     const isCoveredByMembership = memberCreditServiceIds.has(service.id);
                     return (
                       <button
