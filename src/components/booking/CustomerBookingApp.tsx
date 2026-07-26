@@ -37,13 +37,15 @@ type FamilyMember = {
   firstName: string;
   lastName: string;
   name: string;
-  age: string;
+  birthDate: string;
+  age?: string;
 };
 type ParentAccount = {
   id?: string;
   parentName: string;
   playerName: string;
   playerAge?: string;
+  playerBirthDate?: string;
   email: string;
   phone: string;
   familyMembers?: FamilyMember[];
@@ -108,7 +110,7 @@ type AccountForm = {
   password: string;
   playerFirstName: string;
   playerLastName: string;
-  playerAge: string;
+  playerBirthDate: string;
   waiverAgreed: boolean;
 };
 type SignInForm = {
@@ -131,7 +133,7 @@ const emptyAccountForm: AccountForm = {
   password: "",
   playerFirstName: "",
   playerLastName: "",
-  playerAge: "",
+  playerBirthDate: "",
   waiverAgreed: false,
 };
 
@@ -156,6 +158,23 @@ function fullName(firstName: string, lastName: string) {
   return [firstName, lastName].map((value) => value.trim()).filter(Boolean).join(" ");
 }
 
+function isoDateToUs(value: string) {
+  const [year, month, day] = value.split("-");
+  if (!year || !month || !day) return "";
+  return `${month.padStart(2, "0")}/${day.padStart(2, "0")}/${year}`;
+}
+
+function usDateToIso(value: string) {
+  const [month, day, year] = value.split("/");
+  if (!year || !month || !day) return "";
+  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+}
+
+function familyDobLabel(member: FamilyMember) {
+  if (member.birthDate) return `DOB ${member.birthDate}`;
+  return "";
+}
+
 function normalizeFamilyMembers(value?: FamilyMember[]) {
   return (value ?? []).filter((member) => member.name.trim());
 }
@@ -172,20 +191,21 @@ function familyMembersForAccount(account: ParentAccount | null): FamilyMember[] 
           firstName: account.playerName.split(" ")[0] || account.playerName,
           lastName: account.playerName.split(" ").slice(1).join(" "),
           name: account.playerName,
+          birthDate: account.playerBirthDate || "",
           age: account.playerAge || "",
         },
       ]
     : [];
 }
 
-function buildFamilyMember(firstName: string, lastName: string, age: string): FamilyMember {
+function buildFamilyMember(firstName: string, lastName: string, birthDate: string): FamilyMember {
   const name = fullName(firstName, lastName);
   return {
     id: `player-${Date.now()}`,
     firstName: firstName.trim(),
     lastName: lastName.trim(),
     name,
-    age: age.trim(),
+    birthDate: birthDate ? isoDateToUs(birthDate) : "",
   };
 }
 
@@ -837,14 +857,14 @@ function CustomerPortalModal({
   onPrintMembershipReceipt: (membership: CustomerMembershipRecord) => void;
   onRequestMembershipCancel: (membership: CustomerMembershipRecord) => void;
 }) {
-  const [playerForm, setPlayerForm] = useState({ firstName: "", lastName: "", age: "" });
+  const [playerForm, setPlayerForm] = useState({ firstName: "", lastName: "", birthDate: "" });
   const [playerStatus, setPlayerStatus] = useState("");
   const [playerBusy, setPlayerBusy] = useState(false);
   const familyMembers = familyMembersForAccount(account);
 
   async function submitPlayer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const member = buildFamilyMember(playerForm.firstName, playerForm.lastName, playerForm.age);
+    const member = buildFamilyMember(playerForm.firstName, playerForm.lastName, playerForm.birthDate);
     if (!member.name) {
       setPlayerStatus("Enter the player's name.");
       return;
@@ -854,7 +874,7 @@ function CustomerPortalModal({
     setPlayerStatus("");
     try {
       await onAddPlayer(member);
-      setPlayerForm({ firstName: "", lastName: "", age: "" });
+      setPlayerForm({ firstName: "", lastName: "", birthDate: "" });
       setPlayerStatus("Player added.");
     } catch (error) {
       setPlayerStatus(error instanceof Error ? error.message : "Could not add player.");
@@ -911,7 +931,7 @@ function CustomerPortalModal({
                     </span>
                     <div>
                       <div className="text-[16px] font-semibold">{member.name}</div>
-                      {member.age ? <div className="mt-1 text-[13px] text-black/55">{member.age} years old</div> : null}
+                      {familyDobLabel(member) ? <div className="mt-1 text-[13px] text-black/55">{familyDobLabel(member)}</div> : null}
                     </div>
                   </div>
                 </div>
@@ -919,7 +939,7 @@ function CustomerPortalModal({
             </div>
             <form onSubmit={submitPlayer} className="mt-4 rounded-[8px] border border-dashed border-black/15 bg-white px-4 py-4">
               <div className="text-[15px] font-semibold">Add player</div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_90px_auto]">
+              <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_160px_auto]">
                 <input
                   value={playerForm.firstName}
                   onChange={(event) => setPlayerForm((current) => ({ ...current, firstName: event.target.value }))}
@@ -933,10 +953,10 @@ function CustomerPortalModal({
                   className="h-11 rounded-[5px] border border-black/15 px-3 text-[15px]"
                 />
                 <input
-                  inputMode="numeric"
-                  value={playerForm.age}
-                  onChange={(event) => setPlayerForm((current) => ({ ...current, age: event.target.value.replace(/\D/g, "") }))}
-                  placeholder="Age"
+                  type="date"
+                  value={playerForm.birthDate}
+                  onChange={(event) => setPlayerForm((current) => ({ ...current, birthDate: event.target.value }))}
+                  aria-label="Date of birth"
                   className="h-11 rounded-[5px] border border-black/15 px-3 text-[15px]"
                 />
                 <button type="submit" disabled={playerBusy} className="h-11 rounded-[6px] bg-black px-4 text-[14px] font-semibold text-white disabled:opacity-55">
@@ -1276,7 +1296,7 @@ function ParentAccountModal({
 
           <div className="mt-8 border-t border-black/10 pt-6">
             <div className="text-[18px] font-semibold">Player</div>
-            <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_1fr_120px]">
+            <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_1fr_160px]">
               <label className="grid gap-2 text-[14px] font-medium">
                 First name
                 <input
@@ -1294,11 +1314,11 @@ function ParentAccountModal({
                 />
               </label>
               <label className="grid gap-2 text-[14px] font-medium">
-                Age
+                DOB
                 <input
-                  inputMode="numeric"
-                  value={form.playerAge}
-                  onChange={(event) => setForm((current) => ({ ...current, playerAge: event.target.value.replace(/\D/g, "") }))}
+                  type="date"
+                  value={form.playerBirthDate}
+                  onChange={(event) => setForm((current) => ({ ...current, playerBirthDate: event.target.value }))}
                   className="h-12 rounded-[5px] border border-black/20 px-4 text-[16px]"
                 />
               </label>
@@ -2274,7 +2294,7 @@ export default function CustomerBookingApp() {
         setAccountStatus("Please agree to the liability waiver before creating an account.");
         return;
       }
-      const firstPlayer = buildFamilyMember(accountForm.playerFirstName, accountForm.playerLastName, accountForm.playerAge);
+      const firstPlayer = buildFamilyMember(accountForm.playerFirstName, accountForm.playerLastName, accountForm.playerBirthDate);
       const response = await fetch("/api/book/customers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2282,6 +2302,7 @@ export default function CustomerBookingApp() {
           ...accountForm,
           parentName,
           playerName,
+          playerBirthDate: accountForm.playerBirthDate ? isoDateToUs(accountForm.playerBirthDate) : "",
           familyMembers: firstPlayer.name ? [firstPlayer] : [],
           waiverAgreed: accountForm.waiverAgreed,
         }),
@@ -2790,7 +2811,7 @@ export default function CustomerBookingApp() {
                           {initials(member.name)}
                         </span>
                         <span className="mt-5 block text-[18px]">{member.name}</span>
-                        {member.age ? <span className="mt-6 block text-[14px]">{member.age} years old</span> : null}
+                        {familyDobLabel(member) ? <span className="mt-6 block text-[14px]">{familyDobLabel(member)}</span> : null}
                       </button>
                     ))}
                     <button
