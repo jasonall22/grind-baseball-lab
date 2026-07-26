@@ -8933,7 +8933,11 @@ function CalendarView({
       ? scheduleByResource.get(mobileResource) ?? defaultSchedule
       : defaultSchedule;
   const { isOpen, openStart, openEnd } = scheduleRangeForDate(selectedScheduleForMobile, activeDate);
-  const slotHeight = 40;
+  const slotHeight = 50;
+  const desktopTimeColumnWidth = 96;
+  const desktopResourceColumnMinWidth = 300;
+  const desktopDayGridColumns = `${desktopTimeColumnWidth}px repeat(${resources.length}, minmax(${desktopResourceColumnMinWidth}px, 1fr))`;
+  const desktopDayGridMinWidth = `${desktopTimeColumnWidth + resources.length * desktopResourceColumnMinWidth}px`;
   const mobileSlotHeight = 46;
   const activeCalendarBookings = useMemo(
     () => bookings.filter((booking) => booking.status !== "Cancelled"),
@@ -10028,13 +10032,13 @@ function CalendarView({
           <div
             className="grid border-b border-black/10 bg-[#f6f7f9]"
             style={{
-              gridTemplateColumns: `78px repeat(${resources.length}, 164px)`,
-              minWidth: `${78 + resources.length * 164}px`,
+              gridTemplateColumns: desktopDayGridColumns,
+              minWidth: desktopDayGridMinWidth,
             }}
           >
-              <div className="h-16 border-r border-black/10 px-3 py-1.5" />
+              <div className="h-14 border-r border-black/10 px-3 py-1.5" />
               {resources.map((resource) => (
-                <div key={resource} className="h-16 border-r border-black/10 px-3 py-1.5 text-center text-[15px] font-bold last:border-r-0">
+                <div key={resource} className="flex h-14 items-start justify-center border-r border-black/10 px-3 pt-2 text-center text-[18px] font-bold leading-none last:border-r-0">
                   {resource}
                 </div>
               ))}
@@ -10048,8 +10052,8 @@ function CalendarView({
               <div
                 className="grid"
                 style={{
-                  gridTemplateColumns: `78px repeat(${resources.length}, 164px)`,
-                  minWidth: `${78 + resources.length * 164}px`,
+                  gridTemplateColumns: desktopDayGridColumns,
+                  minWidth: desktopDayGridMinWidth,
                 }}
               >
                 <div className="relative border-r border-black/10 bg-white">
@@ -10057,10 +10061,10 @@ function CalendarView({
                       <div
                         key={slot}
                         ref={slot === scrollTargetTime ? desktopDayTimeTargetRef : undefined}
-                        className="flex items-start justify-end border-b border-black/10 px-2 text-right text-[16px] font-normal text-black"
+                        className="flex items-start justify-end border-b border-black/10 px-2 text-right text-[18px] font-normal leading-none text-black"
                         style={{ height: slotHeight }}
                       >
-                        <div className={`w-full ${index === 0 ? "pt-1" : "pt-0.5"}`}>{timeLabel(slot)}</div>
+                        <div className={`w-full whitespace-nowrap ${index === 0 ? "pt-1.5" : "pt-1"}`}>{timeLabel(slot)}</div>
                       </div>
                   ))}
                 </div>
@@ -10073,7 +10077,7 @@ function CalendarView({
                     <div
                       key={resource}
                       data-calendar-lane-column="true"
-                      className="relative border-r border-black/10 bg-[#eaf6ff] last:border-r-0"
+                      className="relative border-r border-black/10 bg-white last:border-r-0"
                       onDragOver={(event) => handleColumnDragOver(event, resource)}
                       onDragLeave={() => handleColumnDragLeave(resource)}
                       onDrop={(event) =>
@@ -10147,28 +10151,21 @@ function CalendarView({
                         const booking = segment.booking;
                         const customer = customersById.get(booking.customerId);
                         const service = servicesById.get(booking.serviceId);
-                        const statusBadge = bookingStatusBadge(booking);
                         const tone = bookingTonePresentation(booking, service);
                         const durationMinutes = Math.max(30, segment.end - segment.start);
                         const isCompactBooking = durationMinutes <= 30;
-                        const desktopStatusBadge = isCompactBooking ? null : statusBadge;
                         const isUnavailableBlock = isUnavailableBooking(booking);
                         const isDraggingBooking = dragBookingId === booking.id;
-                        const coachName = booking.staffId ? staffById.get(booking.staffId)?.name ?? "" : "";
                         const bookingTitle = isUnavailableBlock
                           ? "Unavailable"
                           : booking.playerName || customer?.player || customer?.name || "Customer";
                         const bookingSubtitle = isUnavailableBlock
                           ? booking.resource
                           : service?.name || booking.serviceName || "Service";
-                        const bookingDetail =
-                          isCompactBooking && !isUnavailableBlock && coachName
-                            ? `${bookingSubtitle} - ${coachName}`
-                            : bookingSubtitle;
                         const isDesktopPaid = !isUnavailableBlock && (booking.paid || booking.paidByMembershipCredit);
                         const isDesktopUnpaid = !isUnavailableBlock && !isDesktopPaid && booking.status !== "Cancelled";
                         const desktopInitials = initialsFromName(customer?.name || bookingTitle);
-                        const textPaddingClass = isDesktopPaid ? "pr-12" : isCompactBooking ? "pr-8" : "pr-16";
+                        const textPaddingClass = isDesktopPaid ? "pr-[58px]" : isDesktopUnpaid ? "pr-9" : "pr-2";
 
                         return (
                           <button
@@ -10178,49 +10175,42 @@ function CalendarView({
                             onDragStart={(event) => startBookingDrag(event, booking)}
                             onDragEnd={endBookingDrag}
                             onClick={() => handleBookingCardClick(booking)}
-                            className={`absolute left-[1px] right-[1px] overflow-hidden rounded-[4px] border text-left shadow-sm ${tone.borderClass} ${tone.containerClass} ${
-                              isCompactBooking ? "px-1.5 py-1" : "px-2.5 py-1.5"
-                            } ${isDraggingBooking ? "cursor-grabbing opacity-60 ring-2 ring-black ring-offset-2" : "cursor-grab"}`}
+                            className={`absolute left-[1px] right-[12px] overflow-hidden rounded-[5px] border px-[4px] text-left shadow-none ${tone.borderClass} ${tone.containerClass} ${
+                              isDraggingBooking ? "cursor-grabbing opacity-60 ring-2 ring-black ring-offset-2" : "cursor-grab"
+                            }`}
                             style={{ top, height, ...tone.style }}
                           >
-                            <div className={textPaddingClass}>
+                            <div className={`${textPaddingClass} ${isCompactBooking ? "pt-[4px]" : "pt-[7px]"}`}>
                               <div
-                                className={`truncate ${isCompactBooking ? "text-[10px]" : "text-[10px]"} ${tone.timeClass} font-semibold leading-none`}
+                                className={`truncate text-[12px] ${tone.timeClass} font-semibold leading-[12px]`}
                               >
                                 {timeLabel(minutesToTime(segment.start))} - {timeLabel(minutesToTime(segment.end))}
                               </div>
                             </div>
-                            {desktopStatusBadge || isDesktopPaid || isDesktopUnpaid ? (
-                              <div className={`absolute ${isCompactBooking ? "right-[4px] top-[5px] h-[28px] w-[38px]" : "right-[5px] top-2 flex items-center gap-1"}`}>
-                              {desktopStatusBadge ? (
-                                <span
-                                  className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.04em] ${desktopStatusBadge.className}`}
-                                >
-                                  {desktopStatusBadge.label}
-                                </span>
-                              ) : null}
+                            {isDesktopPaid || isDesktopUnpaid ? (
+                              <div className="absolute right-[5px] top-1/2 h-[32px] w-[48px] -translate-y-1/2">
                               {isDesktopPaid ? (
                                 <>
-                                  <span className="absolute left-0 top-[12px] text-[20px] font-semibold leading-none text-white">$</span>
+                                  <span className="absolute left-[1px] top-[15px] text-[20px] font-semibold leading-none text-white">$</span>
                                   <span
                                     title="Paid"
-                                    className="absolute left-[12px] top-[-1px] grid h-4 w-4 place-items-center rounded-full bg-[#23994a] text-white ring-1 ring-white/55"
+                                    className="absolute left-[14px] top-[1px] grid h-4 w-4 place-items-center rounded-full bg-[#23994a] text-white ring-1 ring-white/70"
                                   >
                                     <Icon name="check" className="h-2.5 w-2.5" />
                                   </span>
-                                  <span className="absolute right-0 top-[8px] grid h-7 w-7 place-items-center rounded-full border border-black/55 bg-[#e5e7eb] text-[11px] font-semibold text-black">
+                                  <span className="absolute right-0 top-[6px] grid h-7 w-7 place-items-center rounded-full border border-black/55 bg-[#e5e7eb] text-[11px] font-semibold text-black">
                                     {desktopInitials}
                                   </span>
                                 </>
                               ) : null}
                               {isDesktopUnpaid ? (
-                                <Icon name="dollar-off" className={isCompactBooking ? "absolute right-0 top-[6px] h-6 w-6 text-white" : "h-6 w-6 shrink-0 text-white"} />
+                                <Icon name="dollar-off" className="absolute right-[5px] top-[5px] h-6 w-6 text-white" />
                               ) : null}
                               </div>
                             ) : null}
                             <div
                               className={`truncate font-semibold ${textPaddingClass} ${
-                                isCompactBooking ? "-mt-[1px] text-[12px] leading-[1.05]" : "mt-1 text-[15px] leading-none"
+                                isCompactBooking ? "mt-[1px] text-[14px] leading-[14px]" : "mt-1 text-[15px] leading-none"
                               }`}
                             >
                               {bookingTitle}
@@ -10228,17 +10218,12 @@ function CalendarView({
                             {isCompactBooking && isUnavailableBlock ? null : (
                               <div
                                 className={`truncate font-medium ${tone.subClass} ${textPaddingClass} ${
-                                  isCompactBooking ? "-mt-[1px] text-[9px] leading-[1.05]" : "mt-0.5 text-[11px] leading-none"
+                                  isCompactBooking ? "mt-[1px] text-[11px] leading-[11px]" : "mt-0.5 text-[11px] leading-none"
                                 }`}
                               >
-                                {bookingDetail}
+                                {bookingSubtitle}
                               </div>
                             )}
-                            {!isCompactBooking && !isUnavailableBlock && coachName ? (
-                              <div className={`mt-1 truncate pr-16 text-[11px] font-medium leading-none ${tone.subClass}`}>
-                                Coach: {coachName}
-                              </div>
-                            ) : null}
                           </button>
                           );
                         })}
