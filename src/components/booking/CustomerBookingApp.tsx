@@ -239,6 +239,15 @@ function facilityHoursStatus(schedules: PublicBookingSchedule[], now: Date) {
   return { isOpen: false, label: "Closed" };
 }
 
+function directionsHref(address: string) {
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`;
+}
+
+function phoneHref(phone: string, mode: "call" | "text") {
+  const normalized = phone.replace(/[^\d+]/g, "");
+  return `${mode === "call" ? "tel" : "sms"}:${normalized}`;
+}
+
 function formatLongDate(value: string) {
   return parseLocalDate(value).toLocaleDateString("en-US", {
     weekday: "long",
@@ -483,8 +492,28 @@ function BookingHero({
             <div className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#1784bd]">Book Online</div>
             <h2 className="mt-2 text-[30px] font-semibold leading-tight tracking-normal sm:text-[38px]">{settings.facilityName}</h2>
             <div className="mt-4 flex flex-wrap gap-2 text-[14px] font-semibold text-black/65">
-              <span className="rounded-full border border-black/10 bg-[#f7f8fa] px-4 py-2">{settings.address}</span>
-              <span className="rounded-full border border-black/10 bg-[#f7f8fa] px-4 py-2">{settings.phone}</span>
+              <a
+                href={directionsHref(settings.address)}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-full border border-black/10 bg-[#f7f8fa] px-4 py-2 transition hover:border-[#1784bd]/35 hover:bg-[#eef8fc] hover:text-[#0b6f9f]"
+              >
+                {settings.address}
+              </a>
+              <span className="inline-flex overflow-hidden rounded-full border border-black/10 bg-[#f7f8fa]">
+                <a
+                  href={phoneHref(settings.phone, "call")}
+                  className="px-4 py-2 transition hover:bg-[#eef8fc] hover:text-[#0b6f9f]"
+                >
+                  {settings.phone}
+                </a>
+                <a
+                  href={phoneHref(settings.phone, "text")}
+                  className="border-l border-black/10 px-3 py-2 transition hover:bg-[#eef8fc] hover:text-[#0b6f9f]"
+                >
+                  Text
+                </a>
+              </span>
               <span
                 className={[
                   "rounded-full border px-4 py-2",
@@ -2084,8 +2113,17 @@ export default function CustomerBookingApp() {
             </div>
           </div>
           <div className="grid gap-1 text-[14px] text-white/65 sm:text-right">
-            <div>{data.settings.address}</div>
-            <div>{data.settings.phone}</div>
+            <a href={directionsHref(data.settings.address)} target="_blank" rel="noreferrer" className="hover:text-white">
+              {data.settings.address}
+            </a>
+            <div className="flex gap-3 sm:justify-end">
+              <a href={phoneHref(data.settings.phone, "call")} className="hover:text-white">
+                {data.settings.phone}
+              </a>
+              <a href={phoneHref(data.settings.phone, "text")} className="hover:text-white">
+                Text
+              </a>
+            </div>
             <div className="text-white/40">Copyright {new Date().getFullYear()} {data.settings.facilityName}</div>
           </div>
         </div>
