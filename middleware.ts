@@ -36,7 +36,8 @@ function isPublicPath(pathname: string) {
 
 async function getUserRole(
   supabase: ServerSupabaseClient,
-  userId: string
+  userId: string,
+  email: string | null | undefined
 ): Promise<"member" | "grind_member" | "admin" | "staff"> {
   const { data } = await supabase
     .from("profiles")
@@ -45,8 +46,19 @@ async function getUserRole(
     .maybeSingle();
 
   const role = (data?.role ?? "member") as string;
+  const normalizedEmail = (email ?? "").trim().toLowerCase();
+  const { data: staffMember } = await supabase
+    .from("booking_staff_members")
+    .select("id,role")
+    .eq("is_active", true)
+    .ilike("email", normalizedEmail)
+    .maybeSingle();
 
-  if (role === "admin") return "admin";
+  const staffRole = (staffMember?.role ?? "") as string;
+  if (staffRole === "Owner" || staffRole === "Admin") return "admin";
+  if (staffMember?.id) return "staff";
+
+  if (role === "admin") return "member";
   if (role === "owner" || role === "staff" || role === "instructor") return "staff";
   if (role === "grind_member") return "grind_member";
   return "member";
@@ -102,7 +114,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  const role = await getUserRole(supabase, user.id);
+  const role = await getUserRole(supabase, user.id, user.email);
 
   if (pathname.startsWith("/admin")) {
     if (role !== "admin" && role !== "staff") {

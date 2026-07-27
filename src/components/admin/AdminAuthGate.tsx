@@ -81,16 +81,11 @@ export default function AdminAuthGate({
       const profile = prof as ProfileRoleRow | null;
       const role: Role = profile?.role ?? null;
 
-      if (!error && (role === "admin" || role === "owner" || role === "staff" || role === "instructor")) {
-        setStatus("allowed");
-        return;
-      }
-
       if (session.user.email) {
         const { data: staffMember } = await supabase
           .from("booking_staff_members")
           .select("id,role")
-          .eq("email", session.user.email)
+          .ilike("email", session.user.email)
           .eq("is_active", true)
           .maybeSingle();
 

@@ -38,10 +38,20 @@ export async function requireAdminRouteContext() {
 
   const profile = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
   const role = (profile.data as { role?: string } | null)?.role ?? null;
+  const email = (user.email ?? "").trim();
+  const staff = email
+    ? await supabase
+        .from("booking_staff_members")
+        .select("id,role")
+        .eq("is_active", true)
+        .ilike("email", email)
+        .maybeSingle()
+    : { data: null, error: null };
+  const staffRole = (staff.data as { role?: string } | null)?.role ?? null;
 
-  if (role !== "admin") {
+  if (!staff.data || !["Owner", "Admin", "Instructor", "Staff"].includes(staffRole ?? "")) {
     return { error: routeJsonError("Not authorized.", 403) };
   }
 
-  return { supabase, user };
+  return { supabase, user, staffMember: staff.data, profileRole: role };
 }
