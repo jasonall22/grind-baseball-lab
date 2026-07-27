@@ -1001,37 +1001,37 @@ function CustomerPortalModal({
             </div>
             <form onSubmit={submitPlayer} className="mt-4 rounded-[8px] border border-dashed border-black/15 bg-white px-4 py-4">
               <div className="text-[15px] font-semibold">Add player</div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_160px_140px_auto]">
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_150px_130px_72px]">
                 <input
                   value={playerForm.firstName}
                   onChange={(event) => setPlayerForm((current) => ({ ...current, firstName: event.target.value }))}
                   placeholder="First name"
-                  className="h-11 rounded-[5px] border border-black/15 px-3 text-[15px]"
+                  className="h-11 min-w-0 rounded-[5px] border border-black/15 px-3 text-[15px]"
                 />
                 <input
                   value={playerForm.lastName}
                   onChange={(event) => setPlayerForm((current) => ({ ...current, lastName: event.target.value }))}
                   placeholder="Last name"
-                  className="h-11 rounded-[5px] border border-black/15 px-3 text-[15px]"
+                  className="h-11 min-w-0 rounded-[5px] border border-black/15 px-3 text-[15px]"
                 />
                 <input
                   type="date"
                   value={playerForm.birthDate}
                   onChange={(event) => setPlayerForm((current) => ({ ...current, birthDate: event.target.value }))}
                   aria-label="Date of birth"
-                  className="h-11 rounded-[5px] border border-black/15 px-3 text-[15px]"
+                  className="h-11 min-w-0 rounded-[5px] border border-black/15 px-3 text-[15px]"
                 />
                 <select
                   value={playerForm.gender}
                   onChange={(event) => setPlayerForm((current) => ({ ...current, gender: event.target.value }))}
                   aria-label="Gender"
-                  className="h-11 rounded-[5px] border border-black/15 bg-white px-3 text-[15px]"
+                  className="h-11 min-w-0 rounded-[5px] border border-black/15 bg-white px-3 text-[15px]"
                 >
                   <option value="">Gender</option>
                   <option value="Male">Male</option>
                   <option value="Female">Female</option>
                 </select>
-                <button type="submit" disabled={playerBusy} className="h-11 rounded-[6px] bg-black px-4 text-[14px] font-semibold text-white disabled:opacity-55">
+                <button type="submit" disabled={playerBusy} className="h-11 w-full rounded-[6px] bg-black px-4 text-[14px] font-semibold text-white disabled:opacity-55">
                   {playerBusy ? "Adding..." : "Add"}
                 </button>
               </div>
