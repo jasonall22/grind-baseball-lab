@@ -2229,9 +2229,11 @@ function coachOptionsForAdminLesson(service: Service | null | undefined, staff: 
 
   if (matchedStaff.length) return matchedStaff;
 
-  return activeStaff.filter((member) =>
-    ["owner", "admin", "instructor"].includes(member.role.trim().toLowerCase())
+  const coachRoleStaff = activeStaff.filter((member) =>
+    ["owner", "admin", "instructor", "staff"].includes(member.role.trim().toLowerCase())
   );
+
+  return coachRoleStaff.length ? coachRoleStaff : activeStaff;
 }
 
 function slugifyFileNameStem(fileName: string) {

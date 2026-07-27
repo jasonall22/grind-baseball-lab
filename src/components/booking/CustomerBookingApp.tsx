@@ -399,9 +399,12 @@ function staffAvailabilityCovers(data: PublicBookingData, choice: TimeChoice, da
 function coachOptionsForService(data: PublicBookingData, service: PublicBookingService | null) {
   if (!service || service.category !== "lessons") return [];
   const assignedNames = new Set(service.instructors.map((name) => name.trim().toLowerCase()).filter(Boolean));
-  const staff = assignedNames.size
+  const matchedStaff = assignedNames.size
     ? data.staff.filter((member) => assignedNames.has(member.name.trim().toLowerCase()))
-    : data.staff.filter((member) => ["instructor", "owner", "admin"].includes(member.role.trim().toLowerCase()));
+    : [];
+  const staff = matchedStaff.length
+    ? matchedStaff
+    : data.staff.filter((member) => ["instructor", "owner", "admin", "staff"].includes(member.role.trim().toLowerCase()));
 
   return staff.length
     ? staff

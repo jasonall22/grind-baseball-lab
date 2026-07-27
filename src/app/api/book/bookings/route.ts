@@ -101,8 +101,11 @@ function membershipCoversService(membership: Record<string, unknown>, serviceId:
 
 function lessonCoachOptions(data: PublicBookingData, service: PublicBookingData["services"][number]) {
   const assignedNames = new Set(service.instructors.map((name) => name.trim().toLowerCase()).filter(Boolean));
-  if (assignedNames.size) return data.staff.filter((member) => assignedNames.has(member.name.trim().toLowerCase()));
-  return data.staff.filter((member) => ["instructor", "owner", "admin"].includes(member.role.trim().toLowerCase()));
+  const matchedStaff = assignedNames.size
+    ? data.staff.filter((member) => assignedNames.has(member.name.trim().toLowerCase()))
+    : [];
+  if (matchedStaff.length) return matchedStaff;
+  return data.staff.filter((member) => ["instructor", "owner", "admin", "staff"].includes(member.role.trim().toLowerCase()));
 }
 
 function coachAvailabilityCovers(
