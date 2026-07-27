@@ -543,15 +543,19 @@ function MonthCalendar({ value, onChange }: { value: string; onChange: (value: s
   );
 }
 
-function LogoPanel({ compact = false }: { compact?: boolean }) {
+function LogoPanel({ compact = false, overview = false }: { compact?: boolean; overview?: boolean }) {
   return (
-    <div className={`relative flex items-center justify-center overflow-hidden bg-black ${compact ? "h-full min-h-[108px] px-4" : "min-h-[300px] sm:min-h-[340px]"}`}>
+    <div
+      className={`relative flex items-center justify-center overflow-hidden bg-black ${
+        compact ? "h-full min-h-[108px] px-4" : overview ? "min-h-[190px] px-8 sm:min-h-[230px]" : "min-h-[300px] sm:min-h-[340px]"
+      }`}
+    >
       <Image
         src="/logo.png"
         alt="The Grind Baseball Lab"
         width={compact ? 180 : 620}
         height={compact ? 70 : 241}
-        className={`relative ${compact ? "w-[118px] sm:w-[132px]" : "w-[620px] max-w-[78%]"} h-auto`}
+        className={`relative ${compact ? "w-[118px] sm:w-[132px]" : overview ? "w-[360px] max-w-full" : "w-[620px] max-w-[78%]"} h-auto`}
         priority={!compact}
       />
     </div>
@@ -3049,26 +3053,54 @@ export default function CustomerBookingApp() {
         >
           {step === "overview" ? (
             <div>
-              <LogoPanel />
-              <div className="mt-10">
-                <h3 className="text-[28px] font-normal">{selectedService.name}</h3>
-                <div className="mt-5 flex flex-wrap items-center gap-2 text-[14px] text-black/70">
-                  {(needsCoach ? coachOptions : selectedService.instructors.map((name) => ({ id: name, name, calendarColor: "#000000" }))).map((coach) => (
-                    <span key={coach.id} className="inline-flex items-center gap-2 rounded-full bg-black/6 px-3 py-1">
-                      <span
-                        className="flex h-6 w-6 items-center justify-center rounded-full text-[11px] text-white"
-                        style={{ backgroundColor: coach.calendarColor }}
-                      >
-                        {initials(coach.name)}
-                      </span>
-                      {coach.name}
-                    </span>
-                  ))}
-                </div>
-                <div className="mt-7 flex items-center gap-3 text-[16px] text-black/55">No age restrictions</div>
-                <div className="mt-9 border-t border-black/10 pt-5">
-                  <div className="text-[15px] font-semibold uppercase tracking-[0.12em] text-black/45">Pricing</div>
-                  <div className="mt-3 text-[20px]">{money(selectedService.price)}</div>
+              <div className="overflow-hidden rounded-[12px] border border-black/10 bg-white shadow-[0_12px_28px_rgba(15,23,42,0.06)] lg:grid lg:grid-cols-[300px_1fr]">
+                <LogoPanel overview />
+                <div className="px-5 py-6 sm:px-7">
+                  <div className="text-[13px] font-semibold uppercase tracking-[0.12em] text-[#1784bd]">Booking Overview</div>
+                  <h3 className="mt-3 text-[26px] font-semibold leading-tight">{selectedService.name}</h3>
+                  <p className="mt-3 text-[15px] leading-6 text-black/60">{serviceCardDescription(selectedService, data)}</p>
+
+                  <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-[8px] border border-black/10 bg-black/[0.02] px-4 py-3">
+                      <div className="text-[12px] font-semibold uppercase tracking-[0.1em] text-black/45">Duration</div>
+                      <div className="mt-1 text-[16px] font-semibold">{durationLabel(selectedService.duration)}</div>
+                    </div>
+                    <div className="rounded-[8px] border border-black/10 bg-black/[0.02] px-4 py-3">
+                      <div className="text-[12px] font-semibold uppercase tracking-[0.1em] text-black/45">Location</div>
+                      <div className="mt-1 text-[16px] font-semibold">{serviceRooms(selectedService, data.resources).join(", ")}</div>
+                    </div>
+                    <div className="rounded-[8px] border border-black/10 bg-black/[0.02] px-4 py-3">
+                      <div className="text-[12px] font-semibold uppercase tracking-[0.1em] text-black/45">Type</div>
+                      <div className="mt-1 text-[16px] font-semibold">{publicBookingCategoryLabels[selectedService.category].title}</div>
+                    </div>
+                    <div className="rounded-[8px] border border-black/10 bg-black/[0.02] px-4 py-3">
+                      <div className="text-[12px] font-semibold uppercase tracking-[0.1em] text-black/45">Price</div>
+                      <div className={`mt-1 text-[16px] font-semibold ${membershipCredit ? "text-[#087238]" : ""}`}>
+                        {membershipCredit ? "Membership credit" : money(selectedService.price)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {(needsCoach ? coachOptions : selectedService.instructors.map((name) => ({ id: name, name, calendarColor: "#000000" }))).length ? (
+                    <div className="mt-6">
+                      <div className="text-[12px] font-semibold uppercase tracking-[0.1em] text-black/45">
+                        {needsCoach ? "Available Coaches" : "Staff"}
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-[14px] text-black/70">
+                        {(needsCoach ? coachOptions : selectedService.instructors.map((name) => ({ id: name, name, calendarColor: "#000000" }))).map((coach) => (
+                          <span key={coach.id} className="inline-flex items-center gap-2 rounded-full bg-black/6 px-3 py-1">
+                            <span
+                              className="flex h-6 w-6 items-center justify-center rounded-full text-[11px] text-white"
+                              style={{ backgroundColor: coach.calendarColor }}
+                            >
+                              {initials(coach.name)}
+                            </span>
+                            {coach.name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
