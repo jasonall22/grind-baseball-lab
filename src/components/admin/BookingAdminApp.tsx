@@ -1509,13 +1509,6 @@ const defaultState: AppState = {
   },
   staff: [
     {
-      id: "staff-august-backman",
-      name: "August Backman",
-      email: "august.baseball19@gmail.com",
-      role: "Instructor",
-      active: true,
-    },
-    {
       id: "staff-carter-cox",
       name: "Carter Cox",
       email: "cartercox3308@gmail.com",
@@ -1533,13 +1526,6 @@ const defaultState: AppState = {
       id: "staff-jr-jason-allaire",
       name: "Jr. Jason Allaire",
       email: "jasonall22jr@icloud.com",
-      role: "Staff",
-      active: true,
-    },
-    {
-      id: "staff-brian-cox",
-      name: "Brian Cox",
-      email: "briancox4677@gmail.com",
       role: "Staff",
       active: true,
     },
@@ -2218,13 +2204,53 @@ function normalizeBookings(bookings: Booking[], services: Service[]) {
   });
 }
 
+function normalizeStaffNameForMatch(name: string) {
+  const tokens = name
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  const leadingSuffix = tokens[0] && ["jr", "sr", "ii", "iii", "iv"].includes(tokens[0]) ? tokens.shift() : "";
+  if (leadingSuffix) tokens.push(leadingSuffix);
+  return tokens.join(" ");
+}
+
+function activeStaffNameSet(staff: StaffMember[]) {
+  return new Set(
+    staff
+      .filter((member) => member.active !== false)
+      .map((member) => normalizeStaffNameForMatch(member.name))
+      .filter(Boolean)
+  );
+}
+
+function getLessonInstructorNames(service: Service, staff?: StaffMember[]) {
+  const names = (service.instructors ?? []).map((item) => item.trim()).filter(Boolean);
+  const uniqueNames = names.filter((name, index, all) => all.findIndex((item) => item.toLowerCase() === name.toLowerCase()) === index);
+  if (!staff) return uniqueNames;
+
+  const activeNames = activeStaffNameSet(staff);
+  return uniqueNames.filter((name) => activeNames.has(normalizeStaffNameForMatch(name)));
+}
+
+function sanitizeServiceInstructorsForStaff(service: Service, staff: StaffMember[]) {
+  if (service.category !== "lessons") return service;
+  return { ...service, instructors: getLessonInstructorNames(service, staff) };
+}
+
+function sanitizeServicesInstructorsForStaff(services: Service[], staff: StaffMember[]) {
+  return services.map((service) => sanitizeServiceInstructorsForStaff(service, staff));
+}
+
 function coachOptionsForAdminLesson(service: Service | null | undefined, staff: StaffMember[]) {
   if (service && service.category !== "lessons") return [];
 
-  const assignedNames = new Set((service?.instructors ?? []).map((name) => name.trim().toLowerCase()).filter(Boolean));
+  const assignedNames = service
+    ? new Set(getLessonInstructorNames(service, staff).map((name) => normalizeStaffNameForMatch(name)))
+    : new Set<string>();
   const activeStaff = staff.filter((member) => member.active !== false);
   const matchedStaff = assignedNames.size
-    ? activeStaff.filter((member) => assignedNames.has(member.name.trim().toLowerCase()))
+    ? activeStaff.filter((member) => assignedNames.has(normalizeStaffNameForMatch(member.name)))
     : [];
 
   if (matchedStaff.length) return matchedStaff;
@@ -2561,6 +2587,30 @@ async function upsertRolePermissions(rolePermissions: RolePermissionRecord[]) {
 
   if (refreshed.error) throw refreshed.error;
   return (refreshed.data ?? []) as BookingRolePermissionRow[];
+}
+
+async function updateLessonInstructorAssignmentsForStaff(services: Service[], staff: StaffMember[]) {
+  const sanitizedServices = sanitizeServicesInstructorsForStaff(services, staff);
+  const updates = sanitizedServices
+    .filter((service, index) => {
+      if (service.category !== "lessons") return false;
+      const previous = getLessonInstructorNames(services[index] ?? service);
+      const next = getLessonInstructorNames(service);
+      return previous.join("\n") !== next.join("\n");
+    })
+    .map((service) =>
+      supabase
+        .from("booking_services")
+        .update({ instructor_names: service.instructors ?? [] })
+        .eq("id", service.id)
+    );
+
+  if (!updates.length) return sanitizedServices;
+
+  const results = await Promise.all(updates);
+  const failed = results.find((result) => result.error);
+  if (failed?.error) throw failed.error;
+  return sanitizedServices;
 }
 
 async function upsertResources(resourceNames: string[]) {
@@ -4434,10 +4484,6 @@ function formatServiceDuration(duration: number) {
   return `${safeDuration} min`;
 }
 
-function getLessonInstructorNames(service: Service) {
-  return (service.instructors ?? []).map((item) => item.trim()).filter(Boolean);
-}
-
 function reorderServicesByVisibleList(
   services: Service[],
   visibleServiceIds: string[],
@@ -5004,38 +5050,41 @@ export default function BookingAdminApp({
           }))
         ),
         resources: resources.map((resource) => resource.name),
-        services: serviceRows.map((service) => ({
-          id: service.id,
-          name: service.name,
-          duration: service.duration_minutes,
-          price: Number(service.price),
-          resource:
-            (service.resource_names && service.resource_names[0]) ||
-            (service.resource_id ? namesById.get(service.resource_id) ?? "" : ""),
-          rooms:
-            service.resource_names && service.resource_names.length
-              ? service.resource_names
-              : service.resource_id
-                ? [namesById.get(service.resource_id) ?? ""].filter(Boolean)
+        services: sanitizeServicesInstructorsForStaff(
+          serviceRows.map((service) => ({
+            id: service.id,
+            name: service.name,
+            duration: service.duration_minutes,
+            price: Number(service.price),
+            resource:
+              (service.resource_names && service.resource_names[0]) ||
+              (service.resource_id ? namesById.get(service.resource_id) ?? "" : ""),
+            rooms:
+              service.resource_names && service.resource_names.length
+                ? service.resource_names
+                : service.resource_id
+                  ? [namesById.get(service.resource_id) ?? ""].filter(Boolean)
+                : [],
+            instructors: service.instructor_names ?? [],
+            category: service.service_type ?? inferServiceCategory(service.name),
+            status: service.status,
+            calendarColor: normalizeCalendarColor(service.calendar_color),
+            scheduleId: service.schedule_id,
+            collectTax: Boolean(service.collect_tax),
+            collectFee: Boolean(service.collect_fee),
+            membershipBillingPeriod: service.membership_billing_period ?? "Monthly",
+            membershipMemberLimit: service.membership_member_limit ?? null,
+            membershipCreditsPerDay: Number(service.membership_credits_per_day ?? 0),
+            membershipCreditLimitPeriod: normalizeMembershipCreditLimitPeriod(service.membership_credit_limit_period),
+            membershipCreditScope: service.membership_credit_scope ?? "selected_services",
+            membershipEligibleServiceIds: Array.isArray(service.membership_eligible_service_ids)
+              ? service.membership_eligible_service_ids
               : [],
-          instructors: service.instructor_names ?? [],
-          category: service.service_type ?? inferServiceCategory(service.name),
-          status: service.status,
-          calendarColor: normalizeCalendarColor(service.calendar_color),
-          scheduleId: service.schedule_id,
-          collectTax: Boolean(service.collect_tax),
-          collectFee: Boolean(service.collect_fee),
-          membershipBillingPeriod: service.membership_billing_period ?? "Monthly",
-          membershipMemberLimit: service.membership_member_limit ?? null,
-          membershipCreditsPerDay: Number(service.membership_credits_per_day ?? 0),
-          membershipCreditLimitPeriod: normalizeMembershipCreditLimitPeriod(service.membership_credit_limit_period),
-          membershipCreditScope: service.membership_credit_scope ?? "selected_services",
-          membershipEligibleServiceIds: Array.isArray(service.membership_eligible_service_ids)
-            ? service.membership_eligible_service_ids
-            : [],
-          stripeProductId: service.stripe_product_id ?? null,
-          stripePriceId: service.stripe_price_id ?? null,
-        })),
+            stripeProductId: service.stripe_product_id ?? null,
+            stripePriceId: service.stripe_price_id ?? null,
+          })),
+          staffMembers
+        ),
         customers: sortCustomersByLastFirst(
           customerRows.map((customer) => ({
             id: customer.id,
@@ -5270,6 +5319,7 @@ export default function BookingAdminApp({
       ...state,
       staff: normalizedStaff,
       staffAvailability: applyStaffCalendarColorsToAvailabilityEntries(state.staffAvailability, normalizedStaff),
+      services: sanitizeServicesInstructorsForStaff(state.services, normalizedStaff),
     };
 
     if (dataSource === "local") {
@@ -5306,10 +5356,12 @@ export default function BookingAdminApp({
       const failedAvailabilityColorUpdate = availabilityColorUpdates.find((result) => result.error);
       if (failedAvailabilityColorUpdate?.error) throw failedAvailabilityColorUpdate.error;
 
+      const sanitizedServices = await updateLessonInstructorAssignmentsForStaff(state.services, savedStaff);
       setState((current) => ({
         ...current,
         staff: savedStaff,
         staffAvailability: applyStaffCalendarColorsToAvailabilityEntries(current.staffAvailability, savedStaff),
+        services: sanitizedServices,
       }));
       showToast(successMessage);
       return true;
@@ -5330,6 +5382,10 @@ export default function BookingAdminApp({
       staff: state.staff.filter((item) => item.id !== staffId),
       staffAvailability: state.staffAvailability.filter((item) => item.staffId !== staffId),
       bookings: state.bookings.map((booking) => (booking.staffId === staffId ? { ...booking, staffId: null } : booking)),
+      services: sanitizeServicesInstructorsForStaff(
+        state.services,
+        state.staff.filter((item) => item.id !== staffId)
+      ),
     };
 
     if (dataSource === "local") {
@@ -5348,6 +5404,7 @@ export default function BookingAdminApp({
       });
       const result = (await response.json().catch(() => null)) as { error?: string } | null;
       if (!response.ok) throw new Error(result?.error || "Staff member could not be deleted.");
+      await updateLessonInstructorAssignmentsForStaff(state.services, nextState.staff);
       showToast("Staff member deleted.");
       return true;
     } catch (error) {
@@ -6740,6 +6797,7 @@ export default function BookingAdminApp({
             ) : (
               <ServicesView
                 services={state.services}
+                staff={state.staff}
                 membershipMembersByServiceId={membershipMembersByServiceId}
                 activeSection={serviceSection}
                 serviceSections={visibleServiceSectionItems}
@@ -7663,6 +7721,7 @@ function ServicesView({
   serviceSections,
   onSectionChange,
   services,
+  staff,
   membershipMembersByServiceId,
   canAdd,
   canEdit,
@@ -7675,6 +7734,7 @@ function ServicesView({
   serviceSections: { key: ServiceSection; label: string; icon: IconName }[];
   onSectionChange: (section: ServiceSection) => void;
   services: Service[];
+  staff: StaffMember[];
   membershipMembersByServiceId: Map<string, string[]>;
   canAdd: boolean;
   canEdit: boolean;
@@ -7696,7 +7756,7 @@ function ServicesView({
 
     return sectionServices.filter((service) => {
       const rooms = (service.rooms?.length ? service.rooms : [service.resource]).map((item) => item.trim().toLowerCase());
-      const instructors = (service.instructors ?? []).map((item) => item.trim().toLowerCase());
+      const instructors = getLessonInstructorNames(service, staff).map((item) => item.trim().toLowerCase());
       const membershipMembers = (membershipMembersByServiceId.get(service.id) ?? []).map((customerName) =>
         customerName.trim().toLowerCase()
       );
@@ -7707,7 +7767,7 @@ function ServicesView({
         membershipMembers.some((member) => member.includes(normalizedSearch))
       );
     });
-  }, [activeSection, membershipMembersByServiceId, search, services]);
+  }, [activeSection, membershipMembersByServiceId, search, services, staff]);
 
   const visibleServiceIds = useMemo(() => filteredServices.map((service) => service.id), [filteredServices]);
   const currentCopy = serviceSectionMeta[activeSection];
@@ -7816,7 +7876,7 @@ function ServicesView({
             filteredServices.map((service, index) => {
               const rooms = (service.rooms?.length ? service.rooms : [service.resource]).map((item) => item.trim()).filter(Boolean);
               const visibility = service.status === "Active" ? "Everyone" : "Private";
-              const instructorNames = getLessonInstructorNames(service);
+              const instructorNames = getLessonInstructorNames(service, staff);
               const compactInstructorNames = instructorNames.join(", ");
               const visibleInstructorNames = instructorNames.slice(0, 4);
               const remainingInstructorCount = Math.max(0, instructorNames.length - visibleInstructorNames.length);

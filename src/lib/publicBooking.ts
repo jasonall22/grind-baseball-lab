@@ -169,7 +169,7 @@ export const fallbackPublicBookingData: PublicBookingData = {
       price: 60,
       rooms: ["Cage 1", "Cage 2"],
       resourceId: "cage-1",
-      instructors: ["Jason Allaire", "Jr. Jason Allaire", "August Backman"],
+      instructors: ["Jason Allaire", "Jr. Jason Allaire"],
       scheduleId: "working-hours",
       collectTax: false,
       collectFee: true,
@@ -219,7 +219,6 @@ export const fallbackPublicBookingData: PublicBookingData = {
   bookings: [],
   staff: [
     { id: "staff-jason", name: "Jason Allaire", email: "info@grindbaseballlab.com", role: "Owner", calendarColor: "#249b41" },
-    { id: "staff-august", name: "August Backman", email: "august.baseball19@gmail.com", role: "Instructor", calendarColor: "#e89bef" },
   ],
   staffAvailability: [],
 };
