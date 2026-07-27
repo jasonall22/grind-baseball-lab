@@ -7,6 +7,7 @@ type QueryResult<T = unknown> = { data: T; error: QueryError };
 type QueryBuilder<T = unknown> = PromiseLike<QueryResult<T>> & {
   select(columns?: string): QueryBuilder<T>;
   eq(column: string, value: unknown): QueryBuilder<T>;
+  ilike(column: string, value: string): QueryBuilder<T>;
   order(column: string, options?: { ascending?: boolean }): QueryBuilder<T>;
   limit(count: number): QueryBuilder<T>;
   insert(values: unknown): QueryBuilder<T>;
@@ -177,6 +178,22 @@ async function waiverIsRequired(supabase: CustomerSupabaseClient) {
   return Boolean((settingsResult.data as { waiver_enabled?: boolean } | null)?.waiver_enabled);
 }
 
+async function hasActiveAdminStaffAccess(supabase: CustomerSupabaseClient, email: string) {
+  const normalizedEmail = clean(email).toLowerCase();
+  if (!normalizedEmail) return false;
+
+  const staffResult = await supabase
+    .from("booking_staff_members")
+    .select("id,role")
+    .eq("is_active", true)
+    .ilike("email", normalizedEmail)
+    .maybeSingle();
+
+  if (staffResult.error) throw staffResult.error;
+  const role = clean((staffResult.data as { role?: string } | null)?.role).toLowerCase();
+  return role === "admin" || role === "owner";
+}
+
 export async function GET(req: Request) {
   try {
     const authHeader = req.headers.get("authorization") ?? "";
@@ -189,9 +206,7 @@ export async function GET(req: Request) {
 
     const user = userResult.data.user;
     const email = clean(user.email).toLowerCase();
-    const profileResult = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-    if (profileResult.error) throw profileResult.error;
-    const isAdmin = clean((profileResult.data as { role?: string } | null)?.role) === "admin";
+    const isAdmin = await hasActiveAdminStaffAccess(supabase, email);
     const customerResult = await supabase
       .from("booking_customers")
       .select("id,parent_name,player_name,email,phone,age,birth_year,birth_month,birth_day,gender,emergency_contact_name,emergency_contact_email,emergency_contact_phone,family_members,waiver_agreed")
@@ -484,6 +499,7 @@ export async function POST(req: Request) {
     }
     if (insertResult.error) throw insertResult.error;
     const customerId = (insertResult.data as { id: string }).id;
+    const isAdmin = await hasActiveAdminStaffAccess(supabase, email);
 
     return NextResponse.json({
       ok: true,
@@ -502,6 +518,7 @@ export async function POST(req: Request) {
         emergencyContactPhone,
         familyMembers: savedFamilyMembers,
         waiverAgreed: Boolean(body.waiverAgreed),
+        isAdmin,
       },
     });
   } catch (error) {
@@ -522,6 +539,7 @@ export async function PATCH(req: Request) {
     if (userResult.error || !userResult.data.user) return badRequest("Sign in to update your account.", 401);
 
     const email = clean(userResult.data.user.email).toLowerCase();
+    const isAdmin = await hasActiveAdminStaffAccess(supabase, email);
     const customerResult = await supabase
       .from("booking_customers")
       .select("id,family_members,waiver_agreed")
@@ -581,6 +599,7 @@ export async function PATCH(req: Request) {
         emergencyContactPhone: clean(updated.emergency_contact_phone),
         familyMembers: normalizeFamilyMembers(updated.family_members),
         waiverAgreed: Boolean(updated.waiver_agreed),
+        isAdmin,
       },
     });
   } catch (error) {

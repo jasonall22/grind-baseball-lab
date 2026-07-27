@@ -27,6 +27,8 @@ type UserMeta = {
   name?: string;
 };
 
+type AuthSession = Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"];
+
 function pickDisplayName(
   profile: ProfileRow | null,
   meta: UserMeta | null,
@@ -44,6 +46,23 @@ function initialsFromName(name: string) {
   const parts = name.split(" ").filter(Boolean);
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
   return parts[0]?.[0]?.toUpperCase() ?? "U";
+}
+
+async function fetchCanOpenAdmin(accessToken: string | null) {
+  if (!accessToken) return false;
+
+  try {
+    const response = await fetch("/api/book/customers", {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!response.ok) return false;
+
+    const payload = (await response.json()) as { customer?: { isAdmin?: boolean } | null };
+    return payload.customer?.isAdmin === true;
+  } catch {
+    return false;
+  }
 }
 
 export default function SiteNav() {
@@ -64,6 +83,7 @@ export default function SiteNav() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userMeta, setUserMeta] = useState<UserMeta | null>(null);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
+  const [canOpenAdmin, setCanOpenAdmin] = useState(false);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -73,33 +93,40 @@ export default function SiteNav() {
   useEffect(() => {
     let mounted = true;
 
-    async function boot() {
-      const { data } = await supabase.auth.getSession();
-      if (!mounted) return;
-
-      const session = data.session;
+    async function loadSession(session: AuthSession) {
       setUserEmail(session?.user?.email ?? null);
       setUserMeta((session?.user?.user_metadata ?? null) as UserMeta | null);
+      setProfile(null);
+      setCanOpenAdmin(false);
 
       if (session?.user?.id) {
-        const { data: prof } = await supabase
-          .from("profiles")
-          .select("id, role, full_name, first_name, last_name")
-          .eq("id", session.user.id)
-          .maybeSingle();
+        const [profileResult, adminAllowed] = await Promise.all([
+          supabase
+            .from("profiles")
+            .select("id, role, full_name, first_name, last_name")
+            .eq("id", session.user.id)
+            .maybeSingle(),
+          fetchCanOpenAdmin(session.access_token),
+        ]);
 
-        if (mounted) setProfile((prof as ProfileRow) ?? null);
+        if (!mounted) return;
+        setProfile((profileResult.data as ProfileRow) ?? null);
+        setCanOpenAdmin(adminAllowed);
       }
 
       setAuthReady(true);
     }
 
-    boot();
+    async function boot() {
+      const { data } = await supabase.auth.getSession();
+      if (!mounted) return;
+      await loadSession(data.session);
+    }
+
+    void boot();
 
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      setUserEmail(session?.user?.email ?? null);
-      setUserMeta((session?.user?.user_metadata ?? null) as UserMeta | null);
-      setAuthReady(true);
+      void loadSession(session);
     });
 
     return () => {
@@ -207,7 +234,7 @@ export default function SiteNav() {
                         Dashboard
                       </Link>
 
-                      {profile?.role === "admin" && (
+                      {canOpenAdmin && (
                         <Link
                           href="/admin"
                           className="block px-4 py-3 text-sm hover:bg-white/10"
