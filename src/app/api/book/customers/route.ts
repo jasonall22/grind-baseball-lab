@@ -178,20 +178,19 @@ async function waiverIsRequired(supabase: CustomerSupabaseClient) {
   return Boolean((settingsResult.data as { waiver_enabled?: boolean } | null)?.waiver_enabled);
 }
 
-async function hasActiveAdminStaffAccess(supabase: CustomerSupabaseClient, email: string) {
+async function hasActiveStaffAccess(supabase: CustomerSupabaseClient, email: string) {
   const normalizedEmail = clean(email).toLowerCase();
   if (!normalizedEmail) return false;
 
   const staffResult = await supabase
     .from("booking_staff_members")
-    .select("id,role")
+    .select("id")
     .eq("is_active", true)
     .ilike("email", normalizedEmail)
     .maybeSingle();
 
   if (staffResult.error) throw staffResult.error;
-  const role = clean((staffResult.data as { role?: string } | null)?.role).toLowerCase();
-  return role === "admin" || role === "owner";
+  return Boolean((staffResult.data as { id?: string } | null)?.id);
 }
 
 export async function GET(req: Request) {
@@ -206,7 +205,7 @@ export async function GET(req: Request) {
 
     const user = userResult.data.user;
     const email = clean(user.email).toLowerCase();
-    const isAdmin = await hasActiveAdminStaffAccess(supabase, email);
+    const isAdmin = await hasActiveStaffAccess(supabase, email);
     const customerResult = await supabase
       .from("booking_customers")
       .select("id,parent_name,player_name,email,phone,age,birth_year,birth_month,birth_day,gender,emergency_contact_name,emergency_contact_email,emergency_contact_phone,family_members,waiver_agreed")
@@ -499,7 +498,7 @@ export async function POST(req: Request) {
     }
     if (insertResult.error) throw insertResult.error;
     const customerId = (insertResult.data as { id: string }).id;
-    const isAdmin = await hasActiveAdminStaffAccess(supabase, email);
+    const isAdmin = await hasActiveStaffAccess(supabase, email);
 
     return NextResponse.json({
       ok: true,
@@ -539,7 +538,7 @@ export async function PATCH(req: Request) {
     if (userResult.error || !userResult.data.user) return badRequest("Sign in to update your account.", 401);
 
     const email = clean(userResult.data.user.email).toLowerCase();
-    const isAdmin = await hasActiveAdminStaffAccess(supabase, email);
+    const isAdmin = await hasActiveStaffAccess(supabase, email);
     const customerResult = await supabase
       .from("booking_customers")
       .select("id,family_members,waiver_agreed")
