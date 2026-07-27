@@ -1116,6 +1116,19 @@ function rolePermissionSummary(role: StaffRole, records: RolePermissionRecord[])
   return enabledKeys.length >= allEditableRolePermissionKeys.length ? "All" : "Limited";
 }
 
+function permissionKeysForRole(role: StaffRole, records: RolePermissionRecord[]) {
+  return (
+    records.find((record) => record.role === role)?.enabledKeys ??
+    defaultRolePermissions.find((record) => record.role === role)?.enabledKeys ??
+    []
+  );
+}
+
+function hasAnyPermission(permissionKeys: Set<string>, requiredKeys: string[] | undefined) {
+  if (!requiredKeys?.length) return true;
+  return requiredKeys.some((key) => permissionKeys.has(key));
+}
+
 const navItems: { key: BookingAdminView; label: string; icon: IconName }[] = [
   { key: "home", label: "Home", icon: "home" },
   { key: "services", label: "Services", icon: "link" },
@@ -1128,6 +1141,31 @@ const navItems: { key: BookingAdminView; label: string; icon: IconName }[] = [
   { key: "settings", label: "Settings", icon: "gear" },
 ];
 
+const navPermissionKeys: Partial<Record<BookingAdminView, string[]>> = {
+  services: ["rentals.view", "lessons.view", "camps.view", "classes.view", "memberships.view", "packages.view"],
+  calendar: ["calendar.view"],
+  availability: ["availability.view"],
+  customers: ["customers.view"],
+  marketing: ["marketing.view"],
+  retail: ["retail.sellProducts", "retail.manageProducts"],
+  reports: ["reports.view"],
+  settings: [
+    "facility.view",
+    "facility.editDetails",
+    "facility.viewRooms",
+    "facility.viewSchedules",
+    "booking.viewPolicies",
+    "booking.viewRegistration",
+    "payments.view",
+    "payments.viewTaxesFees",
+    "people.viewStaff",
+    "people.viewRoles",
+    "platform.viewPlan",
+    "platform.viewPayouts",
+    "platform.viewIntegrations",
+  ],
+};
+
 const serviceSectionItems: { key: ServiceSection; label: string; icon: IconName }[] = [
   { key: "rentals", label: "Rentals", icon: "clock" },
   { key: "lessons", label: "Lessons", icon: "user" },
@@ -1136,6 +1174,27 @@ const serviceSectionItems: { key: ServiceSection; label: string; icon: IconName 
   { key: "memberships", label: "Memberships", icon: "table" },
   { key: "packages", label: "Packages", icon: "bag" },
 ];
+
+const serviceSectionPermissionKeys: Record<ServiceSection, string[]> = {
+  rentals: ["rentals.view"],
+  lessons: ["lessons.view"],
+  camps: ["camps.view"],
+  classes: ["classes.view"],
+  memberships: ["memberships.view"],
+  packages: ["packages.view"],
+};
+
+const settingsSectionPermissionKeys: Partial<Record<SettingsSection, string[]>> = {
+  basics: ["facility.view", "facility.editDetails"],
+  rooms: ["facility.viewRooms"],
+  schedules: ["facility.viewSchedules"],
+  "taxes-fees": ["payments.viewTaxesFees", "payments.edit"],
+  policies: ["booking.viewPolicies"],
+  registration: ["booking.viewRegistration"],
+  profile: ["facility.view", "facility.editDetails"],
+  staff: ["people.viewStaff"],
+  roles: ["people.viewRoles"],
+};
 
 const serviceSectionMeta: Record<
   ServiceSection,
@@ -4451,11 +4510,30 @@ export default function BookingAdminApp({
     if (!email) return null;
     return state.staff.find((staff) => staff.email.trim().toLowerCase() === email) ?? null;
   }, [currentAuthEmail, state.staff]);
+  const currentPermissionKeys = useMemo(() => {
+    if (!hasSupabaseEnv) return new Set(allEditableRolePermissionKeys);
+    if (!currentStaffMember) return new Set<string>();
+    return new Set(permissionKeysForRole(currentStaffMember.role, state.rolePermissions));
+  }, [currentStaffMember, state.rolePermissions]);
+  const canViewMainNavItem = useCallback(
+    (item: BookingAdminView) => item === "home" || hasAnyPermission(currentPermissionKeys, navPermissionKeys[item]),
+    [currentPermissionKeys]
+  );
+  const visibleNavItems = useMemo(
+    () => navItems.filter((item) => canViewMainNavItem(item.key)),
+    [canViewMainNavItem]
+  );
+  const visibleServiceSectionItems = useMemo(
+    () => serviceSectionItems.filter((item) => hasAnyPermission(currentPermissionKeys, serviceSectionPermissionKeys[item.key])),
+    [currentPermissionKeys]
+  );
+  const canViewSettingsSection = useCallback(
+    (section: SettingsSection | undefined) => !section || hasAnyPermission(currentPermissionKeys, settingsSectionPermissionKeys[section]),
+    [currentPermissionKeys]
+  );
   const canManageAnyAvailability =
     !hasSupabaseEnv ||
-    (currentProfileRole === "admin" && !currentStaffMember) ||
-    currentStaffMember?.role === "Owner" ||
-    currentStaffMember?.role === "Admin";
+    hasAnyPermission(currentPermissionKeys, ["availability.addAny", "availability.editAny", "availability.deleteAny"]);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -6362,7 +6440,7 @@ export default function BookingAdminApp({
             </div>
 
             <nav className="flex w-full gap-1 overflow-x-auto lg:mt-8 lg:grid lg:overflow-visible">
-              {navItems.map((item) => (
+              {visibleNavItems.map((item) => (
                 <div key={item.key} className="shrink-0 lg:w-full">
                   <Link
                     href={bookingAdminRouteByView[item.key]}
@@ -6378,7 +6456,7 @@ export default function BookingAdminApp({
 
                   {item.key === "services" && activeMainView === "services" ? (
                     <div className="mt-1 hidden space-y-1 pl-5 pr-2 lg:block">
-                      {serviceSectionItems.map((sectionItem) => (
+                      {visibleServiceSectionItems.map((sectionItem) => (
                         <Link
                           key={sectionItem.key}
                           href={getServiceSectionBasePath(sectionItem.key)}
@@ -6489,6 +6567,7 @@ export default function BookingAdminApp({
                 services={state.services}
                 membershipMembersByServiceId={membershipMembersByServiceId}
                 activeSection={serviceSection}
+                serviceSections={visibleServiceSectionItems}
                 onSectionChange={setServiceSection}
                 onReorder={(visibleServiceIds, serviceId, direction) =>
                   void reorderServices(visibleServiceIds, serviceId, direction)
@@ -6978,7 +7057,7 @@ export default function BookingAdminApp({
         </div>
       ) : null}
 
-      <MobileBottomNav activeView={activeMainView} />
+      <MobileBottomNav activeView={activeMainView} items={visibleNavItems} />
       {!isPreviewEmbed ? (
         <AdminViewportPreview
           previewDevice={previewDevice}
@@ -7250,18 +7329,28 @@ function MobileAdminHeader({
   );
 }
 
-function MobileBottomNav({ activeView }: { activeView: BookingAdminView }) {
-  const items: Array<{ key: BookingAdminView; label: string; icon: IconName; href: string }> = [
-    { key: "services", label: "Services", icon: "link", href: "/admin/services/rentals" },
-    { key: "calendar", label: "Calendar", icon: "calendar", href: bookingAdminRouteByView.calendar },
-    { key: "availability", label: "Availability", icon: "clock", href: bookingAdminRouteByView.availability },
-    { key: "customers", label: "Customers", icon: "user", href: bookingAdminRouteByView.customers },
-    { key: "settings", label: "More", icon: "bar", href: bookingAdminRouteByView.more },
-  ];
+function MobileBottomNav({
+  activeView,
+  items,
+}: {
+  activeView: BookingAdminView;
+  items: Array<{ key: BookingAdminView; label: string; icon: IconName }>;
+}) {
+  const bottomItems = items
+    .filter((item) => ["services", "calendar", "availability", "customers", "settings"].includes(item.key))
+    .slice(0, 5)
+    .map((item) => ({
+      ...item,
+      label: item.key === "settings" ? "More" : item.label,
+      href: item.key === "services" ? "/admin/services/rentals" : item.key === "settings" ? bookingAdminRouteByView.more : bookingAdminRouteByView[item.key],
+    }));
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 grid h-[76px] grid-cols-5 border-t border-black/10 bg-white/95 px-1 shadow-[0_-2px_12px_rgba(0,0,0,0.08)] backdrop-blur lg:hidden">
-      {items.map((item) => {
+    <nav
+      className="fixed inset-x-0 bottom-0 z-40 grid h-[76px] border-t border-black/10 bg-white/95 px-1 shadow-[0_-2px_12px_rgba(0,0,0,0.08)] backdrop-blur lg:hidden"
+      style={{ gridTemplateColumns: `repeat(${Math.max(bottomItems.length, 1)}, minmax(0, 1fr))` }}
+    >
+      {bottomItems.map((item) => {
         const active = activeView === item.key;
         return (
           <Link
@@ -7487,6 +7576,7 @@ function Pill({ label }: { label: string }) {
 
 function ServicesView({
   activeSection,
+  serviceSections,
   onSectionChange,
   services,
   membershipMembersByServiceId,
@@ -7495,6 +7585,7 @@ function ServicesView({
   onEdit,
 }: {
   activeSection: ServiceSection;
+  serviceSections: { key: ServiceSection; label: string; icon: IconName }[];
   onSectionChange: (section: ServiceSection) => void;
   services: Service[];
   membershipMembersByServiceId: Map<string, string[]>;
@@ -7540,7 +7631,7 @@ function ServicesView({
           <Icon name="chevron" className="h-4 w-4 rotate-180" />
         </button>
         <div className="flex h-full min-w-0 flex-1 gap-1 overflow-x-auto">
-          {serviceSectionItems.map((sectionItem) => (
+          {serviceSections.map((sectionItem) => (
             <button
               key={sectionItem.key}
               type="button"
@@ -17336,14 +17427,12 @@ function StaffRolesSettingsView({
   rolePermissions: RolePermissionRecord[];
 }) {
   const roleRows = useMemo(() => {
-    const presentRoles = new Set(staff.map((member) => member.role));
     return staffRoleDisplayOrder
-      .filter((item) => presentRoles.has(item.role))
       .map((item) => ({
         ...item,
         permissions: rolePermissionSummary(item.role, rolePermissions),
       }));
-  }, [rolePermissions, staff]);
+  }, [rolePermissions]);
 
   return (
     <section className="min-h-screen bg-white">
