@@ -28,6 +28,8 @@ type PublicSupabaseClient = {
   from(table: string): QueryBuilder;
 };
 
+const NO_PREFERENCE_COACH_ID = "__no_preference__";
+
 type CreateBookingBody = {
   serviceId?: string;
   date?: string;
@@ -108,6 +110,34 @@ function lessonCoachOptions(data: PublicBookingData, service: PublicBookingData[
   return data.staff.filter((member) => ["instructor", "owner", "admin", "staff"].includes(member.role.trim().toLowerCase()));
 }
 
+function availableCoachForLesson(
+  data: PublicBookingData,
+  service: PublicBookingData["services"][number],
+  staffMemberId: string,
+  date: string,
+  start: string,
+  end: string,
+  resourceName: string
+) {
+  const coachOptions = lessonCoachOptions(data, service);
+  const requestedCoach =
+    staffMemberId && staffMemberId !== NO_PREFERENCE_COACH_ID
+      ? coachOptions.find((coach) => coach.id === staffMemberId)
+      : null;
+  if (staffMemberId && staffMemberId !== NO_PREFERENCE_COACH_ID && !requestedCoach) return null;
+  const candidates = requestedCoach ? [requestedCoach] : coachOptions;
+
+  return (
+    candidates.find((coach) => {
+      const coachCovers = coachAvailabilityCovers(data, coach.id, date, start, end, resourceName);
+      const coachConflict = data.bookings.some(
+        (booking) => booking.date === date && booking.staffId === coach.id && overlaps(start, end, booking.start, booking.end)
+      );
+      return coachCovers && !coachConflict;
+    }) ?? null
+  );
+}
+
 function coachAvailabilityCovers(
   data: PublicBookingData,
   staffMemberId: string,
@@ -168,17 +198,20 @@ export async function POST(req: Request) {
 
     if (!fitsOpenSlot) return badRequest("That time is outside the current booking hours.", 409);
 
-    if (service.category === "lessons") {
-      if (!staffMemberId) return badRequest("Choose a hitting coach for this lesson.", 400);
+    if (service.category === "lessons" && !staffMemberId) return badRequest("Choose a hitting coach for this lesson.", 400);
 
-      const coachOptions = lessonCoachOptions(data, service);
-      if (!coachOptions.some((coach) => coach.id === staffMemberId)) {
-        return badRequest("That coach is not available for this lesson.", 409);
-      }
+    const assignedCoach =
+      service.category === "lessons"
+        ? availableCoachForLesson(data, service, staffMemberId, date, start, end, resource.name)
+        : null;
 
-      if (!coachAvailabilityCovers(data, staffMemberId, date, start, end, resource.name)) {
-        return badRequest("That coach is not available at this time.", 409);
-      }
+    if (service.category === "lessons" && !assignedCoach) {
+      return badRequest(
+        staffMemberId && staffMemberId !== NO_PREFERENCE_COACH_ID
+          ? "That coach is not available at this time."
+          : "No coach is available at this time.",
+        409
+      );
     }
 
     const conflict = data.bookings.some(
@@ -186,14 +219,6 @@ export async function POST(req: Request) {
     );
 
     if (conflict) return badRequest("That room is already booked for that time.", 409);
-
-    const coachConflict =
-      service.category === "lessons" &&
-      data.bookings.some(
-        (booking) => booking.date === date && booking.staffId === staffMemberId && overlaps(start, end, booking.start, booking.end)
-      );
-
-    if (coachConflict) return badRequest("That coach already has a booking for that time.", 409);
 
     const supabase = getSupabaseAdmin() as unknown as PublicSupabaseClient;
     const existingCustomer = submittedCustomerId
@@ -291,7 +316,7 @@ export async function POST(req: Request) {
         player_name: playerName,
         service_id: service.id,
         resource_id: resource.id,
-        staff_member_id: service.category === "lessons" ? staffMemberId : null,
+        staff_member_id: assignedCoach?.id ?? null,
         status: "Pending",
         paid: Boolean(membershipCreditRedemption),
         notes: `Public booking. Payment selected: ${
@@ -318,7 +343,7 @@ export async function POST(req: Request) {
       if (ledgerResult.error) throw ledgerResult.error;
     }
 
-    return NextResponse.json({ ok: true, bookingId: (bookingResult.data as { id: string }).id });
+    return NextResponse.json({ ok: true, bookingId: (bookingResult.data as { id: string }).id, staffMemberId: assignedCoach?.id ?? null });
   } catch (error) {
     console.error(error);
     return badRequest(error instanceof Error ? error.message : "Could not create booking.", 500);

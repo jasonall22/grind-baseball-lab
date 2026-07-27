@@ -28,6 +28,7 @@ import { supabase } from "@/lib/supabaseClient";
 
 const stripePublishableKey = (process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || "").trim();
 const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : null;
+const NO_PREFERENCE_COACH_ID = "__no_preference__";
 
 type BookingStep = "overview" | "player" | "time" | "summary" | "done";
 type TimeChoice = { start: string; end: string; resourceId: string; resourceName: string };
@@ -417,6 +418,28 @@ function coachOptionsForService(data: PublicBookingData, service: PublicBookingS
       }));
 }
 
+function availableCoachForChoice(
+  data: PublicBookingData,
+  service: PublicBookingService,
+  choice: TimeChoice,
+  date: string,
+  staffId?: string
+) {
+  if (service.category !== "lessons") return null;
+  const coachOptions = coachOptionsForService(data, service);
+  const requestedCoach = staffId && staffId !== NO_PREFERENCE_COACH_ID ? coachOptions.find((coach) => coach.id === staffId) : null;
+  if (staffId && staffId !== NO_PREFERENCE_COACH_ID && !requestedCoach) return null;
+  const candidates = requestedCoach ? [requestedCoach] : coachOptions;
+
+  return (
+    candidates.find(
+      (coach) =>
+        staffAvailabilityCovers(data, choice, date, coach.id) &&
+        !isCoachConflict(choice, date, coach.id, data.bookings)
+    ) ?? null
+  );
+}
+
 function getAvailableSlots(
   data: PublicBookingData,
   service: PublicBookingService | null,
@@ -453,8 +476,7 @@ function getAvailableSlots(
         };
         if (isToday && start <= currentMinutes) continue;
         if (isConflict(choice, date, data.bookings)) continue;
-        if (service.category === "lessons" && staffId && !staffAvailabilityCovers(data, choice, date, staffId)) continue;
-        if (service.category === "lessons" && staffId && isCoachConflict(choice, date, staffId, data.bookings)) continue;
+        if (service.category === "lessons" && !availableCoachForChoice(data, service, choice, date, staffId)) continue;
         choices.push(choice);
       }
     }
@@ -2090,7 +2112,8 @@ export default function CustomerBookingApp() {
   const servicesForCategory = selectedCategory ? data.services.filter((service) => service.category === selectedCategory) : [];
   const coachOptions = useMemo(() => coachOptionsForService(data, selectedService), [data, selectedService]);
   const selectedCoach = coachOptions.find((coach) => coach.id === selectedCoachId) ?? null;
-  const selectedCoachName = selectedCoach?.name ?? "";
+  const noPreferenceCoachSelected = selectedCoachId === NO_PREFERENCE_COACH_ID;
+  const selectedCoachName = noPreferenceCoachSelected ? "No preference" : selectedCoach?.name ?? "";
   const needsCoach = selectedService?.category === "lessons";
   const isMembership = selectedService?.category === "memberships";
   const availableTimes = useMemo(
@@ -2138,7 +2161,7 @@ export default function CustomerBookingApp() {
       if (selectedCoachId) setSelectedCoachId("");
       return;
     }
-    if (selectedCoachId && !coachOptions.some((coach) => coach.id === selectedCoachId)) {
+    if (selectedCoachId && selectedCoachId !== NO_PREFERENCE_COACH_ID && !coachOptions.some((coach) => coach.id === selectedCoachId)) {
       setSelectedCoachId("");
     }
   }, [coachOptions, needsCoach, selectedCoachId]);
@@ -2670,6 +2693,7 @@ export default function CustomerBookingApp() {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Could not create booking.");
+      const bookedStaffId = typeof payload.staffMemberId === "string" && payload.staffMemberId ? payload.staffMemberId : null;
       setData((current) => ({
         ...current,
         bookings: [
@@ -2680,7 +2704,7 @@ export default function CustomerBookingApp() {
             start: selectedTime.start,
             end: selectedTime.end,
             resourceId: selectedTime.resourceId,
-            staffId: needsCoach ? selectedCoachId : null,
+            staffId: needsCoach ? bookedStaffId : null,
           },
         ],
       }));
@@ -3125,32 +3149,54 @@ export default function CustomerBookingApp() {
                   <div className="mt-4 text-[16px]">Who would you like to schedule this lesson with?</div>
                   <div className="mt-6 grid gap-4 sm:grid-cols-2">
                     {coachOptions.length ? (
-                      coachOptions.map((coach) => (
+                      <>
                         <button
-                          key={coach.id}
                           type="button"
                           onClick={() => {
-                            setSelectedCoachId(coach.id);
-                            const nextDate = nextAvailableDateForCoach(data, selectedService, selectedDate, coach.id);
+                            setSelectedCoachId(NO_PREFERENCE_COACH_ID);
+                            const nextDate = nextAvailableDateForCoach(data, selectedService, selectedDate, NO_PREFERENCE_COACH_ID);
                             if (nextDate && nextDate !== selectedDate) setSelectedDate(nextDate);
                             setSelectedTime(null);
                           }}
                           className={`flex items-center gap-4 rounded-[8px] border px-5 py-4 text-left ${
-                            selectedCoachId === coach.id ? "border-black shadow-[inset_0_0_0_1px_black]" : "border-black/15"
+                            noPreferenceCoachSelected ? "border-black shadow-[inset_0_0_0_1px_black]" : "border-black/15"
                           }`}
                         >
-                          <span
-                            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-[14px] font-semibold text-white"
-                            style={{ backgroundColor: coach.calendarColor }}
-                          >
-                            {initials(coach.name)}
+                          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-black text-[13px] font-semibold text-white">
+                            Any
                           </span>
                           <span>
-                            <span className="block text-[17px] font-semibold">{coach.name}</span>
-                            <span className="mt-1 block text-[14px] text-black/55">{coach.role || "Instructor"}</span>
+                            <span className="block text-[17px] font-semibold">No preference</span>
+                            <span className="mt-1 block text-[14px] text-black/55">First available coach</span>
                           </span>
                         </button>
-                      ))
+                        {coachOptions.map((coach) => (
+                          <button
+                            key={coach.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedCoachId(coach.id);
+                              const nextDate = nextAvailableDateForCoach(data, selectedService, selectedDate, coach.id);
+                              if (nextDate && nextDate !== selectedDate) setSelectedDate(nextDate);
+                              setSelectedTime(null);
+                            }}
+                            className={`flex items-center gap-4 rounded-[8px] border px-5 py-4 text-left ${
+                              selectedCoachId === coach.id ? "border-black shadow-[inset_0_0_0_1px_black]" : "border-black/15"
+                            }`}
+                          >
+                            <span
+                              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-[14px] font-semibold text-white"
+                              style={{ backgroundColor: coach.calendarColor }}
+                            >
+                              {initials(coach.name)}
+                            </span>
+                            <span>
+                              <span className="block text-[17px] font-semibold">{coach.name}</span>
+                              <span className="mt-1 block text-[14px] text-black/55">{coach.role || "Instructor"}</span>
+                            </span>
+                          </button>
+                        ))}
+                      </>
                     ) : (
                       <div className="rounded-[8px] bg-black/5 px-5 py-4 text-black/55">No hitting coaches are assigned to this lesson yet.</div>
                     )}
@@ -3331,7 +3377,7 @@ export default function CustomerBookingApp() {
                     <div className="rounded-[8px] bg-black/5 px-5 py-4 text-black/55">Choose a hitting coach before selecting a time.</div>
                   ) : (
                     <div className="rounded-[8px] bg-black/5 px-5 py-4 text-black/55">
-                      No times are available for {selectedCoachName || "this coach"} on this date.
+                      No times are available for {noPreferenceCoachSelected ? "any coach" : selectedCoachName || "this coach"} on this date.
                     </div>
                   )}
                 </div>
