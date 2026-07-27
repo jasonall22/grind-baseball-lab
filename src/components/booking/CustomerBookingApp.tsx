@@ -519,8 +519,8 @@ function MonthCalendar({ value, onChange }: { value: string; onChange: (value: s
   }
 
   return (
-    <div className="w-full max-w-[400px] rounded-[3px] bg-white p-6 shadow-[0_8px_22px_rgba(0,0,0,0.22)]">
-      <div className="mb-7 flex items-center justify-between text-[18px] font-semibold">
+    <div className="w-full max-w-[360px] rounded-[3px] bg-white p-5 shadow-[0_8px_22px_rgba(0,0,0,0.18)] sm:p-6">
+      <div className="mb-5 flex items-center justify-between text-[17px] font-semibold">
         <button type="button" onClick={() => moveMonth(-1)} className="rounded-full p-1 text-black/45 hover:bg-black/5">
           {"<"}
         </button>
@@ -534,12 +534,12 @@ function MonthCalendar({ value, onChange }: { value: string; onChange: (value: s
           {">"}
         </button>
       </div>
-      <div className="grid grid-cols-7 gap-2 text-center text-[14px] text-black/45">
+      <div className="grid grid-cols-7 gap-1.5 text-center text-[14px] text-black/45">
         {["S", "M", "T", "W", "T", "F", "S"].map((day, index) => (
           <div key={`${day}-${index}`}>{day}</div>
         ))}
       </div>
-      <div className="mt-5 grid grid-cols-7 gap-2 text-center text-[15px]">
+      <div className="mt-4 grid grid-cols-7 gap-1.5 text-center text-[15px]">
         {cells.map((day, index) => {
           if (!day) return <div key={`blank-${index}`} />;
           const date = isoDate(new Date(selected.getFullYear(), selected.getMonth(), Number(day)));
@@ -551,7 +551,7 @@ function MonthCalendar({ value, onChange }: { value: string; onChange: (value: s
               type="button"
               disabled={!available}
               onClick={() => onChange(date)}
-              className={`mx-auto flex h-11 w-11 items-center justify-center rounded-full ${
+              className={`mx-auto flex h-10 w-10 items-center justify-center rounded-full sm:h-11 sm:w-11 ${
                 active
                   ? "bg-[#221f1f] font-semibold text-white"
                   : available
@@ -3336,7 +3336,7 @@ export default function CustomerBookingApp() {
 
           {step === "time" ? (
             <div>
-              <label className="grid gap-3 text-[14px] font-medium">
+              <label className="grid max-w-[420px] gap-3 text-[14px] font-medium">
                 Date
                 <input
                   type="date"
@@ -3346,25 +3346,39 @@ export default function CustomerBookingApp() {
                     setSelectedDate(event.target.value);
                     setSelectedTime(null);
                   }}
-                  className="h-[66px] rounded-[4px] border border-black px-5 text-[20px] font-normal"
+                  className="h-[58px] rounded-[4px] border border-black px-5 text-[18px] font-normal"
                 />
               </label>
-              <div className="mt-1 grid items-start gap-8 lg:grid-cols-[400px_1fr]">
-                <MonthCalendar
-                  value={selectedDate}
-                  onChange={(value) => {
-                    setSelectedDate(value);
-                    setSelectedTime(null);
-                  }}
-                />
-                <div className="flex flex-wrap gap-4 pt-16">
+              <div className="mt-5 grid items-start gap-6 md:grid-cols-[minmax(280px,360px)_minmax(220px,1fr)]">
+                <div className="max-w-[360px]">
+                  <MonthCalendar
+                    value={selectedDate}
+                    onChange={(value) => {
+                      setSelectedDate(value);
+                      setSelectedTime(null);
+                    }}
+                  />
+                </div>
+                <div className="min-w-0 rounded-[8px] border border-black/10 bg-white px-4 py-4">
+                  <div className="mb-3 flex items-center justify-between gap-4">
+                    <div>
+                      <div className="text-[15px] font-semibold">Available Times</div>
+                      <div className="mt-1 text-[13px] text-black/50">{formatLongDate(selectedDate)}</div>
+                    </div>
+                    {selectedTime ? (
+                      <div className="shrink-0 rounded-full bg-emerald-50 px-3 py-1 text-[12px] font-semibold text-emerald-700">
+                        Selected
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="grid max-h-[330px] gap-3 overflow-y-auto pr-1 sm:grid-cols-2 md:grid-cols-1 xl:grid-cols-2">
                   {availableTimes.length ? (
                     availableTimes.slice(0, 18).map((choice) => (
                       <button
                         key={`${choice.resourceId}-${choice.start}`}
                         type="button"
                         onClick={() => setSelectedTime(choice)}
-                        className={`rounded-full px-6 py-3 text-[15px] ${
+                        className={`w-full rounded-full px-4 py-3 text-center text-[14px] font-semibold ${
                           selectedTime?.resourceId === choice.resourceId && selectedTime.start === choice.start
                             ? "bg-[#252121] text-white"
                             : "bg-black/8 text-black/75 hover:bg-black/12"
@@ -3374,12 +3388,15 @@ export default function CustomerBookingApp() {
                       </button>
                     ))
                   ) : needsCoach && !selectedCoachId ? (
-                    <div className="rounded-[8px] bg-black/5 px-5 py-4 text-black/55">Choose a hitting coach before selecting a time.</div>
+                    <div className="rounded-[8px] bg-black/5 px-5 py-4 text-black/55 sm:col-span-2 md:col-span-1 xl:col-span-2">
+                      Choose a hitting coach before selecting a time.
+                    </div>
                   ) : (
-                    <div className="rounded-[8px] bg-black/5 px-5 py-4 text-black/55">
+                    <div className="rounded-[8px] bg-black/5 px-5 py-4 text-black/55 sm:col-span-2 md:col-span-1 xl:col-span-2">
                       No times are available for {noPreferenceCoachSelected ? "any coach" : selectedCoachName || "this coach"} on this date.
                     </div>
                   )}
+                  </div>
                 </div>
               </div>
             </div>
