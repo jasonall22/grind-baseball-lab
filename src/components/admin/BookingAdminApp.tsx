@@ -2703,7 +2703,19 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
           }
         }
 
-        if (!membershipCanUseCredit(creditMembership, item.serviceId, item.date, creditMembershipService)) {
+        const creditBookingServiceAliases = [
+          item.serviceName,
+        ].filter(Boolean) as string[];
+
+        if (
+          !membershipCanUseCredit(
+            creditMembership,
+            item.serviceId,
+            item.date,
+            creditMembershipService,
+            creditBookingServiceAliases
+          )
+        ) {
           throw new Error("That membership cannot be used for this service.");
         }
 
@@ -2982,19 +2994,24 @@ function membershipCreditSettings(record: CustomerMembershipRecord, membershipSe
   const serviceEligibleServiceIds = Array.isArray(membershipService?.membershipEligibleServiceIds)
     ? membershipService.membershipEligibleServiceIds.filter(Boolean)
     : [];
+  const eligibleServiceIds = Array.from(new Set([...recordEligibleServiceIds, ...serviceEligibleServiceIds]));
   const recordCreditsPerDay = Math.max(0, Math.floor(Number(record.creditsPerDay ?? 0)));
   const serviceCreditsPerDay = Math.max(0, Math.floor(Number(membershipService?.membershipCreditsPerDay ?? 0)));
   const usesServiceCreditConfig = Boolean(membershipService);
+  const creditScope =
+    eligibleServiceIds.length > 0
+      ? "selected_services"
+      : usesServiceCreditConfig
+        ? membershipService?.membershipCreditScope ?? record.creditScope
+        : record.creditScope;
 
   return {
-    creditsPerDay: usesServiceCreditConfig ? serviceCreditsPerDay : recordCreditsPerDay,
+    creditsPerDay: usesServiceCreditConfig && serviceCreditsPerDay > 0 ? serviceCreditsPerDay : recordCreditsPerDay,
     creditLimitPeriod: usesServiceCreditConfig
       ? normalizeMembershipCreditLimitPeriod(membershipService?.membershipCreditLimitPeriod)
       : normalizeMembershipCreditLimitPeriod(record.creditLimitPeriod),
-    creditScope: usesServiceCreditConfig
-      ? membershipService?.membershipCreditScope ?? record.creditScope
-      : record.creditScope,
-    eligibleServiceIds: usesServiceCreditConfig ? serviceEligibleServiceIds : recordEligibleServiceIds,
+    creditScope,
+    eligibleServiceIds,
   };
 }
 
@@ -21817,6 +21834,12 @@ function EditorModal({
   const activeBookingDraft = modal.type === "booking" ? (draft as Booking) : null;
   const activeBookingServiceId = activeBookingDraft?.serviceId ?? "";
   const activeBookingDate = activeBookingDraft?.date ?? activeDate;
+  const activeBookingServiceAliases = [
+    activeBookingDraft?.serviceName,
+    effectiveBookingService?.name,
+    selectedBookingService?.name,
+    matchedBookingService?.name,
+  ].filter(Boolean) as string[];
   const activeBookingCustomer = activeBookingDraft?.customerId
     ? state.customers.find((customer) => customer.id === activeBookingDraft.customerId) ?? null
     : null;
@@ -21837,7 +21860,13 @@ function EditorModal({
             return { record, membershipService };
           })
           .filter(({ record, membershipService }) =>
-            membershipCanUseCredit(record, activeBookingServiceId, activeBookingDate, membershipService)
+            membershipCanUseCredit(
+              record,
+              activeBookingServiceId,
+              activeBookingDate,
+              membershipService,
+              activeBookingServiceAliases
+            )
           )
           .map(({ record, membershipService }) => {
             const remaining = membershipCreditRemaining(
