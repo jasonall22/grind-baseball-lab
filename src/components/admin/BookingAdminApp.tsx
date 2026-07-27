@@ -601,7 +601,7 @@ type BookingStaffRow = {
   bio?: string | null;
   notes?: string | null;
   role: StaffRole;
-  is_active: boolean;
+  is_active: boolean | null;
   sort_order: number;
   calendar_color?: string | null;
 };
@@ -2219,10 +2219,10 @@ function normalizeBookings(bookings: Booking[], services: Service[]) {
 }
 
 function coachOptionsForAdminLesson(service: Service | null | undefined, staff: StaffMember[]) {
-  if (!service || service.category !== "lessons") return [];
+  if (service && service.category !== "lessons") return [];
 
-  const assignedNames = new Set((service.instructors ?? []).map((name) => name.trim().toLowerCase()).filter(Boolean));
-  const activeStaff = staff.filter((member) => member.active);
+  const assignedNames = new Set((service?.instructors ?? []).map((name) => name.trim().toLowerCase()).filter(Boolean));
+  const activeStaff = staff.filter((member) => member.active !== false);
   const matchedStaff = assignedNames.size
     ? activeStaff.filter((member) => assignedNames.has(member.name.trim().toLowerCase()))
     : [];
@@ -2529,7 +2529,7 @@ async function upsertStaffMembers(staff: StaffMember[]) {
         bio: member.bio,
         notes: member.notes,
         role: member.role,
-        active: member.is_active,
+        active: member.is_active !== false,
         calendarColor: member.calendar_color,
       })),
     }),
@@ -4827,7 +4827,7 @@ export default function BookingAdminApp({
             bio: member.bio ?? "",
             notes: member.notes ?? "",
             role: normalizeStaffRole(member.role),
-            active: member.is_active,
+            active: member.is_active !== false,
             calendarColor: normalizeCalendarColor(member.calendar_color ?? staffAvailabilityColor(index)),
           }))
         : defaultState.staff;
@@ -5255,7 +5255,7 @@ export default function BookingAdminApp({
         bio: member.bio ?? "",
         notes: member.notes ?? "",
         role: normalizeStaffRole(member.role),
-        active: member.is_active,
+        active: member.is_active !== false,
         calendarColor: normalizeCalendarColor(member.calendar_color ?? staffAvailabilityColor(index)),
       }));
       const availabilityColorUpdates = await Promise.all(
