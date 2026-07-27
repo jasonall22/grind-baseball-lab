@@ -1009,6 +1009,19 @@ const servicePermissionPrefixes: ServiceSection[] = [
   "packages",
 ];
 const serviceMutationActions = new Set(["add", "edit", "delete"]);
+const customerMutationPermissionKeys = new Set([
+  "customers.add",
+  "customers.edit",
+  "customers.chargeRefund",
+  "customers.addBilling",
+  "customers.editBilling",
+  "customers.deleteBilling",
+  "customers.createInvoices",
+  "customers.manageWallet",
+  "customers.assignPackages",
+  "customers.assignMemberships",
+  "customers.delete",
+]);
 
 function isServiceMutationPermissionKey(key: string) {
   const [scope, action] = key.split(".");
@@ -1019,7 +1032,7 @@ function isServiceMutationPermissionKey(key: string) {
 }
 
 function permissionIsLockedForRole(role: StaffRole, key: string) {
-  return role === "Instructor" && isServiceMutationPermissionKey(key);
+  return role === "Instructor" && (isServiceMutationPermissionKey(key) || customerMutationPermissionKeys.has(key));
 }
 
 function editablePermissionKeysForRole(role: StaffRole) {
@@ -1055,7 +1068,6 @@ const instructorDefaultPermissionKeys = [
   "availability.view",
   "availability.viewAny",
   "customers.view",
-  "customers.edit",
 ];
 
 const defaultRolePermissions: RolePermissionRecord[] = [
@@ -4563,6 +4575,13 @@ export default function BookingAdminApp({
   const canAddActiveServiceSection = canMutateServiceSection(serviceSection, "add");
   const canEditActiveServiceSection = canMutateServiceSection(serviceSection, "edit");
   const canDeleteActiveServiceSection = canMutateServiceSection(serviceSection, "delete");
+  const canAddCustomers =
+    !hasSupabaseEnv || (currentStaffMember?.role !== "Instructor" && currentPermissionKeys.has("customers.add"));
+  const canEditCustomers =
+    !hasSupabaseEnv || (currentStaffMember?.role !== "Instructor" && currentPermissionKeys.has("customers.edit"));
+  const canDeleteCustomers =
+    !hasSupabaseEnv || (currentStaffMember?.role !== "Instructor" && currentPermissionKeys.has("customers.delete"));
+  const canImportCustomers = canAddCustomers;
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -5787,6 +5806,11 @@ export default function BookingAdminApp({
   }
 
   async function saveModalChange(next: AppState, message: string, change: ModalSaveChange) {
+    if (change.type === "customer" && !canEditCustomers) {
+      showToast("You do not have permission to edit customers.");
+      return;
+    }
+
     if (dataSource === "local") {
       if (change.type === "booking") {
         setMembershipCreditLedger((current) => updatedMembershipCreditLedgerForBooking(current, change.item));
@@ -5820,6 +5844,11 @@ export default function BookingAdminApp({
   }
 
   async function saveCustomerDetail(item: Customer, message: string, options?: { silent?: boolean }) {
+    if (!canEditCustomers) {
+      showToast("You do not have permission to edit customers.");
+      return false;
+    }
+
     const previousState = state;
     const next = { ...state, customers: upsert(state.customers, item) };
 
@@ -5852,6 +5881,11 @@ export default function BookingAdminApp({
   }
 
   async function assignMembershipToCustomer(customerId: string, membershipServiceId: string) {
+    if (!canEditCustomers) {
+      showToast("You do not have permission to edit customers.");
+      return false;
+    }
+
     const service = state.services.find((item) => item.id === membershipServiceId);
     if (!service || (service.category ?? inferServiceCategory(service.name)) !== "memberships") {
       showToast("Choose a valid membership.");
@@ -5956,6 +5990,11 @@ export default function BookingAdminApp({
     membershipRecordId: string,
     options: MembershipCancelOptions
   ) {
+    if (!canEditCustomers) {
+      showToast("You do not have permission to edit customers.");
+      return false;
+    }
+
     const now = new Date().toISOString();
 
     if (dataSource === "local") {
@@ -6324,6 +6363,11 @@ export default function BookingAdminApp({
   }
 
   async function deleteCustomer(id: string) {
+    if (!canDeleteCustomers) {
+      showToast("You do not have permission to delete customers.");
+      return;
+    }
+
     const next = {
       ...state,
       customers: state.customers.filter((customer) => customer.id !== id),
@@ -6342,6 +6386,11 @@ export default function BookingAdminApp({
   }
 
   async function importCustomers(customersToImport: Customer[]) {
+    if (!canImportCustomers) {
+      showToast("You do not have permission to import customers.");
+      return;
+    }
+
     if (!customersToImport.length) {
       showToast("No customers found to import.");
       return;
@@ -6710,6 +6759,7 @@ export default function BookingAdminApp({
                 membershipServices={state.services.filter(
                   (service) => (service.category ?? inferServiceCategory(service.name)) === "memberships"
                 )}
+                canEdit={canEditCustomers}
                 onSaveCustomer={(item, options) =>
                   saveCustomerDetail(item, options?.message ?? "Customer updated.", {
                     silent: options?.silent,
@@ -6730,6 +6780,10 @@ export default function BookingAdminApp({
                 onNew={() => setModal({ type: "customer" })}
                 onEdit={(id) => setModal({ type: "customer", id })}
                 onDelete={(id) => void deleteCustomer(id)}
+                canImport={canImportCustomers}
+                canAdd={canAddCustomers}
+                canEdit={canEditCustomers}
+                canDelete={canDeleteCustomers}
               />
             )
           ) : null}
@@ -11580,6 +11634,10 @@ function CustomersView({
   onNew,
   onEdit,
   onDelete,
+  canImport,
+  canAdd,
+  canEdit,
+  canDelete,
 }: {
   customers: Customer[];
   bookings: Booking[];
@@ -11590,6 +11648,10 @@ function CustomersView({
   onNew: () => void;
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
+  canImport: boolean;
+  canAdd: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [sortDirection, setSortDirection] = useState<"desc" | "asc">("desc");
@@ -11642,17 +11704,21 @@ function CustomersView({
   return (
     <section className="min-h-screen px-6 py-8">
       <PageHeader title="Customers" subtitle="Customers includes anyone that has made a booking at your facility in the past.">
-        <button
-          type="button"
-          onClick={onImport}
-          className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-black/10 bg-white px-4 py-2 text-sm font-semibold"
-        >
-          <Icon name="download" className="h-4 w-4" />
-          Import
-        </button>
-        <PrimaryButton icon="plus" onClick={onNew}>
-          New
-        </PrimaryButton>
+        {canImport ? (
+          <button
+            type="button"
+            onClick={onImport}
+            className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-black/10 bg-white px-4 py-2 text-sm font-semibold"
+          >
+            <Icon name="download" className="h-4 w-4" />
+            Import
+          </button>
+        ) : null}
+        {canAdd ? (
+          <PrimaryButton icon="plus" onClick={onNew}>
+            New
+          </PrimaryButton>
+        ) : null}
       </PageHeader>
 
       <div className="mb-4 max-w-xl">
@@ -11774,8 +11840,8 @@ function CustomersView({
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-2">
-                        <RowAction icon="edit" label="Edit customer" onClick={() => onEdit(customer.id)} />
-                        <RowAction icon="trash" label="Delete customer" onClick={() => onDelete(customer.id)} />
+                        {canEdit ? <RowAction icon="edit" label="Edit customer" onClick={() => onEdit(customer.id)} /> : null}
+                        {canDelete ? <RowAction icon="trash" label="Delete customer" onClick={() => onDelete(customer.id)} /> : null}
                       </div>
                     </td>
                   </tr>
@@ -12388,6 +12454,7 @@ function CustomerDetailView({
   customerMemberships,
   membershipCancelRequestsByMembershipId,
   membershipServices,
+  canEdit,
   onSaveCustomer,
   onAssignMembership,
   onCancelMembership,
@@ -12400,6 +12467,7 @@ function CustomerDetailView({
   customerMemberships: CustomerMembershipRecord[];
   membershipCancelRequestsByMembershipId: Record<string, MembershipCancelRequestRecord[]>;
   membershipServices: Service[];
+  canEdit: boolean;
   onSaveCustomer: (item: Customer, options?: { message?: string; silent?: boolean }) => Promise<boolean>;
   onAssignMembership: (customerId: string, membershipServiceId: string) => Promise<boolean>;
   onCancelMembership: (
@@ -12782,6 +12850,11 @@ function CustomerDetailView({
   }
 
   async function assignSelectedMembership() {
+    if (!canEdit) {
+      showToast("You do not have permission to edit customers.");
+      return;
+    }
+
     if (!membershipServiceDraft) {
       showToast("Choose a membership to assign.");
       return;
@@ -12799,6 +12872,11 @@ function CustomerDetailView({
   }
 
   function openCancelMembershipDialog(membership: CustomerMembershipRecord) {
+    if (!canEdit) {
+      showToast("You do not have permission to edit customers.");
+      return;
+    }
+
     setMembershipCancelDraft(membership);
     setMembershipCancelTiming("period_end");
     setMembershipCancelRefundProrated(Boolean(membership.stripeSubscriptionId));
@@ -12868,6 +12946,11 @@ function CustomerDetailView({
     message: string,
     options?: { silent?: boolean }
   ) {
+    if (!canEdit) {
+      showToast("You do not have permission to edit customers.");
+      return false;
+    }
+
     const nextCustomer: Customer = {
       id: patch.id ?? currentCustomer.id,
       name: patch.name ?? currentCustomer.name,
@@ -12901,11 +12984,21 @@ function CustomerDetailView({
   }
 
   function openAddNote() {
+    if (!canEdit) {
+      showToast("You do not have permission to edit customers.");
+      return;
+    }
+
     setActiveTab("Profile");
     setIsEditingNote(true);
   }
 
   function clearEmergencyContact() {
+    if (!canEdit) {
+      showToast("You do not have permission to edit customers.");
+      return;
+    }
+
     setEmergencyDeleted(true);
   }
 
@@ -12952,11 +13045,21 @@ function CustomerDetailView({
   }
 
   function openNewFamilyMemberModal() {
+    if (!canEdit) {
+      showToast("You do not have permission to edit customers.");
+      return;
+    }
+
     setEditingFamilyMember(null);
     setShowFamilyModal(true);
   }
 
   function openEditFamilyMemberModal(member: FamilyMember) {
+    if (!canEdit) {
+      showToast("You do not have permission to edit customers.");
+      return;
+    }
+
     setEditingFamilyMember(member);
     setShowFamilyModal(true);
   }
@@ -13145,6 +13248,11 @@ function CustomerDetailView({
   }
 
   async function startCardSetup() {
+    if (!canEdit) {
+      showToast("You do not have permission to edit customers.");
+      return;
+    }
+
     if (!stripePromise) {
       showToast("Stripe client setup is missing. Add the publishable key and redeploy.");
       return;
@@ -13178,6 +13286,11 @@ function CustomerDetailView({
   }
 
   async function removeSavedCard(paymentMethodId: string) {
+    if (!canEdit) {
+      showToast("You do not have permission to edit customers.");
+      return;
+    }
+
     setDeletingCardId(paymentMethodId);
     try {
       const response = await fetch("/api/stripe/cards", {
@@ -13251,6 +13364,11 @@ function CustomerDetailView({
   }
 
   function openPaymentMethodModal() {
+    if (!canEdit) {
+      showToast("You do not have permission to edit customers.");
+      return;
+    }
+
     setShowPaymentMethodModal(true);
   }
 
@@ -13388,13 +13506,15 @@ function CustomerDetailView({
                     value={firstNameDraft}
                     onChange={(event) => setFirstNameDraft(event.target.value)}
                     onBlur={() => void saveName()}
-                    className="min-h-10 w-full rounded-md border border-black/15 px-4 text-[14px] outline-none"
+                    disabled={!canEdit}
+                    className="min-h-10 w-full rounded-md border border-black/15 px-4 text-[14px] outline-none disabled:bg-black/[0.03] disabled:text-black/60"
                   />
                   <input
                     value={lastNameDraft}
                     onChange={(event) => setLastNameDraft(event.target.value)}
                     onBlur={() => void saveName()}
-                    className="min-h-10 w-full rounded-md border border-black/15 px-4 text-[14px] outline-none"
+                    disabled={!canEdit}
+                    className="min-h-10 w-full rounded-md border border-black/15 px-4 text-[14px] outline-none disabled:bg-black/[0.03] disabled:text-black/60"
                   />
                 </div>
               </div>
@@ -13431,7 +13551,8 @@ function CustomerDetailView({
                   placeholder="MM/DD/YYYY"
                   inputMode="numeric"
                   maxLength={10}
-                  className="min-h-10 w-full rounded-md border border-black/15 px-4 pr-10 text-[14px] outline-none"
+                  disabled={!canEdit}
+                  className="min-h-10 w-full rounded-md border border-black/15 px-4 pr-10 text-[14px] outline-none disabled:bg-black/[0.03] disabled:text-black/60"
                 />
                 <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-black/45">
                   <Icon name="calendar" className="h-4 w-4" />
@@ -13444,7 +13565,8 @@ function CustomerDetailView({
               <select
                 value={genderDraft || ""}
                 onChange={(event) => void saveGender(event.target.value)}
-                className="min-h-10 rounded-md border border-black/15 px-4 text-[14px] outline-none"
+                disabled={!canEdit}
+                className="min-h-10 rounded-md border border-black/15 px-4 text-[14px] outline-none disabled:bg-black/[0.03] disabled:text-black/60"
               >
                 <option value="">Select gender</option>
                 <option value="Male">Male</option>
@@ -13474,7 +13596,8 @@ function CustomerDetailView({
                         value={emailDraft}
                         onChange={(event) => setEmailDraft(event.target.value)}
                         onBlur={() => void saveEmail()}
-                        className="min-h-10 w-full rounded-md border border-black/15 px-4 pr-16 text-[14px] outline-none"
+                        disabled={!canEdit}
+                        className="min-h-10 w-full rounded-md border border-black/15 px-4 pr-16 text-[14px] outline-none disabled:bg-black/[0.03] disabled:text-black/60"
                       />
                       <div className="absolute inset-y-0 right-3 flex items-center gap-2 text-black/45">
                         <Icon name="edit" className="h-4 w-4" />
@@ -13491,7 +13614,8 @@ function CustomerDetailView({
                       onBlur={() => void savePhone()}
                       inputMode="numeric"
                       maxLength={14}
-                      className="min-h-10 rounded-md border border-black/15 px-4 text-[14px] outline-none"
+                      disabled={!canEdit}
+                      className="min-h-10 rounded-md border border-black/15 px-4 text-[14px] outline-none disabled:bg-black/[0.03] disabled:text-black/60"
                     />
                   </label>
 
@@ -13501,7 +13625,8 @@ function CustomerDetailView({
                       value={addressDraft}
                       onChange={(event) => setAddressDraft(event.target.value)}
                       onBlur={() => void saveAddress()}
-                      className="min-h-10 rounded-md border border-black/15 px-4 text-[14px] outline-none"
+                      disabled={!canEdit}
+                      className="min-h-10 rounded-md border border-black/15 px-4 text-[14px] outline-none disabled:bg-black/[0.03] disabled:text-black/60"
                     />
                   </label>
                 </div>
@@ -13514,7 +13639,7 @@ function CustomerDetailView({
           <DetailPanel
             title="Emergency Contact"
             action={
-              !hasEmergencyContact ? (
+              canEdit && !hasEmergencyContact ? (
                 <button
                   type="button"
                   onClick={() => setShowEmergencyContactModal(true)}
@@ -13540,14 +13665,16 @@ function CustomerDetailView({
                       .join(" \u00b7 ")}
                   </div>
                 </div>
-                <div className="flex gap-3 text-black/45">
-                  <HoverIconButton
-                    icon="edit"
-                    label="Edit Contact"
-                    onClick={() => setShowEmergencyContactModal(true)}
-                  />
-                  <HoverIconButton icon="trash" label="Delete" onClick={clearEmergencyContact} tone="danger" />
-                </div>
+                {canEdit ? (
+                  <div className="flex gap-3 text-black/45">
+                    <HoverIconButton
+                      icon="edit"
+                      label="Edit Contact"
+                      onClick={() => setShowEmergencyContactModal(true)}
+                    />
+                    <HoverIconButton icon="trash" label="Delete" onClick={clearEmergencyContact} tone="danger" />
+                  </div>
+                ) : null}
               </div>
             ) : (
               <>
@@ -13570,7 +13697,7 @@ function CustomerDetailView({
 
           <DetailPanel
             title="Custom Fields"
-            action={<button type="button" className="text-2xl leading-none text-black/45">+</button>}
+            action={canEdit ? <button type="button" className="text-2xl leading-none text-black/45">+</button> : undefined}
           >
             <div className="flex items-center justify-between gap-4 p-4 text-[14px]">
               <div className="flex items-center gap-3 text-black/65">
@@ -13578,27 +13705,31 @@ function CustomerDetailView({
                 <span>Referral</span>
               </div>
               <div className="ml-auto text-black/85">{currentCustomer.notes ? "From notes" : "-"}</div>
-              <div className="flex gap-3 text-black/45">
-                <button type="button">
-                  <Icon name="edit" className="h-4 w-4" />
-                </button>
-                <button type="button" className="text-xl leading-none">
-                  ...
-                </button>
-              </div>
+              {canEdit ? (
+                <div className="flex gap-3 text-black/45">
+                  <button type="button">
+                    <Icon name="edit" className="h-4 w-4" />
+                  </button>
+                  <button type="button" className="text-xl leading-none">
+                    ...
+                  </button>
+                </div>
+              ) : null}
             </div>
           </DetailPanel>
 
           <DetailPanel
             title="Family Members"
             action={
-              <button
-                type="button"
-                onClick={openNewFamilyMemberModal}
-                className="text-2xl leading-none text-black/45"
-              >
-                +
-              </button>
+              canEdit ? (
+                <button
+                  type="button"
+                  onClick={openNewFamilyMemberModal}
+                  className="text-2xl leading-none text-black/45"
+                >
+                  +
+                </button>
+              ) : undefined
             }
           >
             {visibleFamilyMembers.length ? (
@@ -13623,24 +13754,26 @@ function CustomerDetailView({
                           <div className="mt-0.5 text-[13px] text-black/55">{memberMeta || "Member"}</div>
                         </div>
                       </div>
-                      <div className="flex gap-3 text-black/45">
-                        <HoverIconButton
-                          icon="edit"
-                          label="Edit Member"
-                          onClick={() => openEditFamilyMemberModal(member)}
-                        />
-                        <HoverIconButton
-                          icon="trash"
-                          label="Delete"
-                          onClick={() => {
-                            void saveFamilyMembers(
-                              visibleFamilyMembers.filter((item) => item.id !== member.id),
-                              "Family member removed."
-                            );
-                          }}
-                          tone="danger"
-                        />
-                      </div>
+                      {canEdit ? (
+                        <div className="flex gap-3 text-black/45">
+                          <HoverIconButton
+                            icon="edit"
+                            label="Edit Member"
+                            onClick={() => openEditFamilyMemberModal(member)}
+                          />
+                          <HoverIconButton
+                            icon="trash"
+                            label="Delete"
+                            onClick={() => {
+                              void saveFamilyMembers(
+                                visibleFamilyMembers.filter((item) => item.id !== member.id),
+                                "Family member removed."
+                              );
+                            }}
+                            tone="danger"
+                          />
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}
@@ -13676,9 +13809,11 @@ function CustomerDetailView({
                 <button
                   type="button"
                   onClick={() => setMarketingEnabled((current) => !current)}
+                  disabled={!canEdit}
                   className={[
                     "relative h-6 w-11 rounded-full transition-colors",
                     marketingEnabled ? "bg-black" : "bg-black/15",
+                    !canEdit ? "cursor-not-allowed opacity-60" : "",
                   ].join(" ")}
                 >
                   <span
@@ -13695,7 +13830,7 @@ function CustomerDetailView({
           <DetailPanel
             title="Notes"
             action={
-              !isEditingNote ? (
+              canEdit && !isEditingNote ? (
                 <button type="button" onClick={openAddNote} className="text-2xl leading-none text-black/45">
                   +
                 </button>
@@ -13758,24 +13893,26 @@ function CustomerDetailView({
                 </div>
                 <div className="mt-3 text-[24px] font-medium text-black">{moneyPrecise(walletBalance)}</div>
               </div>
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={openPaymentMethodModal}
-                  className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-black px-4 text-[14px] font-medium text-white shadow-sm"
-                >
-                  <Icon name="plus" className="h-4 w-4" />
-                  Charge
-                </button>
-                <button
-                  type="button"
-                  disabled
-                  className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-black/10 bg-white px-4 text-[14px] font-medium text-black/30"
-                >
-                  <Icon name="plus" className="h-4 w-4" />
-                  Redeem
-                </button>
-              </div>
+              {canEdit ? (
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={openPaymentMethodModal}
+                    className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-black px-4 text-[14px] font-medium text-white shadow-sm"
+                  >
+                    <Icon name="plus" className="h-4 w-4" />
+                    Charge
+                  </button>
+                  <button
+                    type="button"
+                    disabled
+                    className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-black/10 bg-white px-4 text-[14px] font-medium text-black/30"
+                  >
+                    <Icon name="plus" className="h-4 w-4" />
+                    Redeem
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -13796,14 +13933,16 @@ function CustomerDetailView({
                 Expires {String(defaultCard.expMonth).padStart(2, "0")}/{defaultCard.expYear}
               </div>
             ) : null}
-            <button
-              type="button"
-              onClick={() => void startCardSetup()}
-              disabled={startingCardSetup}
-              className="mt-4 inline-flex min-h-10 items-center rounded-lg border border-black/12 bg-white px-4 text-[14px] font-medium text-black"
-            >
-              {startingCardSetup ? "Preparing..." : defaultCard ? "Replace Card" : "Add Card"}
-            </button>
+            {canEdit ? (
+              <button
+                type="button"
+                onClick={() => void startCardSetup()}
+                disabled={startingCardSetup}
+                className="mt-4 inline-flex min-h-10 items-center rounded-lg border border-black/12 bg-white px-4 text-[14px] font-medium text-black"
+              >
+                {startingCardSetup ? "Preparing..." : defaultCard ? "Replace Card" : "Add Card"}
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -13843,14 +13982,16 @@ function CustomerDetailView({
                   <Icon name="refresh" className="h-4 w-4" />
                   Refresh
                 </button>
-                <button
-                  type="button"
-                  onClick={openPaymentMethodModal}
-                  className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-black px-4 text-[14px] font-medium text-white shadow-sm"
-                >
-                  <Icon name="plus" className="h-4 w-4" />
-                  New Charge
-                </button>
+                {canEdit ? (
+                  <button
+                    type="button"
+                    onClick={openPaymentMethodModal}
+                    className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-black px-4 text-[14px] font-medium text-white shadow-sm"
+                  >
+                    <Icon name="plus" className="h-4 w-4" />
+                    New Charge
+                  </button>
+                ) : null}
               </div>
             </div>
 
@@ -13925,17 +14066,19 @@ function CustomerDetailView({
 
         {activeBillingTab === "Saved Cards" ? (
           <DetailPanel title="Saved Cards">
-            <div className="border-b border-black/10 px-5 py-4">
-              <button
-                type="button"
-                onClick={() => void startCardSetup()}
-                disabled={startingCardSetup}
-                className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-black px-4 text-[14px] font-medium text-white shadow-sm"
-              >
-                <Icon name="plus" className="h-4 w-4" />
-                {startingCardSetup ? "Preparing..." : "Add Card"}
-              </button>
-            </div>
+            {canEdit ? (
+              <div className="border-b border-black/10 px-5 py-4">
+                <button
+                  type="button"
+                  onClick={() => void startCardSetup()}
+                  disabled={startingCardSetup}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-black px-4 text-[14px] font-medium text-white shadow-sm"
+                >
+                  <Icon name="plus" className="h-4 w-4" />
+                  {startingCardSetup ? "Preparing..." : "Add Card"}
+                </button>
+              </div>
+            ) : null}
 
             {billingLoading && !billingLoaded ? (
               <div className="grid min-h-[220px] place-items-center px-6 py-12 text-center">
@@ -13959,14 +14102,16 @@ function CustomerDetailView({
                         Expires {String(card.expMonth).padStart(2, "0")}/{card.expYear}
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setPendingRemoveCardId(card.id)}
-                      disabled={deletingCardId === card.id}
-                      className="rounded-lg border border-black/12 px-4 py-2 text-[13px] font-medium text-black/70 transition hover:bg-black/[0.03] disabled:opacity-50"
-                    >
-                      {deletingCardId === card.id ? "Removing..." : "Remove"}
-                    </button>
+                    {canEdit ? (
+                      <button
+                        type="button"
+                        onClick={() => setPendingRemoveCardId(card.id)}
+                        disabled={deletingCardId === card.id}
+                        className="rounded-lg border border-black/12 px-4 py-2 text-[13px] font-medium text-black/70 transition hover:bg-black/[0.03] disabled:opacity-50"
+                      >
+                        {deletingCardId === card.id ? "Removing..." : "Remove"}
+                      </button>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -14024,7 +14169,7 @@ function CustomerDetailView({
               value={membershipServiceDraft}
               onChange={(event) => setMembershipServiceDraft(event.target.value)}
               className="h-11 w-full rounded-lg border border-black/15 bg-white px-3 text-[14px] text-black outline-none transition focus:border-black focus:ring-2 focus:ring-black/10 disabled:cursor-not-allowed disabled:bg-black/[0.04] disabled:text-black/35"
-              disabled={!availableMembershipServices.length || Boolean(membershipActionId)}
+              disabled={!canEdit || !availableMembershipServices.length || Boolean(membershipActionId)}
             >
               <option value="">Select membership</option>
               {availableMembershipServices.map((service) => (
@@ -14037,7 +14182,7 @@ function CustomerDetailView({
           <button
             type="button"
             onClick={() => void assignSelectedMembership()}
-            disabled={!membershipServiceDraft || Boolean(membershipActionId)}
+            disabled={!canEdit || !membershipServiceDraft || Boolean(membershipActionId)}
             className="self-end rounded-lg bg-black px-4 py-3 text-[13px] font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:bg-black/20"
           >
             {membershipActionId === "assign" ? "Assigning..." : "Assign membership"}
@@ -14057,7 +14202,7 @@ function CustomerDetailView({
 
     return (
       <DetailPanel title="Memberships">
-        {membershipAssignment}
+        {canEdit ? membershipAssignment : null}
         {membershipCards.length ? (
           <div className="grid gap-4 p-4 xl:grid-cols-2">
             {membershipCards.map((membership) => {
@@ -14086,7 +14231,7 @@ function CustomerDetailView({
                       >
                         {membership.status}
                       </span>
-                      {isActiveCustomerMembership(membership) && membership.autoRenew ? (
+                      {canEdit && isActiveCustomerMembership(membership) && membership.autoRenew ? (
                         <button
                           type="button"
                           onClick={() => openCancelMembershipDialog(membership)}
