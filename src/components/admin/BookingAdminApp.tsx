@@ -15414,38 +15414,13 @@ function CalendarChargeModal({
       )
     );
     const bookingServiceId = bookingService?.id || booking.serviceId || booking.serviceName || "";
-    const playerCandidates = normalizedPersonNameCandidates(booking.playerName);
-    const bookingCustomer =
-      customers.find((customer) => customer.id === booking.customerId) ??
-      (playerCandidates.length
-        ? customers.find((customer) => {
-            const customerCandidates = normalizedPersonNameCandidates(
-              customer.name,
-              customer.player,
-              ...customer.familyMembers.map(familyMemberDisplayName)
-            );
+    const bookingCustomerId = booking.customerId || customer.id || "";
 
-            return playerCandidates.some((candidate) => customerCandidates.includes(candidate));
-          }) ?? null
-        : null);
-    const bookingCustomerId = booking.customerId || bookingCustomer?.id || "";
-    const bookingCustomerName = bookingCustomer?.name ?? booking.playerName ?? "";
-
-    if (
-      (!bookingCustomerId && !booking.playerName && !bookingCustomerName) ||
-      !bookingServiceId ||
-      booking.status === "Cancelled"
-    ) {
+    if (!bookingCustomerId || !bookingServiceId || booking.status === "Cancelled") {
       return [];
     }
 
-    return membershipRecordsForBookingCustomer(
-      customerMembershipsByCustomerId,
-      customers,
-      bookingCustomerId,
-      booking.playerName,
-      bookingCustomerName
-    )
+    return (customerMembershipsByCustomerId[bookingCustomerId] ?? [])
       .map((record) => {
         const membershipService = services.find((item) => item.id === record.membershipServiceId) ?? null;
         return { record, membershipService };
@@ -15475,10 +15450,7 @@ function CalendarChargeModal({
           creditLimitPeriod,
         };
       })
-      .filter(
-        ({ record, remaining }) =>
-          remaining > 0 || booking.membershipCreditMembershipId === record.id
-      );
+      .filter(({ remaining }) => remaining > 0);
   }, [
     booking.customerId,
     booking.date,
@@ -15488,7 +15460,6 @@ function CalendarChargeModal({
     booking.serviceId,
     booking.serviceName,
     booking.status,
-    customers,
     customerMembershipsByCustomerId,
     membershipCreditLedger,
     service,
@@ -21844,16 +21815,10 @@ function EditorModal({
     ? state.customers.find((customer) => customer.id === activeBookingDraft.customerId) ?? null
     : null;
   const eligibleCreditOptions =
-    (activeBookingDraft?.customerId || activeBookingDraft?.playerName) &&
+    activeBookingDraft?.customerId &&
     activeBookingServiceId &&
     bookingServiceKind !== "unavailable"
-      ? membershipRecordsForBookingCustomer(
-          customerMembershipsByCustomerId,
-          state.customers,
-          activeBookingDraft.customerId,
-          activeBookingDraft.playerName,
-          activeBookingCustomer?.name,
-        )
+      ? (customerMembershipsByCustomerId[activeBookingDraft.customerId] ?? [])
           .map((record) => {
             const membershipService =
               state.services.find((service) => service.id === record.membershipServiceId) ?? null;
@@ -21885,10 +21850,7 @@ function EditorModal({
               creditLimitPeriod,
             };
           })
-          .filter(
-            ({ record, remaining }) =>
-              remaining > 0 || activeBookingDraft.membershipCreditMembershipId === record.id,
-          )
+          .filter(({ remaining }) => remaining > 0)
       : [];
   const canSave =
     modal.type !== "customer" ||
