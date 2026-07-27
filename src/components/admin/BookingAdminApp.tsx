@@ -1011,6 +1011,32 @@ const allEditableRolePermissionKeys = rolePermissionGroups.flatMap((group) =>
   group.permissions.filter((permission) => !permission.disabled).map((permission) => permission.key)
 );
 
+const servicePermissionPrefixes: ServiceSection[] = [
+  "rentals",
+  "lessons",
+  "camps",
+  "classes",
+  "memberships",
+  "packages",
+];
+const serviceMutationActions = new Set(["add", "edit", "delete"]);
+
+function isServiceMutationPermissionKey(key: string) {
+  const [scope, action] = key.split(".");
+  return (
+    servicePermissionPrefixes.includes(scope as ServiceSection) &&
+    serviceMutationActions.has(action ?? "")
+  );
+}
+
+function permissionIsLockedForRole(role: StaffRole, key: string) {
+  return role === "Instructor" && isServiceMutationPermissionKey(key);
+}
+
+function editablePermissionKeysForRole(role: StaffRole) {
+  return allEditableRolePermissionKeys.filter((key) => !permissionIsLockedForRole(role, key));
+}
+
 const ownerDefaultPermissionKeys = [...allEditableRolePermissionKeys];
 const adminDefaultPermissionKeys = [...allEditableRolePermissionKeys];
 const staffDefaultPermissionKeys = [
@@ -1034,7 +1060,6 @@ const staffDefaultPermissionKeys = [
 ];
 const instructorDefaultPermissionKeys = [
   "lessons.view",
-  "lessons.edit",
   "calendar.view",
   "calendar.addBookings",
   "calendar.editBookings",
@@ -1086,13 +1111,17 @@ function normalizeRolePermissionKeys(value: unknown) {
   );
 }
 
+function normalizeRolePermissionKeysForRole(role: StaffRole, value: unknown) {
+  return normalizeRolePermissionKeys(value).filter((key) => !permissionIsLockedForRole(role, key));
+}
+
 function normalizeRolePermissionEntry(value: unknown): RolePermissionRecord | null {
   if (!value || typeof value !== "object") return null;
   const item = value as Partial<RolePermissionRecord>;
   const role = normalizeStaffRole(item.role);
   return {
     role,
-    enabledKeys: normalizeRolePermissionKeys(item.enabledKeys),
+    enabledKeys: normalizeRolePermissionKeysForRole(role, item.enabledKeys),
   };
 }
 
@@ -1110,14 +1139,15 @@ function normalizeRolePermissions(value: unknown): RolePermissionRecord[] {
 }
 
 function rolePermissionSummary(role: StaffRole, records: RolePermissionRecord[]) {
-  const enabledKeys =
-    records.find((record) => record.role === role)?.enabledKeys ?? [];
+  const enabledKeys = permissionKeysForRole(role, records);
+  const editableKeys = editablePermissionKeysForRole(role);
 
-  return enabledKeys.length >= allEditableRolePermissionKeys.length ? "All" : "Limited";
+  return enabledKeys.length >= editableKeys.length ? "All" : "Limited";
 }
 
 function permissionKeysForRole(role: StaffRole, records: RolePermissionRecord[]) {
-  return (
+  return normalizeRolePermissionKeysForRole(
+    role,
     records.find((record) => record.role === role)?.enabledKeys ??
     defaultRolePermissions.find((record) => record.role === role)?.enabledKeys ??
     []
@@ -2513,7 +2543,7 @@ async function upsertRolePermissions(rolePermissions: RolePermissionRecord[]) {
 
     return {
       role: row.role,
-      enabled_permissions: normalizeRolePermissionKeys(enabledKeys),
+      enabled_permissions: normalizeRolePermissionKeysForRole(row.role, enabledKeys),
       sort_order: index + 1,
     };
   });
@@ -4534,6 +4564,17 @@ export default function BookingAdminApp({
   const canManageAnyAvailability =
     !hasSupabaseEnv ||
     hasAnyPermission(currentPermissionKeys, ["availability.addAny", "availability.editAny", "availability.deleteAny"]);
+  const canMutateServiceSection = useCallback(
+    (section: ServiceSection, action: "add" | "edit" | "delete") => {
+      if (!hasSupabaseEnv) return true;
+      if (currentStaffMember?.role === "Instructor") return false;
+      return currentPermissionKeys.has(`${section}.${action}`);
+    },
+    [currentPermissionKeys, currentStaffMember]
+  );
+  const canAddActiveServiceSection = canMutateServiceSection(serviceSection, "add");
+  const canEditActiveServiceSection = canMutateServiceSection(serviceSection, "edit");
+  const canDeleteActiveServiceSection = canMutateServiceSection(serviceSection, "delete");
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -6018,6 +6059,10 @@ export default function BookingAdminApp({
     const serviceCategory = existingService?.category ?? serviceSection;
     const serviceLabel = getServiceSectionSingular(serviceCategory);
     const serviceBasePath = getServiceSectionBasePath(serviceCategory);
+    if (!canMutateServiceSection(serviceCategory, existingService ? "edit" : "add")) {
+      showToast(`You do not have permission to ${existingService ? "edit" : "add"} ${serviceLabel.toLowerCase()}s.`);
+      return;
+    }
     const item: Service = {
       id: existingService?.id ?? makeId("svc"),
       name: rentalDraft.name.trim(),
@@ -6064,6 +6109,11 @@ export default function BookingAdminApp({
   }
 
   async function saveMembershipDraft(membershipDraft: MembershipDraft, existingService?: Service | null) {
+    if (!canMutateServiceSection("memberships", existingService ? "edit" : "add")) {
+      showToast(`You do not have permission to ${existingService ? "edit" : "add"} memberships.`);
+      return;
+    }
+
     const cleanedName = membershipDraft.name.trim();
     if (!cleanedName) {
       showToast("Membership name is required.");
@@ -6144,6 +6194,10 @@ export default function BookingAdminApp({
     const serviceCategory = service.category ?? inferServiceCategory(service.name);
     const serviceLabel = getServiceSectionSingular(serviceCategory);
     const serviceBasePath = getServiceSectionBasePath(serviceCategory);
+    if (!canMutateServiceSection(serviceCategory, "add")) {
+      showToast(`You do not have permission to add ${serviceLabel.toLowerCase()}s.`);
+      return;
+    }
     const duplicate: Service = {
       ...service,
       id: makeId("svc"),
@@ -6172,6 +6226,13 @@ export default function BookingAdminApp({
   }
 
   async function deleteRental(service: Service) {
+    const serviceCategory = service.category ?? inferServiceCategory(service.name);
+    const serviceLabel = getServiceSectionSingular(serviceCategory);
+    if (!canMutateServiceSection(serviceCategory, "delete")) {
+      showToast(`You do not have permission to delete ${serviceLabel.toLowerCase()}s.`);
+      return;
+    }
+
     const guardMessage = getRentalDeleteGuard(service, state, customerMembershipsByCustomerId);
     if (guardMessage) {
       showToast(guardMessage);
@@ -6188,6 +6249,11 @@ export default function BookingAdminApp({
     const serviceCategory = service.category ?? inferServiceCategory(service.name);
     const serviceLabel = getServiceSectionSingular(serviceCategory);
     const serviceBasePath = getServiceSectionBasePath(serviceCategory);
+    if (!canMutateServiceSection(serviceCategory, "delete")) {
+      setPendingDeleteService(null);
+      showToast(`You do not have permission to delete ${serviceLabel.toLowerCase()}s.`);
+      return;
+    }
     setPendingDeleteService(null);
 
     const previousState = state;
@@ -6233,6 +6299,11 @@ export default function BookingAdminApp({
     serviceId: string,
     direction: "up" | "down"
   ) {
+    if (!canMutateServiceSection(serviceSection, "edit")) {
+      showToast("You do not have permission to change service order.");
+      return;
+    }
+
     const nextServices = reorderServicesByVisibleList(state.services, visibleServiceIds, serviceId, direction);
     if (nextServices === state.services) return;
 
@@ -6507,7 +6578,23 @@ export default function BookingAdminApp({
             <HomeView facilityName={state.facility.name} />
           ) : null}
           {view === "services" ? (
-            isServiceAddPage || isServiceEditPage ? (
+            (isServiceAddPage && !canAddActiveServiceSection) || (isServiceEditPage && !canEditActiveServiceSection) ? (
+              <section className="min-h-screen px-[18px] py-6 xl:px-6 xl:py-8">
+                <div className="max-w-[720px] rounded-lg border border-black/10 bg-white p-6 shadow-sm">
+                  <p className="text-[13px] font-semibold uppercase tracking-[0.18em] text-black/45">Services</p>
+                  <h1 className="mt-3 text-[24px] font-semibold text-black">Service changes are not available</h1>
+                  <p className="mt-2 text-[15px] leading-6 text-black/65">
+                    Your staff role can view service setup, but it cannot add, edit, delete, duplicate, or reorder services.
+                  </p>
+                  <Link
+                    href={getServiceSectionBasePath(serviceSection)}
+                    className="mt-5 inline-flex min-h-11 items-center rounded-lg bg-[#1f1b1b] px-5 text-[15px] font-medium text-white"
+                  >
+                    Back to services
+                  </Link>
+                </div>
+              </section>
+            ) : isServiceAddPage || isServiceEditPage ? (
               serviceSection === "memberships" ? (
                 <MembershipEditorView
                   key={selectedService?.id ?? "new-membership"}
@@ -6522,8 +6609,10 @@ export default function BookingAdminApp({
                   }
                   onCancel={() => router.push(getServiceSectionBasePath("memberships"))}
                   onDelete={() => {
-                    if (selectedService) {
+                    if (selectedService && canDeleteActiveServiceSection) {
                       void deleteRental(selectedService);
+                    } else {
+                      showToast("You do not have permission to delete memberships.");
                     }
                   }}
                   onSave={(membershipDraft) => void saveMembershipDraft(membershipDraft, selectedService)}
@@ -6550,13 +6639,17 @@ export default function BookingAdminApp({
                   }
                   onCopyBookingLink={() => void copyRentalBookingLink()}
                   onDuplicate={() => {
-                    if (selectedService) {
+                    if (selectedService && canAddActiveServiceSection) {
                       void duplicateRental(selectedService);
+                    } else {
+                      showToast(`You do not have permission to add ${getServiceSectionSingular(serviceSection).toLowerCase()}s.`);
                     }
                   }}
                   onDelete={() => {
-                    if (selectedService) {
+                    if (selectedService && canDeleteActiveServiceSection) {
                       void deleteRental(selectedService);
+                    } else {
+                      showToast(`You do not have permission to delete ${getServiceSectionSingular(serviceSection).toLowerCase()}s.`);
                     }
                   }}
                   onSave={(rentalDraft) => void saveRentalDraft(rentalDraft, selectedService)}
@@ -6569,14 +6662,25 @@ export default function BookingAdminApp({
                 activeSection={serviceSection}
                 serviceSections={visibleServiceSectionItems}
                 onSectionChange={setServiceSection}
+                canAdd={canAddActiveServiceSection}
+                canEdit={canEditActiveServiceSection}
+                canReorder={canEditActiveServiceSection}
                 onReorder={(visibleServiceIds, serviceId, direction) =>
                   void reorderServices(visibleServiceIds, serviceId, direction)
                 }
                 onNew={() => {
-                  router.push(`${getServiceSectionBasePath(serviceSection)}/add`);
+                  if (canAddActiveServiceSection) {
+                    router.push(`${getServiceSectionBasePath(serviceSection)}/add`);
+                  } else {
+                    showToast(`You do not have permission to add ${getServiceSectionSingular(serviceSection).toLowerCase()}s.`);
+                  }
                 }}
                 onEdit={(id) => {
-                  router.push(`${getServiceSectionBasePath(serviceSection)}/${id}`);
+                  if (canEditActiveServiceSection) {
+                    router.push(`${getServiceSectionBasePath(serviceSection)}/${id}`);
+                  } else {
+                    showToast(`You do not have permission to edit ${getServiceSectionSingular(serviceSection).toLowerCase()}s.`);
+                  }
                 }}
               />
             )
@@ -7580,6 +7684,9 @@ function ServicesView({
   onSectionChange,
   services,
   membershipMembersByServiceId,
+  canAdd,
+  canEdit,
+  canReorder,
   onReorder,
   onNew,
   onEdit,
@@ -7589,6 +7696,9 @@ function ServicesView({
   onSectionChange: (section: ServiceSection) => void;
   services: Service[];
   membershipMembersByServiceId: Map<string, string[]>;
+  canAdd: boolean;
+  canEdit: boolean;
+  canReorder: boolean;
   onReorder: (visibleServiceIds: string[], serviceId: string, direction: "up" | "down") => void;
   onNew: () => void;
   onEdit: (id: string) => void;
@@ -7668,14 +7778,16 @@ function ServicesView({
           >
             <Icon name="gear" className="h-[18px] w-[18px]" />
           </button>
-          <button
-            type="button"
-            onClick={onNew}
-            className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#1f1b1b] px-5 text-[15px] font-medium text-white"
-          >
-            <Icon name="plus" className="h-[18px] w-[18px]" />
-            New
-          </button>
+          {canAdd ? (
+            <button
+              type="button"
+              onClick={onNew}
+              className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#1f1b1b] px-5 text-[15px] font-medium text-white"
+            >
+              <Icon name="plus" className="h-[18px] w-[18px]" />
+              New
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -7747,8 +7859,14 @@ function ServicesView({
                 >
                   <button
                     type="button"
-                    onClick={() => onEdit(service.id)}
-                    className="min-w-0 text-left text-[14px] font-medium leading-5 text-black md:text-[15px] md:leading-5 xl:text-[15px]"
+                    onClick={() => {
+                      if (canEdit) onEdit(service.id);
+                    }}
+                    disabled={!canEdit}
+                    className={[
+                      "min-w-0 text-left text-[14px] font-medium leading-5 text-black md:text-[15px] md:leading-5 xl:text-[15px]",
+                      canEdit ? "cursor-pointer hover:underline" : "cursor-default",
+                    ].join(" ")}
                   >
                     <span className="block break-words">{service.name}</span>
                     {isLessonsSection && compactInstructorNames ? (
@@ -7868,24 +7986,28 @@ function ServicesView({
                   )}
 
                   <div className="flex flex-col items-end gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => onReorder(visibleServiceIds, service.id, "up")}
-                      disabled={index === 0}
-                      className="grid h-8 w-8 place-items-center rounded-lg border border-black/12 text-black/45 disabled:opacity-40 md:h-9 md:w-9"
-                      aria-label="Move service up"
-                    >
-                      <Icon name="chevron" className="h-4 w-4 -rotate-90" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onReorder(visibleServiceIds, service.id, "down")}
-                      disabled={index === filteredServices.length - 1}
-                      className="grid h-8 w-8 place-items-center rounded-lg border border-black/12 text-black/45 disabled:opacity-40 md:h-9 md:w-9"
-                      aria-label="Move service down"
-                    >
-                      <Icon name="chevron" className="h-4 w-4 rotate-90" />
-                    </button>
+                    {canReorder ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => onReorder(visibleServiceIds, service.id, "up")}
+                          disabled={index === 0}
+                          className="grid h-8 w-8 place-items-center rounded-lg border border-black/12 text-black/45 disabled:opacity-40 md:h-9 md:w-9"
+                          aria-label="Move service up"
+                        >
+                          <Icon name="chevron" className="h-4 w-4 -rotate-90" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onReorder(visibleServiceIds, service.id, "down")}
+                          disabled={index === filteredServices.length - 1}
+                          className="grid h-8 w-8 place-items-center rounded-lg border border-black/12 text-black/45 disabled:opacity-40 md:h-9 md:w-9"
+                          aria-label="Move service down"
+                        >
+                          <Icon name="chevron" className="h-4 w-4 rotate-90" />
+                        </button>
+                      </>
+                    ) : null}
                   </div>
                 </div>
               );
@@ -17566,12 +17688,12 @@ function StaffRoleEditorView({
   onSave: (nextRolePermissions: RolePermissionRecord[]) => Promise<boolean>;
 }) {
   const [enabledKeys, setEnabledKeys] = useState<string[]>(
-    () => rolePermissions.find((item) => item.role === role)?.enabledKeys ?? []
+    () => normalizeRolePermissionKeysForRole(role, rolePermissions.find((item) => item.role === role)?.enabledKeys ?? [])
   );
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    setEnabledKeys(rolePermissions.find((item) => item.role === role)?.enabledKeys ?? []);
+    setEnabledKeys(normalizeRolePermissionKeysForRole(role, rolePermissions.find((item) => item.role === role)?.enabledKeys ?? []));
   }, [role, rolePermissions]);
 
   const leftGroups = useMemo(
@@ -17584,6 +17706,8 @@ function StaffRoleEditorView({
   );
 
   function togglePermission(key: string, checked: boolean) {
+    if (permissionIsLockedForRole(role, key)) return;
+
     setEnabledKeys((current) => {
       const next = new Set(current);
       if (checked) {
@@ -17596,7 +17720,7 @@ function StaffRoleEditorView({
   }
 
   function selectAll() {
-    setEnabledKeys([...allEditableRolePermissionKeys]);
+    setEnabledKeys(editablePermissionKeysForRole(role));
   }
 
   async function save() {
@@ -17607,7 +17731,7 @@ function StaffRoleEditorView({
           item.role === role
             ? {
                 ...item,
-                enabledKeys: normalizeRolePermissionKeys(enabledKeys),
+                enabledKeys: normalizeRolePermissionKeysForRole(role, enabledKeys),
               }
             : item
         )
@@ -17622,19 +17746,21 @@ function StaffRoleEditorView({
       <div className="mb-4 text-[20px] font-semibold text-black">{group.title}</div>
       <div className="grid gap-3">
         {group.permissions.map((permission) => {
-          const checked = enabledKeys.includes(permission.key);
+          const locked = permissionIsLockedForRole(role, permission.key);
+          const checked = !locked && enabledKeys.includes(permission.key);
+          const disabled = Boolean(permission.disabled || locked);
           return (
             <label
               key={permission.key}
               className={[
                 "flex items-center gap-3 text-[15px] leading-snug text-black",
-                permission.disabled ? "cursor-not-allowed opacity-45" : "cursor-pointer",
+                disabled ? "cursor-not-allowed opacity-45" : "cursor-pointer",
               ].join(" ")}
             >
               <input
                 type="checkbox"
                 checked={checked}
-                disabled={permission.disabled}
+                disabled={disabled}
                 onChange={(event) => togglePermission(permission.key, event.target.checked)}
                 className="h-[18px] w-[18px] rounded border border-black/20 accent-black"
               />
