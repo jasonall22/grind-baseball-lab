@@ -15452,8 +15452,7 @@ function CalendarChargeModal({
           membershipService,
           creditLimitPeriod,
         };
-      })
-      .filter(({ remaining }) => remaining > 0);
+      });
   }, [
     booking.customerId,
     booking.date,
@@ -15469,9 +15468,14 @@ function CalendarChargeModal({
     services,
   ]);
   const [selectedMembershipCreditId, setSelectedMembershipCreditId] = useState("");
-  const selectedMembershipCreditOption =
+  const usableMembershipCreditOptions = membershipCreditOptions.filter(({ remaining }) => remaining > 0);
+  const coveredMembershipCreditOption =
     membershipCreditOptions.find(({ record }) => record.id === selectedMembershipCreditId) ??
     membershipCreditOptions[0] ??
+    null;
+  const selectedMembershipCreditOption =
+    usableMembershipCreditOptions.find(({ record }) => record.id === selectedMembershipCreditId) ??
+    usableMembershipCreditOptions[0] ??
     null;
   const membershipCreditDescription = selectedMembershipCreditOption
     ? `${selectedMembershipCreditOption.membershipService?.name ?? "Membership"} - ${
@@ -15479,6 +15483,10 @@ function CalendarChargeModal({
       } credit${selectedMembershipCreditOption.remaining === 1 ? "" : "s"} left ${membershipCreditLimitPeriodRemainingLabel(
         selectedMembershipCreditOption.creditLimitPeriod
       )}.`
+    : coveredMembershipCreditOption
+      ? `This membership covers this booking, but there are no credits remaining for this ${membershipCreditLimitPeriodLabel(
+          coveredMembershipCreditOption.creditLimitPeriod
+        )}.`
     : "No eligible membership credits for this booking.";
 
   const loadBillingCards = useCallback(async () => {
@@ -15738,42 +15746,44 @@ function CalendarChargeModal({
                 <Icon name="file" className="h-5 w-5 text-black/45" />
               </button>
 
-              <div
-                className={`rounded-xl border border-black/10 ${
-                  selectedMembershipCreditOption ? "bg-white" : "bg-black/[0.02] opacity-70"
-                }`}
-              >
-                <button
-                  type="button"
-                  disabled={!selectedMembershipCreditOption}
-                  onClick={submitMembershipCreditPayment}
-                  className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left transition hover:border-black/20 hover:bg-black/[0.02] disabled:cursor-not-allowed disabled:hover:bg-transparent"
+              {membershipCreditOptions.length ? (
+                <div
+                  className={`rounded-xl border border-black/10 ${
+                    selectedMembershipCreditOption ? "bg-white" : "bg-black/[0.02] opacity-70"
+                  }`}
                 >
-                  <span>
-                    <span className="block text-[15px] font-semibold text-black">Membership credit</span>
-                    <span className="block text-[13px] text-black/55">
-                      {membershipCreditDescription}
+                  <button
+                    type="button"
+                    disabled={!selectedMembershipCreditOption}
+                    onClick={submitMembershipCreditPayment}
+                    className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left transition hover:border-black/20 hover:bg-black/[0.02] disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                  >
+                    <span>
+                      <span className="block text-[15px] font-semibold text-black">Membership credit</span>
+                      <span className="block text-[13px] text-black/55">
+                        {membershipCreditDescription}
+                      </span>
                     </span>
-                  </span>
-                  <Icon name="check" className="h-5 w-5 shrink-0 text-black/45" />
-                </button>
-                {membershipCreditOptions.length > 1 ? (
-                  <div className="border-t border-black/10 px-4 pb-3">
-                    <select
-                      value={selectedMembershipCreditId}
-                      onChange={(event) => setSelectedMembershipCreditId(event.target.value)}
-                      className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-[13px] text-black outline-none"
-                    >
-                      {membershipCreditOptions.map(({ record, membershipService, remaining, creditLimitPeriod }) => (
-                        <option key={record.id} value={record.id}>
-                          {membershipService?.name ?? "Membership"} - {remaining} left{" "}
-                          {membershipCreditLimitPeriodRemainingLabel(creditLimitPeriod)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ) : null}
-              </div>
+                    <Icon name="check" className="h-5 w-5 shrink-0 text-black/45" />
+                  </button>
+                  {membershipCreditOptions.length > 1 ? (
+                    <div className="border-t border-black/10 px-4 pb-3">
+                      <select
+                        value={selectedMembershipCreditId}
+                        onChange={(event) => setSelectedMembershipCreditId(event.target.value)}
+                        className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-[13px] text-black outline-none"
+                      >
+                        {membershipCreditOptions.map(({ record, membershipService, remaining, creditLimitPeriod }) => (
+                          <option key={record.id} value={record.id} disabled={remaining < 1}>
+                            {membershipService?.name ?? "Membership"} - {remaining} left{" "}
+                            {membershipCreditLimitPeriodRemainingLabel(creditLimitPeriod)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
 
               <button
                 type="button"
@@ -21853,8 +21863,10 @@ function EditorModal({
               creditLimitPeriod,
             };
           })
-          .filter(({ remaining }) => remaining > 0)
       : [];
+  const hasUsableEligibleCreditOption = eligibleCreditOptions.some(({ remaining }) => remaining > 0);
+  const exhaustedEligibleCreditOption =
+    eligibleCreditOptions.find(({ remaining }) => remaining < 1) ?? null;
   const canSave =
     modal.type !== "customer" ||
     Boolean(customerName.first.trim() && customerName.last.trim() && customerDraft.email.trim());
@@ -22224,7 +22236,7 @@ function EditorModal({
                 />
               ) : null}
               <SelectField label="Resource" value={(draft as Booking).resource} onChange={(value) => patchBooking({ resource: value })} options={state.resources} />
-              {(activeBookingDraft?.customerId || activeBookingDraft?.playerName) &&
+              {activeBookingDraft?.customerId &&
               activeBookingDraft.serviceId &&
               eligibleCreditOptions.length ? (
                 <label className="space-y-2 sm:col-span-2">
@@ -22243,12 +22255,18 @@ function EditorModal({
                   >
                     <option value="">Do not use membership credit</option>
                     {eligibleCreditOptions.map(({ record, remaining, membershipService, creditLimitPeriod }) => (
-                      <option key={record.id} value={record.id}>
+                      <option key={record.id} value={record.id} disabled={remaining < 1}>
                         {membershipService?.name || "Membership"} - {remaining} credit{remaining === 1 ? "" : "s"} left{" "}
                         {membershipCreditLimitPeriodRemainingLabel(creditLimitPeriod)}
                       </option>
                     ))}
                   </select>
+                  {!hasUsableEligibleCreditOption && exhaustedEligibleCreditOption ? (
+                    <span className="block rounded-lg bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
+                      This membership covers this service, but there are no credits remaining for this{" "}
+                      {membershipCreditLimitPeriodLabel(exhaustedEligibleCreditOption.creditLimitPeriod)}.
+                    </span>
+                  ) : null}
                 </label>
               ) : null}
               <div className="sm:col-span-2 rounded-xl border border-black/10 bg-black/[0.02] px-4 py-4">
