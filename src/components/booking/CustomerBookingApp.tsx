@@ -545,13 +545,13 @@ function MonthCalendar({ value, onChange }: { value: string; onChange: (value: s
 
 function LogoPanel({ compact = false }: { compact?: boolean }) {
   return (
-    <div className={`relative flex items-center justify-center overflow-hidden bg-black ${compact ? "h-full min-h-[108px]" : "min-h-[300px] sm:min-h-[340px]"}`}>
+    <div className={`relative flex items-center justify-center overflow-hidden bg-black ${compact ? "h-full min-h-[108px] px-4" : "min-h-[300px] sm:min-h-[340px]"}`}>
       <Image
         src="/logo.png"
         alt="The Grind Baseball Lab"
         width={compact ? 180 : 620}
         height={compact ? 70 : 241}
-        className={`relative ${compact ? "w-[142px] sm:w-[160px]" : "w-[620px] max-w-[78%]"} h-auto`}
+        className={`relative ${compact ? "w-[118px] sm:w-[132px]" : "w-[620px] max-w-[78%]"} h-auto`}
         priority={!compact}
       />
     </div>
