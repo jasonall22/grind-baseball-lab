@@ -3025,14 +3025,15 @@ function membershipCanUseCredit(
     if (normalized) normalizedServiceCandidates.add(normalized);
   });
 
-  if (
-    settings.creditScope === "selected_services" &&
-    settings.eligibleServiceIds.length > 0 &&
-    !settings.eligibleServiceIds.some((identifier) =>
-      normalizedServiceCandidates.has(normalizeServiceIdentifier(identifier))
-    )
-  ) {
-    return false;
+  if (settings.creditScope === "selected_services") {
+    if (!settings.eligibleServiceIds.length) return false;
+    if (
+      !settings.eligibleServiceIds.some((identifier) =>
+        normalizedServiceCandidates.has(normalizeServiceIdentifier(identifier))
+      )
+    ) {
+      return false;
+    }
   }
   return normalizedServiceCandidates.size > 0;
 }
