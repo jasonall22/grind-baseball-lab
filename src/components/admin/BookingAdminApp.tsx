@@ -111,6 +111,7 @@ type BillingPayment = {
 
 type Customer = {
   id: string;
+  authUserId?: string;
   name: string;
   player: string;
   email: string;
@@ -136,6 +137,8 @@ type StaffRole = "Owner" | "Admin" | "Instructor" | "Staff";
 
 type StaffMember = {
   id: string;
+  customerId?: string;
+  authUserId?: string;
   name: string;
   email: string;
   phone?: string;
@@ -397,6 +400,7 @@ type BookingScheduleOverrideRow = {
 
 type BookingCustomerRow = {
   id: string;
+  auth_user_id?: string | null;
   parent_name: string;
   player_name: string;
   email: string | null;
@@ -589,6 +593,8 @@ type BookingProductRow = {
 
 type BookingStaffRow = {
   id: string;
+  customer_id?: string | null;
+  auth_user_id?: string | null;
   full_name: string;
   email: string;
   phone?: string | null;
@@ -2404,6 +2410,8 @@ async function upsertFacilitySettings(
 async function upsertStaffMembers(staff: StaffMember[]) {
   const payload = staff.map((member, index) => ({
     id: member.id,
+    customerId: member.customerId ?? null,
+    authUserId: member.authUserId ?? null,
     full_name: member.name.trim(),
     email: member.email.trim(),
     phone: member.phone?.trim() || null,
@@ -2415,17 +2423,28 @@ async function upsertStaffMembers(staff: StaffMember[]) {
     sort_order: index + 1,
   }));
 
-  const { error } = await supabase.from("booking_staff_members").upsert(payload);
-  if (error) throw error;
-
-  const refreshed = await supabase
-    .from("booking_staff_members")
-    .select("*")
-    .order("is_active", { ascending: false })
-    .order("sort_order");
-
-  if (refreshed.error) throw refreshed.error;
-  return (refreshed.data ?? []) as BookingStaffRow[];
+  const response = await fetch("/api/admin/staff", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      staff: payload.map((member) => ({
+        id: member.id,
+        customerId: member.customerId,
+        authUserId: member.authUserId,
+        name: member.full_name,
+        email: member.email,
+        phone: member.phone,
+        bio: member.bio,
+        notes: member.notes,
+        role: member.role,
+        active: member.is_active,
+        calendarColor: member.calendar_color,
+      })),
+    }),
+  });
+  const result = (await response.json().catch(() => null)) as { staff?: BookingStaffRow[]; error?: string } | null;
+  if (!response.ok) throw new Error(result?.error || "Staff could not be saved.");
+  return result?.staff ?? [];
 }
 
 async function upsertRolePermissions(rolePermissions: RolePermissionRecord[]) {
@@ -4434,7 +4453,7 @@ export default function BookingAdminApp({
   }, [currentAuthEmail, state.staff]);
   const canManageAnyAvailability =
     !hasSupabaseEnv ||
-    currentProfileRole === "admin" ||
+    (currentProfileRole === "admin" && !currentStaffMember) ||
     currentStaffMember?.role === "Owner" ||
     currentStaffMember?.role === "Admin";
 
@@ -4651,6 +4670,8 @@ export default function BookingAdminApp({
       const staffMembers = staffRows.length
         ? staffRows.map((member, index) => ({
             id: member.id,
+            customerId: member.customer_id ?? "",
+            authUserId: member.auth_user_id ?? "",
             name: member.full_name,
             email: member.email,
             phone: member.phone ?? "",
@@ -4833,6 +4854,7 @@ export default function BookingAdminApp({
         })),
         customers: customerRows.map((customer) => ({
           id: customer.id,
+          authUserId: customer.auth_user_id ?? "",
           name: customer.parent_name,
           player: customer.player_name,
           email: customer.email ?? "",
@@ -5076,6 +5098,8 @@ export default function BookingAdminApp({
       const savedRows = await upsertStaffMembers(normalizedStaff);
       const savedStaff = savedRows.map((member, index) => ({
         id: member.id,
+        customerId: member.customer_id ?? "",
+        authUserId: member.auth_user_id ?? "",
         name: member.full_name,
         email: member.email,
         phone: member.phone ?? "",
@@ -5131,8 +5155,13 @@ export default function BookingAdminApp({
     stateToStorage(nextState);
 
     try {
-      const { error } = await supabase.from("booking_staff_members").delete().eq("id", staffId);
-      if (error) throw error;
+      const response = await fetch("/api/admin/staff", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: staffId }),
+      });
+      const result = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) throw new Error(result?.error || "Staff member could not be deleted.");
       showToast("Staff member deleted.");
       return true;
     } catch (error) {
@@ -6648,6 +6677,7 @@ export default function BookingAdminApp({
             <StaffSettingsView
               backHref={backToAppHref}
               staff={state.staff}
+              customers={state.customers}
               showToast={showToast}
               onSave={saveStaffMembers}
               onDelete={deleteStaffMember}
@@ -16689,12 +16719,14 @@ function StaffRichTextBox({
 function StaffSettingsView({
   backHref,
   staff,
+  customers,
   showToast,
   onSave,
   onDelete,
 }: {
   backHref: string;
   staff: StaffMember[];
+  customers: Customer[];
   showToast: (message: string) => void;
   onSave: (nextStaff: StaffMember[], successMessage?: string) => Promise<boolean | void>;
   onDelete: (staffId: string) => Promise<boolean | void>;
@@ -16728,6 +16760,17 @@ function StaffSettingsView({
   }, [activeTab, draft, normalizedSearch]);
   const selectedMember = selectedStaffId ? draft.find((member) => member.id === selectedStaffId) ?? null : null;
   const selectedNameParts = splitStaffName(selectedMember?.name ?? "");
+  const isSelectedMemberNew = Boolean(selectedMember && !staff.some((member) => member.id === selectedMember.id));
+  const linkedStaffCustomerIds = useMemo(
+    () => new Set(draft.map((member) => member.customerId).filter((id): id is string => Boolean(id))),
+    [draft]
+  );
+  const staffCustomerOptions = useMemo(() => {
+    return customers
+      .filter((customer) => customer.email.trim())
+      .filter((customer) => customer.id === selectedMember?.customerId || !linkedStaffCustomerIds.has(customer.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [customers, linkedStaffCustomerIds, selectedMember?.customerId]);
   const summaryRange =
     filteredStaff.length === 0 ? "0-0 of 0" : `1-${Math.min(filteredStaff.length, 25)} of ${filteredStaff.length}`;
 
@@ -16758,6 +16801,23 @@ function StaffSettingsView({
     setSelectedStaffId(member.id);
   }
 
+  function linkSelectedCustomer(customerId: string) {
+    if (!selectedMember) return;
+    const customer = customers.find((item) => item.id === customerId);
+    if (!customer) {
+      patchSelectedStaff({ customerId: "", authUserId: "" });
+      return;
+    }
+
+    patchSelectedStaff({
+      customerId: customer.id,
+      authUserId: customer.authUserId ?? "",
+      name: customer.name,
+      email: customer.email,
+      phone: customer.phone,
+    });
+  }
+
   async function saveSelectedMember() {
     if (!selectedMember) return;
     const trimmedName = selectedMember.name.trim();
@@ -16770,6 +16830,11 @@ function StaffSettingsView({
 
     if (!trimmedEmail) {
       showToast("Staff email is required.");
+      return;
+    }
+
+    if (isSelectedMemberNew && !selectedMember.customerId) {
+      showToast("Select an active customer account to add staff.");
       return;
     }
 
@@ -17064,6 +17129,34 @@ function StaffSettingsView({
           ) : (
             <>
               <div className="px-5 py-7">
+                <div className="mb-8 rounded-[6px] border border-black/10 bg-[#f8fafc] px-5 py-5">
+                  <h3 className="text-[18px] font-semibold text-black">Staff login account</h3>
+                  <p className="mt-1 text-[14px] text-black/60">
+                    Staff should be added from an existing active customer account so their login can be granted admin access.
+                  </p>
+                  <label className="mt-4 grid gap-2">
+                    <span className="text-[14px] font-medium text-black">Customer account</span>
+                    <select
+                      value={selectedMember.customerId ?? ""}
+                      onChange={(event) => linkSelectedCustomer(event.target.value)}
+                      disabled={!isSelectedMemberNew && Boolean(selectedMember.customerId)}
+                      className="min-h-12 rounded-[4px] border border-black/25 bg-white px-4 text-[16px] text-black outline-none focus:border-[#526f9f] disabled:bg-black/[0.04] disabled:text-black/60"
+                    >
+                      <option value="">Select active customer...</option>
+                      {staffCustomerOptions.map((customer) => (
+                        <option key={customer.id} value={customer.id}>
+                          {customer.name} - {customer.email}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {selectedMember.customerId && !selectedMember.authUserId ? (
+                    <div className="mt-3 rounded-[5px] bg-yellow-50 px-3 py-2 text-[13px] text-yellow-800">
+                      This customer has not been backfilled with a login id yet. Saving will match their login by email.
+                    </div>
+                  ) : null}
+                </div>
+
                 <h3 className="text-[21px] font-semibold text-black">Profile</h3>
                 <p className="mt-2 text-[17px] text-black/80">Update their profile picture and name</p>
 

@@ -37,7 +37,7 @@ function isPublicPath(pathname: string) {
 async function getUserRole(
   supabase: ServerSupabaseClient,
   userId: string
-): Promise<"member" | "grind_member" | "admin"> {
+): Promise<"member" | "grind_member" | "admin" | "staff"> {
   const { data } = await supabase
     .from("profiles")
     .select("role")
@@ -47,6 +47,7 @@ async function getUserRole(
   const role = (data?.role ?? "member") as string;
 
   if (role === "admin") return "admin";
+  if (role === "owner" || role === "staff" || role === "instructor") return "staff";
   if (role === "grind_member") return "grind_member";
   return "member";
 }
@@ -104,7 +105,7 @@ export async function middleware(req: NextRequest) {
   const role = await getUserRole(supabase, user.id);
 
   if (pathname.startsWith("/admin")) {
-    if (role !== "admin") {
+    if (role !== "admin" && role !== "staff") {
       const url = req.nextUrl.clone();
       url.pathname = role === "grind_member" ? "/dashboard" : "/";
       url.search = "";
@@ -115,7 +116,7 @@ export async function middleware(req: NextRequest) {
   }
 
   if (pathname.startsWith("/dashboard")) {
-    if (role !== "admin" && role !== "grind_member") {
+    if (role !== "admin" && role !== "staff" && role !== "grind_member") {
       const url = req.nextUrl.clone();
       url.pathname = "/";
       url.search = "";

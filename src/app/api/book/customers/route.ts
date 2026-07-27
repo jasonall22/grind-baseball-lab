@@ -459,6 +459,7 @@ export async function POST(req: Request) {
     }
 
     const customerPatch = {
+      auth_user_id: userId,
       parent_name: parentName,
       player_name: playerName,
       email,
@@ -476,7 +477,11 @@ export async function POST(req: Request) {
       notes: "Created from public parent account signup.",
     };
 
-    const insertResult = await supabase.from("booking_customers").insert(customerPatch).select("id").single();
+    let insertResult = await supabase.from("booking_customers").insert(customerPatch).select("id").single();
+    if (insertResult.error && /auth_user_id|schema cache/i.test(insertResult.error.message ?? "")) {
+      const { auth_user_id: _authUserId, ...fallbackCustomerPatch } = customerPatch;
+      insertResult = await supabase.from("booking_customers").insert(fallbackCustomerPatch).select("id").single();
+    }
     if (insertResult.error) throw insertResult.error;
     const customerId = (insertResult.data as { id: string }).id;
 

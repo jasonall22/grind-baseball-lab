@@ -81,12 +81,12 @@ export default function AdminAuthGate({
       const profile = prof as ProfileRoleRow | null;
       const role: Role = profile?.role ?? null;
 
-      if (!error && role === "admin") {
+      if (!error && (role === "admin" || role === "owner" || role === "staff" || role === "instructor")) {
         setStatus("allowed");
         return;
       }
 
-      if (pathname === "/admin/availability" && session.user.email) {
+      if (session.user.email) {
         const { data: staffMember } = await supabase
           .from("booking_staff_members")
           .select("id,role")
