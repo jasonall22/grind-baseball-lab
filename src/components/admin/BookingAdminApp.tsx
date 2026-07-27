@@ -3953,6 +3953,41 @@ function joinName(first: string, last: string) {
   return [first.trim(), last.trim()].filter(Boolean).join(" ");
 }
 
+function customerDisplayName(customer: Customer) {
+  return customer.name.trim() || customer.player.trim() || customer.email.trim() || "Customer";
+}
+
+function customerLastFirstSortParts(customer: Customer) {
+  const parts = customerDisplayName(customer).split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) {
+    return {
+      last: parts[0] ?? "",
+      first: "",
+    };
+  }
+
+  return {
+    last: parts[parts.length - 1] ?? "",
+    first: parts.slice(0, -1).join(" "),
+  };
+}
+
+function compareCustomersByLastFirst(left: Customer, right: Customer) {
+  const leftParts = customerLastFirstSortParts(left);
+  const rightParts = customerLastFirstSortParts(right);
+  const lastComparison = leftParts.last.localeCompare(rightParts.last, undefined, { numeric: true, sensitivity: "base" });
+  if (lastComparison !== 0) return lastComparison;
+
+  const firstComparison = leftParts.first.localeCompare(rightParts.first, undefined, { numeric: true, sensitivity: "base" });
+  if (firstComparison !== 0) return firstComparison;
+
+  return customerDisplayName(left).localeCompare(customerDisplayName(right), undefined, { numeric: true, sensitivity: "base" });
+}
+
+function sortCustomersByLastFirst(customers: Customer[]) {
+  return [...customers].sort(compareCustomersByLastFirst);
+}
+
 function initialsFromName(value: string, fallback = "CU") {
   const parts = value.trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return fallback;
@@ -5001,36 +5036,38 @@ export default function BookingAdminApp({
           stripeProductId: service.stripe_product_id ?? null,
           stripePriceId: service.stripe_price_id ?? null,
         })),
-        customers: customerRows.map((customer) => ({
-          id: customer.id,
-          authUserId: customer.auth_user_id ?? "",
-          name: customer.parent_name,
-          player: customer.player_name,
-          email: customer.email ?? "",
-          address: customer.address ?? "",
-          phone: customer.phone ?? "",
-          phoneCountry: customer.phone_country ?? "US",
-          birthYear: birthPart(customer.birth_year, 4),
-          birthMonth: birthPart(customer.birth_month, 2),
-          birthDay: birthPart(customer.birth_day, 2),
-          gender: customer.gender ?? "",
-          age: (() => {
-            const derivedAge = calculateAge(
-              birthPart(customer.birth_year, 4),
-              birthPart(customer.birth_month, 2),
-              birthPart(customer.birth_day, 2)
-            );
-            return derivedAge === "" ? customer.age ?? "" : derivedAge;
-          })(),
-          memberships: customer.memberships ?? [],
-          waiverAgreed: customer.waiver_agreed ?? false,
-          emergencyContactName: customer.emergency_contact_name ?? "",
-          emergencyContactEmail: customer.emergency_contact_email ?? "",
-          emergencyContactPhone: customer.emergency_contact_phone ?? "",
-          familyMembers: customer.family_members ?? [],
-          notes: customer.notes ?? "",
-          createdAt: customer.created_at,
-        })),
+        customers: sortCustomersByLastFirst(
+          customerRows.map((customer) => ({
+            id: customer.id,
+            authUserId: customer.auth_user_id ?? "",
+            name: customer.parent_name,
+            player: customer.player_name,
+            email: customer.email ?? "",
+            address: customer.address ?? "",
+            phone: customer.phone ?? "",
+            phoneCountry: customer.phone_country ?? "US",
+            birthYear: birthPart(customer.birth_year, 4),
+            birthMonth: birthPart(customer.birth_month, 2),
+            birthDay: birthPart(customer.birth_day, 2),
+            gender: customer.gender ?? "",
+            age: (() => {
+              const derivedAge = calculateAge(
+                birthPart(customer.birth_year, 4),
+                birthPart(customer.birth_month, 2),
+                birthPart(customer.birth_day, 2)
+              );
+              return derivedAge === "" ? customer.age ?? "" : derivedAge;
+            })(),
+            memberships: customer.memberships ?? [],
+            waiverAgreed: customer.waiver_agreed ?? false,
+            emergencyContactName: customer.emergency_contact_name ?? "",
+            emergencyContactEmail: customer.emergency_contact_email ?? "",
+            emergencyContactPhone: customer.emergency_contact_phone ?? "",
+            familyMembers: customer.family_members ?? [],
+            notes: customer.notes ?? "",
+            createdAt: customer.created_at,
+          }))
+        ),
         bookings: bookingRows.map((booking) => {
           const creditEntry = bookingCreditLedgerEntry(membershipCreditLedgerEntries, booking.id);
 
@@ -5873,7 +5910,7 @@ export default function BookingAdminApp({
     }
 
     const previousState = state;
-    const next = { ...state, customers: upsert(state.customers, item) };
+    const next = { ...state, customers: sortCustomersByLastFirst(upsert(state.customers, item)) };
 
     if (dataSource === "local") {
       if (options?.silent) {
@@ -6420,7 +6457,7 @@ export default function BookingAdminApp({
     }
 
     if (dataSource === "local") {
-      const next = { ...state, customers: [...customersToImport, ...state.customers] };
+      const next = { ...state, customers: sortCustomersByLastFirst([...customersToImport, ...state.customers]) };
       saveLocal(next, `${customersToImport.length} customer${customersToImport.length === 1 ? "" : "s"} imported.`);
       setShowCustomerImport(false);
       return;
@@ -11677,7 +11714,6 @@ function CustomersView({
   canDelete: boolean;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
-  const [sortDirection, setSortDirection] = useState<"desc" | "asc">("desc");
   const filtered = useMemo(() => {
     const loweredSearch = search.toLowerCase();
     return customers.filter((customer) =>
@@ -11688,15 +11724,8 @@ function CustomersView({
     );
   }, [customers, search]);
   const visibleCustomers = useMemo(() => {
-    return [...filtered].sort((left, right) => {
-      const leftTime = new Date(left.createdAt).getTime();
-      const rightTime = new Date(right.createdAt).getTime();
-      const safeLeft = Number.isNaN(leftTime) ? 0 : leftTime;
-      const safeRight = Number.isNaN(rightTime) ? 0 : rightTime;
-
-      return sortDirection === "desc" ? safeRight - safeLeft : safeLeft - safeRight;
-    });
-  }, [filtered, sortDirection]);
+    return sortCustomersByLastFirst(filtered);
+  }, [filtered]);
   const bookingCounts = useMemo(() => {
     const counts = new Map<string, number>();
     bookings.forEach((booking) => {
@@ -11706,10 +11735,6 @@ function CustomersView({
   }, [bookings]);
   const allVisibleSelected =
     visibleCustomers.length > 0 && visibleCustomers.every((customer) => selected.includes(customer.id));
-
-  function toggleCreatedAtSort() {
-    setSortDirection((current) => (current === "desc" ? "asc" : "desc"));
-  }
 
   function toggleAll() {
     if (allVisibleSelected) {
@@ -11785,22 +11810,7 @@ function CustomersView({
                   />
                 </th>
                 <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Name</th>
-                <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">
-                  <button
-                    type="button"
-                    onClick={toggleCreatedAtSort}
-                    className="inline-flex items-center gap-1.5 text-left hover:text-black/75"
-                  >
-                    <span>Created At</span>
-                    <Icon
-                      name="chevron"
-                      className={[
-                        "h-3.5 w-3.5 text-black/55 transition-transform",
-                        sortDirection === "desc" ? "rotate-90" : "-rotate-90",
-                      ].join(" ")}
-                    />
-                  </button>
-                </th>
+                <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Created At</th>
                 <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Email</th>
                 <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Phone Number</th>
                 <th className="border-b border-black/10 px-4 py-3 text-left font-semibold">Age</th>
@@ -21748,7 +21758,7 @@ function EditorModal({
     bookingDraft ? state.customers.find((item) => item.id === bookingDraft.customerId) ?? null : null;
   const bookingCustomerOptions: Array<[string, string]> = [
     ["", "Select customer"],
-    ...state.customers.map((item): [string, string] => [item.id, item.name.trim() || item.player.trim() || "Customer"]),
+    ...sortCustomersByLastFirst(state.customers).map((item): [string, string] => [item.id, customerDisplayName(item)]),
   ];
   const bookingPlayerOptions: Array<[string, string]> = selectedBookingCustomer
     ? [
