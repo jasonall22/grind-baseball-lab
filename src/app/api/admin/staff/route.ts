@@ -130,14 +130,22 @@ export async function DELETE(req: Request) {
     if (!id) return routeJsonError("Missing staff id.");
 
     const admin = getSupabaseAdmin() as any;
-    const staffResult = await admin
+    let staffResult = await admin
       .from("booking_staff_members")
-      .select("id,auth_user_id")
+      .select("id,email,auth_user_id")
       .eq("id", id)
       .maybeSingle();
+    if (staffResult.error && /auth_user_id|schema cache/i.test(staffResult.error.message ?? "")) {
+      staffResult = await admin
+        .from("booking_staff_members")
+        .select("id,email")
+        .eq("id", id)
+        .maybeSingle();
+    }
     if (staffResult.error) throw staffResult.error;
 
-    const authUserId = clean((staffResult.data as { auth_user_id?: string | null } | null)?.auth_user_id);
+    const staffRow = staffResult.data as { auth_user_id?: string | null; email?: string | null } | null;
+    const authUserId = clean(staffRow?.auth_user_id) || (await findAuthUserIdByEmail(admin, clean(staffRow?.email).toLowerCase()));
     const deleteResult = await admin.from("booking_staff_members").delete().eq("id", id);
     if (deleteResult.error) throw deleteResult.error;
 
