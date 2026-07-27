@@ -2994,16 +2994,19 @@ function membershipCreditSettings(record: CustomerMembershipRecord, membershipSe
   const serviceEligibleServiceIds = Array.isArray(membershipService?.membershipEligibleServiceIds)
     ? membershipService.membershipEligibleServiceIds.filter(Boolean)
     : [];
-  const eligibleServiceIds = Array.from(new Set([...recordEligibleServiceIds, ...serviceEligibleServiceIds]));
   const recordCreditsPerDay = Math.max(0, Math.floor(Number(record.creditsPerDay ?? 0)));
   const serviceCreditsPerDay = Math.max(0, Math.floor(Number(membershipService?.membershipCreditsPerDay ?? 0)));
   const usesServiceCreditConfig = Boolean(membershipService);
-  const creditScope =
-    eligibleServiceIds.length > 0
-      ? "selected_services"
-      : usesServiceCreditConfig
-        ? membershipService?.membershipCreditScope ?? record.creditScope
-        : record.creditScope;
+  const serviceCreditScope = usesServiceCreditConfig
+    ? normalizeMembershipCreditScope(membershipService?.membershipCreditScope)
+    : null;
+  const creditScope = serviceCreditScope ?? record.creditScope;
+  const eligibleServiceIds =
+    creditScope === "all_services"
+      ? []
+      : serviceEligibleServiceIds.length
+        ? serviceEligibleServiceIds
+        : recordEligibleServiceIds;
 
   return {
     creditsPerDay: usesServiceCreditConfig && serviceCreditsPerDay > 0 ? serviceCreditsPerDay : recordCreditsPerDay,
