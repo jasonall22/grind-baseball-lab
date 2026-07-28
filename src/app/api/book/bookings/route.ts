@@ -67,6 +67,27 @@ function normalizeCreditLimitPeriod(value: unknown) {
   return "day";
 }
 
+function normalizeCreditRules(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item, index) => {
+      const record = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+      const rawServiceIds = Array.isArray(record.serviceIds)
+        ? record.serviceIds
+        : Array.isArray(record.service_ids)
+          ? record.service_ids
+          : [];
+      const credits = Math.max(0, Math.floor(Number(record.credits ?? 0)));
+      return {
+        id: String(record.id ?? `rule-${index + 1}`),
+        serviceIds: stringArray(rawServiceIds),
+        credits,
+        period: normalizeCreditLimitPeriod(record.period ?? record.credit_limit_period),
+      };
+    })
+    .filter((rule) => rule.credits > 0 && rule.serviceIds.length > 0);
+}
+
 function localDateFromIso(date: string) {
   const [year, month, day] = date.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day));
@@ -92,13 +113,30 @@ function creditPeriodRange(date: string, periodValue: unknown) {
   return { start: isoFromDate(start), end: isoFromDate(end) };
 }
 
-function membershipCoversService(membership: Record<string, unknown>, serviceId: string, date: string) {
+function membershipCreditRuleForService(membership: Record<string, unknown>, serviceId: string, date: string) {
   const currentPeriodStart = clean(membership.current_period_start).slice(0, 10);
   const currentPeriodEnd = clean(membership.current_period_end).slice(0, 10);
-  if (currentPeriodStart && date < currentPeriodStart) return false;
-  if (currentPeriodEnd && date >= currentPeriodEnd) return false;
-  if (clean(membership.credit_scope) === "all_services") return true;
-  return stringArray(membership.eligible_service_ids).includes(serviceId);
+  if (currentPeriodStart && date < currentPeriodStart) return null;
+  if (currentPeriodEnd && date >= currentPeriodEnd) return null;
+
+  const creditRules = normalizeCreditRules(membership.credit_rules);
+  if (creditRules.length) {
+    return (
+      creditRules.find((rule) => rule.serviceIds.includes("all_services") || rule.serviceIds.includes(serviceId)) ?? null
+    );
+  }
+
+  const credits = Math.max(0, Math.floor(Number(membership.credits_per_day ?? 0)));
+  if (credits < 1) return null;
+  if (clean(membership.credit_scope) === "all_services" || stringArray(membership.eligible_service_ids).includes(serviceId)) {
+    return {
+      id: "legacy",
+      serviceIds: stringArray(membership.eligible_service_ids),
+      credits,
+      period: normalizeCreditLimitPeriod(membership.credit_limit_period),
+    };
+  }
+  return null;
 }
 
 function lessonCoachOptions(data: PublicBookingData, service: PublicBookingData["services"][number]) {
@@ -265,22 +303,24 @@ export async function POST(req: Request) {
     if (body.paymentMethod === "membership-credit") {
       const membershipsResult = await supabase
         .from("booking_customer_memberships")
-        .select("id,membership_service_id,status,credits_per_day,credit_limit_period,credit_scope,eligible_service_ids,current_period_start,current_period_end")
+        .select("id,membership_service_id,status,credits_per_day,credit_limit_period,credit_scope,eligible_service_ids,credit_rules,current_period_start,current_period_end")
         .eq("customer_id", customerId)
         .eq("status", "Active");
 
       if (membershipsResult.error) throw membershipsResult.error;
 
       const eligibleMemberships = ((membershipsResult.data ?? []) as Array<Record<string, unknown>>)
-        .filter((membership) => Number(membership.credits_per_day ?? 0) > 0)
-        .filter((membership) => membershipCoversService(membership, service.id, date));
+        .map((membership) => ({ membership, rule: membershipCreditRuleForService(membership, service.id, date) }))
+        .filter((item): item is { membership: Record<string, unknown>; rule: { id: string; serviceIds: string[]; credits: number; period: string } } =>
+          Boolean(item.rule)
+        );
 
-      for (const membership of eligibleMemberships) {
-        const creditsAllowed = Math.max(0, Math.floor(Number(membership.credits_per_day ?? 0)));
-        const range = creditPeriodRange(date, membership.credit_limit_period);
+      for (const { membership, rule } of eligibleMemberships) {
+        const creditsAllowed = Math.max(0, Math.floor(Number(rule.credits ?? 0)));
+        const range = creditPeriodRange(date, rule.period);
         const ledgerResult = await supabase
           .from("booking_membership_credit_ledger")
-          .select("amount,reason,credit_date")
+          .select("amount,reason,credit_date,service_id")
           .eq("customer_membership_id", membership.id)
           .gte("credit_date", range.start)
           .lte("credit_date", range.end);
@@ -289,13 +329,14 @@ export async function POST(req: Request) {
 
         const usedCredits = ((ledgerResult.data ?? []) as Array<Record<string, unknown>>).reduce((total, row) => {
           if (clean(row.reason) !== "booking") return total;
+          if (!rule.serviceIds.includes("all_services") && !rule.serviceIds.includes(clean(row.service_id))) return total;
           return total + Math.abs(Number(row.amount ?? 0));
         }, 0);
 
         if (usedCredits < creditsAllowed) {
           membershipCreditRedemption = {
             membershipId: String(membership.id),
-            label: `${creditsAllowed} credit${creditsAllowed === 1 ? "" : "s"} per ${normalizeCreditLimitPeriod(membership.credit_limit_period)}`,
+            label: `${creditsAllowed} credit${creditsAllowed === 1 ? "" : "s"} per ${normalizeCreditLimitPeriod(rule.period)}`,
           };
           break;
         }

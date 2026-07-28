@@ -119,6 +119,45 @@ function stringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
 }
 
+function normalizeCreditRules(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item, index) => {
+      const record = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+      const rawServiceIds = Array.isArray(record.serviceIds)
+        ? record.serviceIds
+        : Array.isArray(record.service_ids)
+          ? record.service_ids
+          : [];
+      const credits = Math.max(0, Math.floor(Number(record.credits ?? 0)));
+      return {
+        id: String(record.id ?? `rule-${index + 1}`),
+        serviceIds: stringArray(rawServiceIds),
+        credits,
+        period: normalizeCreditLimitPeriod(record.period ?? record.credit_limit_period),
+      };
+    })
+    .filter((rule) => rule.credits > 0 && rule.serviceIds.length > 0);
+}
+
+function legacyCreditRules(service: Record<string, unknown>) {
+  const credits = Math.max(0, Math.floor(Number(service.membership_credits_per_day ?? 0)));
+  if (credits < 1) return [];
+  const serviceIds =
+    normalizeCreditScope(service.membership_credit_scope) === "all_services"
+      ? ["all_services"]
+      : stringArray(service.membership_eligible_service_ids);
+  if (!serviceIds.length) return [];
+  return [
+    {
+      id: "legacy",
+      serviceIds,
+      credits,
+      period: normalizeCreditLimitPeriod(service.membership_credit_limit_period),
+    },
+  ];
+}
+
 async function activateMembershipFromCheckout(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   stripe: Stripe,
@@ -144,7 +183,7 @@ async function activateMembershipFromCheckout(
 
   const serviceResult = await admin
     .from("booking_services")
-    .select("id,price,membership_billing_period,membership_credits_per_day,membership_credit_limit_period,membership_credit_scope,membership_eligible_service_ids,stripe_price_id")
+    .select("id,price,membership_billing_period,membership_credits_per_day,membership_credit_limit_period,membership_credit_scope,membership_eligible_service_ids,membership_credit_rules,stripe_price_id")
     .eq("id", membershipServiceId)
     .maybeSingle();
 
@@ -163,6 +202,9 @@ async function activateMembershipFromCheckout(
     ? new Date(subscriptionSource.current_period_end * 1000).toISOString()
     : addMembershipPeriod(currentPeriodStart, billingPeriod);
   const subscriptionPriceId = subscription.items.data[0]?.price?.id ?? null;
+  const creditRules = normalizeCreditRules(service.membership_credit_rules).length
+    ? normalizeCreditRules(service.membership_credit_rules)
+    : legacyCreditRules(service);
 
   const membershipResult = await admin.from("booking_customer_memberships").insert({
     customer_id: localCustomerId,
@@ -174,6 +216,7 @@ async function activateMembershipFromCheckout(
     credit_limit_period: normalizeCreditLimitPeriod(service.membership_credit_limit_period),
     credit_scope: normalizeCreditScope(service.membership_credit_scope),
     eligible_service_ids: stringArray(service.membership_eligible_service_ids),
+    credit_rules: creditRules,
     current_period_start: currentPeriodStart,
     current_period_end: currentPeriodEnd,
     stripe_subscription_id: stripeSubscriptionId,

@@ -11,6 +11,7 @@ import {
   type PublicMembershipBillingPeriod,
   type PublicMembershipCreditLimitPeriod,
   type PublicMembershipCreditScope,
+  type PublicMembershipCreditRule,
   type PublicBookingSchedule,
   type PublicBookingStaffAvailability,
 } from "@/lib/publicBooking";
@@ -64,11 +65,47 @@ function normalizeBillingPeriod(value: unknown): PublicMembershipBillingPeriod {
 }
 
 function normalizeCreditLimitPeriod(value: unknown): PublicMembershipCreditLimitPeriod {
-  return value === "weekly" || value === "monthly" ? value : "daily";
+  return value === "week" || value === "weekly" ? "weekly" : value === "month" || value === "monthly" ? "monthly" : "daily";
 }
 
 function normalizeCreditScope(value: unknown): PublicMembershipCreditScope {
   return value === "all_services" ? "all_services" : "selected_services";
+}
+
+function normalizeCreditRules(value: unknown): PublicMembershipCreditRule[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item, index) => {
+      const record = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+      const rawServiceIds = Array.isArray(record.serviceIds)
+        ? record.serviceIds
+        : Array.isArray(record.service_ids)
+          ? record.service_ids
+          : [];
+      return {
+        id: String(record.id ?? `rule-${index + 1}`),
+        serviceIds: stringArray(rawServiceIds),
+        credits: Math.max(0, Math.floor(parseNumber(record.credits))),
+        period: normalizeCreditLimitPeriod(record.period ?? record.credit_limit_period),
+      };
+    })
+    .filter((rule) => rule.credits > 0 && rule.serviceIds.length > 0);
+}
+
+function legacyCreditRules(service: Record<string, unknown>): PublicMembershipCreditRule[] {
+  const credits = Math.max(0, Math.floor(parseNumber(service.membership_credits_per_day)));
+  if (credits < 1) return [];
+  const creditScope = normalizeCreditScope(service.membership_credit_scope);
+  const serviceIds = creditScope === "all_services" ? ["all_services"] : stringArray(service.membership_eligible_service_ids);
+  if (!serviceIds.length) return [];
+  return [
+    {
+      id: "legacy",
+      serviceIds,
+      credits,
+      period: normalizeCreditLimitPeriod(service.membership_credit_limit_period),
+    },
+  ];
 }
 
 function normalizeRecurrenceFrequency(value: unknown) {
@@ -255,31 +292,39 @@ export async function GET() {
       ])
     );
 
-    const services = ((servicesResult.data ?? []) as Array<Record<string, unknown>>).map((service) => ({
-      id: String(service.id),
-      name: String(service.name ?? ""),
-      category: normalizeCategory(service.service_type),
-      duration: Math.max(15, parseNumber(service.duration_minutes, 30)),
-      price: parseNumber(service.price),
-      previewText: String(service.preview_text ?? ""),
-      description: String(service.description ?? ""),
-      mediaUrl: String(service.media_url ?? ""),
-      rooms: stringArray(service.resource_names),
-      resourceId: typeof service.resource_id === "string" ? service.resource_id : null,
-      instructors: stringArray(service.instructor_names),
-      scheduleId: typeof service.schedule_id === "string" ? service.schedule_id : null,
-      collectTax: Boolean(service.collect_tax),
-      collectFee: Boolean(service.collect_fee),
-      membershipBillingPeriod: normalizeBillingPeriod(service.membership_billing_period),
-      membershipCreditsPerDay: Math.max(0, Math.floor(parseNumber(service.membership_credits_per_day))),
-      membershipCreditLimitPeriod: normalizeCreditLimitPeriod(service.membership_credit_limit_period),
-      membershipCreditScope: normalizeCreditScope(service.membership_credit_scope),
-      membershipEligibleServiceIds: stringArray(service.membership_eligible_service_ids),
-      membershipEligibleServiceNames: stringArray(service.membership_eligible_service_ids)
-        .map((serviceId) => serviceNameMap.get(serviceId) ?? "")
-        .filter(Boolean),
-      stripePriceId: typeof service.stripe_price_id === "string" && service.stripe_price_id.trim() ? service.stripe_price_id.trim() : null,
-    }));
+    const services = ((servicesResult.data ?? []) as Array<Record<string, unknown>>).map((service) => {
+      const membershipCreditRules = normalizeCreditRules(service.membership_credit_rules);
+      const rules = membershipCreditRules.length ? membershipCreditRules : legacyCreditRules(service);
+      const eligibleServiceIds = Array.from(
+        new Set(rules.flatMap((rule) => rule.serviceIds).filter((serviceId) => serviceId !== "all_services"))
+      );
+      return {
+        id: String(service.id),
+        name: String(service.name ?? ""),
+        category: normalizeCategory(service.service_type),
+        duration: Math.max(15, parseNumber(service.duration_minutes, 30)),
+        price: parseNumber(service.price),
+        previewText: String(service.preview_text ?? ""),
+        description: String(service.description ?? ""),
+        mediaUrl: String(service.media_url ?? ""),
+        rooms: stringArray(service.resource_names),
+        resourceId: typeof service.resource_id === "string" ? service.resource_id : null,
+        instructors: stringArray(service.instructor_names),
+        scheduleId: typeof service.schedule_id === "string" ? service.schedule_id : null,
+        collectTax: Boolean(service.collect_tax),
+        collectFee: Boolean(service.collect_fee),
+        membershipBillingPeriod: normalizeBillingPeriod(service.membership_billing_period),
+        membershipCreditsPerDay: Math.max(0, Math.floor(parseNumber(service.membership_credits_per_day))),
+        membershipCreditLimitPeriod: normalizeCreditLimitPeriod(service.membership_credit_limit_period),
+        membershipCreditScope: normalizeCreditScope(service.membership_credit_scope),
+        membershipEligibleServiceIds: eligibleServiceIds.length ? eligibleServiceIds : stringArray(service.membership_eligible_service_ids),
+        membershipEligibleServiceNames: (eligibleServiceIds.length ? eligibleServiceIds : stringArray(service.membership_eligible_service_ids))
+          .map((serviceId) => serviceNameMap.get(serviceId) ?? "")
+          .filter(Boolean),
+        membershipCreditRules: rules,
+        stripePriceId: typeof service.stripe_price_id === "string" && service.stripe_price_id.trim() ? service.stripe_price_id.trim() : null,
+      };
+    });
 
     const payload: PublicBookingData = {
       settings: {

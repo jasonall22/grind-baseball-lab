@@ -94,6 +94,33 @@ function stringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
 }
 
+function normalizeCreditLimitPeriod(value: unknown) {
+  if (value === "week" || value === "weekly") return "weekly";
+  if (value === "month" || value === "monthly") return "monthly";
+  return "daily";
+}
+
+function normalizeCreditRules(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item, index) => {
+      const record = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+      const rawServiceIds = Array.isArray(record.serviceIds)
+        ? record.serviceIds
+        : Array.isArray(record.service_ids)
+          ? record.service_ids
+          : [];
+      const credits = Math.max(0, Math.floor(Number(record.credits ?? 0)));
+      return {
+        id: String(record.id ?? `rule-${index + 1}`),
+        serviceIds: stringArray(rawServiceIds),
+        credits,
+        period: normalizeCreditLimitPeriod(record.period ?? record.credit_limit_period),
+      };
+    })
+    .filter((rule) => rule.credits > 0 && rule.serviceIds.length > 0);
+}
+
 function emptyDashboard(): CustomerDashboardResponse {
   return { upcomingBookings: [], pastBookings: [], memberships: [], membershipHistory: [] };
 }
@@ -250,7 +277,7 @@ export async function GET(req: Request) {
           .limit(40),
         supabase
           .from("booking_customer_memberships")
-          .select("id,membership_service_id,status,billing_period,price_cents,credits_per_day,credit_limit_period,credit_scope,eligible_service_ids,current_period_start,current_period_end,auto_renew,started_at,cancelled_at,created_at")
+          .select("id,membership_service_id,status,billing_period,price_cents,credits_per_day,credit_limit_period,credit_scope,eligible_service_ids,credit_rules,current_period_start,current_period_end,auto_renew,started_at,cancelled_at,created_at")
           .eq("customer_id", customer.id)
           .order("created_at", { ascending: false })
           .limit(20),
@@ -346,6 +373,7 @@ export async function GET(req: Request) {
           creditLimitPeriod: clean(membership.credit_limit_period) || "day",
           creditScope: clean(membership.credit_scope) || "selected_services",
           eligibleServiceIds: stringArray(membership.eligible_service_ids),
+          creditRules: normalizeCreditRules(membership.credit_rules),
           currentPeriodStart: clean(membership.current_period_start),
           currentPeriodEnd: clean(membership.current_period_end),
           startedAt: clean(membership.started_at) || clean(membership.created_at),

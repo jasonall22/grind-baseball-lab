@@ -19,6 +19,18 @@ const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : 
 type MembershipBillingPeriod = "Weekly" | "Monthly" | "Yearly";
 type MembershipCreditScope = "all_services" | "selected_services";
 type MembershipCreditLimitPeriod = "day" | "week" | "month";
+type MembershipCreditRule = {
+  id: string;
+  serviceIds: string[];
+  credits: number;
+  period: MembershipCreditLimitPeriod;
+};
+type MembershipCreditRuleDraft = {
+  id: string;
+  serviceIds: string[];
+  credits: string;
+  period: MembershipCreditLimitPeriod;
+};
 
 type Service = {
   id: string;
@@ -43,6 +55,7 @@ type Service = {
   membershipCreditLimitPeriod?: MembershipCreditLimitPeriod;
   membershipCreditScope?: MembershipCreditScope;
   membershipEligibleServiceIds?: string[];
+  membershipCreditRules?: MembershipCreditRule[];
   stripeProductId?: string | null;
   stripePriceId?: string | null;
 };
@@ -292,6 +305,7 @@ type MembershipDraft = {
   creditLimitPeriod: MembershipCreditLimitPeriod;
   creditScope: MembershipCreditScope;
   eligibleServiceIds: string[];
+  creditRules: MembershipCreditRuleDraft[];
   private: boolean;
   stripeProductId: string;
   stripePriceId: string;
@@ -369,6 +383,7 @@ type BookingServiceRow = {
   membership_credit_limit_period?: MembershipCreditLimitPeriod | null;
   membership_credit_scope: MembershipCreditScope | null;
   membership_eligible_service_ids: string[] | null;
+  membership_credit_rules?: unknown;
   stripe_product_id: string | null;
   stripe_price_id: string | null;
 };
@@ -444,6 +459,7 @@ type BookingCustomerMembershipRow = {
   credit_limit_period?: MembershipCreditLimitPeriod | null;
   credit_scope: string | null;
   eligible_service_ids: string[] | null;
+  credit_rules?: unknown;
   current_period_start: string | null;
   current_period_end: string | null;
   stripe_subscription_id: string | null;
@@ -466,6 +482,7 @@ type CustomerMembershipRecord = {
   creditLimitPeriod: MembershipCreditLimitPeriod;
   creditScope: MembershipCreditScope;
   eligibleServiceIds: string[];
+  creditRules: MembershipCreditRule[];
   currentPeriodStart: string;
   currentPeriodEnd: string;
   stripeSubscriptionId: string;
@@ -1901,6 +1918,9 @@ function normalizeService(service: Service): Service {
     membershipEligibleServiceIds: Array.isArray(service.membershipEligibleServiceIds)
       ? service.membershipEligibleServiceIds.filter(Boolean)
       : [],
+    membershipCreditRules: normalizeMembershipCreditRules(service.membershipCreditRules).length
+      ? normalizeMembershipCreditRules(service.membershipCreditRules)
+      : membershipCreditRulesFromLegacy(service),
     stripeProductId: service.stripeProductId ?? null,
     stripePriceId: service.stripePriceId ?? null,
   };
@@ -2689,6 +2709,11 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
       membership_credit_limit_period: normalizeMembershipCreditLimitPeriod(item.membershipCreditLimitPeriod),
       membership_credit_scope: item.membershipCreditScope ?? "selected_services",
       membership_eligible_service_ids: item.membershipEligibleServiceIds ?? [],
+      membership_credit_rules: membershipCreditRulesToJson(
+        normalizeMembershipCreditRules(item.membershipCreditRules).length
+          ? normalizeMembershipCreditRules(item.membershipCreditRules)
+          : membershipCreditRulesFromLegacy(item)
+      ),
       stripe_product_id: item.stripeProductId ?? null,
       stripe_price_id: item.stripePriceId ?? null,
     });
@@ -2777,7 +2802,12 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
           throw new Error("That membership cannot be used for this service.");
         }
 
-        const creditSettings = membershipCreditSettings(creditMembership, creditMembershipService);
+        const creditSettings = membershipCreditSettings(
+          creditMembership,
+          creditMembershipService,
+          item.serviceId,
+          creditBookingServiceAliases
+        );
         const creditRange = membershipCreditLimitPeriodRange(item.date, creditSettings.creditLimitPeriod);
         const ledgerResult = await supabase
           .from("booking_membership_credit_ledger")
@@ -2791,7 +2821,17 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
         const ledgerEntries = ((ledgerResult.data ?? []) as BookingMembershipCreditLedgerRow[]).map(
           normalizeMembershipCreditLedgerRow
         );
-        if (membershipCreditRemaining(creditMembership, item.date, ledgerEntries, item.id, creditMembershipService) < 1) {
+        if (
+          membershipCreditRemaining(
+            creditMembership,
+            item.date,
+            ledgerEntries,
+            item.id,
+            creditMembershipService,
+            item.serviceId,
+            creditBookingServiceAliases
+          ) < 1
+        ) {
           throw new Error(
             `That membership has no credits remaining for this ${membershipCreditLimitPeriodLabel(
               creditSettings.creditLimitPeriod
@@ -2924,6 +2964,76 @@ function normalizeMembershipCreditLimitPeriod(value: unknown): MembershipCreditL
   return "day";
 }
 
+function normalizeMembershipCreditRules(value: unknown): MembershipCreditRule[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item, index) => {
+      const record = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+      const rawServiceIds = Array.isArray(record.serviceIds)
+        ? record.serviceIds
+        : Array.isArray(record.service_ids)
+          ? record.service_ids
+          : [];
+      const serviceIds = rawServiceIds
+        .map((serviceId) => String(serviceId ?? "").trim())
+        .filter(Boolean);
+      const credits = Math.max(0, Math.floor(Number(record.credits ?? record.credits_per_period ?? 0)));
+
+      return {
+        id: String(record.id ?? `rule-${index + 1}`),
+        serviceIds,
+        credits,
+        period: normalizeMembershipCreditLimitPeriod(record.period ?? record.credit_limit_period),
+      };
+    })
+    .filter((rule) => rule.credits > 0 && rule.serviceIds.length > 0);
+}
+
+function membershipCreditRulesFromLegacy(source?: {
+  membershipCreditsPerDay?: number | null;
+  membershipCreditLimitPeriod?: MembershipCreditLimitPeriod | null;
+  membershipCreditScope?: MembershipCreditScope | string | null;
+  membershipEligibleServiceIds?: string[] | null;
+  creditsPerDay?: number | null;
+  creditLimitPeriod?: MembershipCreditLimitPeriod | string | null;
+  creditScope?: MembershipCreditScope | string | null;
+  eligibleServiceIds?: string[] | null;
+}) {
+  const credits = Math.max(0, Math.floor(Number(source?.membershipCreditsPerDay ?? source?.creditsPerDay ?? 0)));
+  if (credits < 1) return [];
+  const scope = normalizeMembershipCreditScope(source?.membershipCreditScope ?? source?.creditScope);
+  const serviceIds =
+    scope === "all_services"
+      ? ["all_services"]
+      : [
+          ...((Array.isArray(source?.membershipEligibleServiceIds) ? source?.membershipEligibleServiceIds : []) ?? []),
+          ...((Array.isArray(source?.eligibleServiceIds) ? source?.eligibleServiceIds : []) ?? []),
+        ]
+          .map((serviceId) => String(serviceId ?? "").trim())
+          .filter(Boolean);
+
+  if (!serviceIds.length) return [];
+
+  return [
+    {
+      id: "legacy",
+      serviceIds,
+      credits,
+      period: normalizeMembershipCreditLimitPeriod(source?.membershipCreditLimitPeriod ?? source?.creditLimitPeriod),
+    },
+  ];
+}
+
+function membershipCreditRulesToJson(rules: MembershipCreditRule[]) {
+  return rules.map((rule) => ({
+    id: rule.id,
+    serviceIds: rule.serviceIds,
+    credits: rule.credits,
+    period: rule.period,
+  }));
+}
+
 function normalizeCustomerMembershipStatus(value: unknown): CustomerMembershipStatus {
   if (value === "Paused" || value === "Past Due" || value === "Cancelled" || value === "Expired") return value;
   return "Active";
@@ -2963,6 +3073,7 @@ function normalizeCustomerMembershipRow(row: BookingCustomerMembershipRow): Cust
     creditLimitPeriod: normalizeMembershipCreditLimitPeriod(row.credit_limit_period),
     creditScope: normalizeMembershipCreditScope(row.credit_scope),
     eligibleServiceIds: Array.isArray(row.eligible_service_ids) ? row.eligible_service_ids.filter(Boolean) : [],
+    creditRules: normalizeMembershipCreditRules(row.credit_rules),
     currentPeriodStart: row.current_period_start ?? "",
     currentPeriodEnd: row.current_period_end ?? "",
     stripeSubscriptionId: row.stripe_subscription_id ?? "",
@@ -3006,7 +3117,14 @@ function paymentDescriptionLabel(payment: BillingPayment) {
 }
 
 type MembershipCreditSettingsSource =
-  | Pick<Service, "membershipCreditsPerDay" | "membershipCreditLimitPeriod" | "membershipCreditScope" | "membershipEligibleServiceIds">
+  | Pick<
+      Service,
+      | "membershipCreditsPerDay"
+      | "membershipCreditLimitPeriod"
+      | "membershipCreditScope"
+      | "membershipEligibleServiceIds"
+      | "membershipCreditRules"
+    >
   | null
   | undefined;
 
@@ -3018,6 +3136,7 @@ function normalizeMembershipCreditSettingsRow(row: BookingServiceRow): Membershi
     membershipEligibleServiceIds: Array.isArray(row.membership_eligible_service_ids)
       ? row.membership_eligible_service_ids.filter(Boolean)
       : [],
+    membershipCreditRules: normalizeMembershipCreditRules(row.membership_credit_rules),
   };
 }
 
@@ -3045,7 +3164,58 @@ function isMembershipCreditSpend(entry: MembershipCreditLedgerEntry) {
   return entry.reason === "booking" && entry.amount < 0;
 }
 
-function membershipCreditSettings(record: CustomerMembershipRecord, membershipService?: MembershipCreditSettingsSource) {
+function membershipCreditRuleMatchesService(rule: MembershipCreditRule, serviceId: string, serviceAliases: string[] = []) {
+  if (rule.serviceIds.some((identifier) => normalizeServiceIdentifier(identifier) === "all services")) return true;
+
+  const normalizedServiceCandidates = new Set<string>();
+  [serviceId, ...serviceAliases].forEach((candidate) => {
+    const normalized = normalizeServiceIdentifier(candidate);
+    if (normalized) normalizedServiceCandidates.add(normalized);
+  });
+
+  return rule.serviceIds.some((identifier) => normalizedServiceCandidates.has(normalizeServiceIdentifier(identifier)));
+}
+
+function effectiveMembershipCreditRules(record: CustomerMembershipRecord, membershipService?: MembershipCreditSettingsSource) {
+  const serviceRules = normalizeMembershipCreditRules(membershipService?.membershipCreditRules);
+  if (serviceRules.length) return serviceRules;
+  const recordRules = normalizeMembershipCreditRules(record.creditRules);
+  if (recordRules.length) return recordRules;
+  return membershipCreditRulesFromLegacy(record);
+}
+
+function membershipCreditSettings(
+  record: CustomerMembershipRecord,
+  membershipService?: MembershipCreditSettingsSource,
+  serviceId = "",
+  serviceAliases: string[] = []
+) {
+  const creditRules = effectiveMembershipCreditRules(record, membershipService);
+  if (creditRules.length) {
+    const matchedRule = serviceId
+      ? creditRules.find((rule) => membershipCreditRuleMatchesService(rule, serviceId, serviceAliases))
+      : creditRules[0];
+
+    if (!matchedRule) {
+      return {
+        creditsPerDay: 0,
+        creditLimitPeriod: "day" as MembershipCreditLimitPeriod,
+        creditScope: "selected_services" as MembershipCreditScope,
+        eligibleServiceIds: [],
+      };
+    }
+
+    const isAllServices = matchedRule.serviceIds.some(
+      (identifier) => normalizeServiceIdentifier(identifier) === "all services"
+    );
+    return {
+      creditsPerDay: matchedRule.credits,
+      creditLimitPeriod: matchedRule.period,
+      creditScope: isAllServices ? ("all_services" as MembershipCreditScope) : ("selected_services" as MembershipCreditScope),
+      eligibleServiceIds: isAllServices ? [] : matchedRule.serviceIds,
+    };
+  }
+
   const recordEligibleServiceIds = Array.isArray(record.eligibleServiceIds)
     ? record.eligibleServiceIds.filter(Boolean)
     : [];
@@ -3091,7 +3261,7 @@ function membershipCanUseCredit(
   membershipService?: MembershipCreditSettingsSource,
   serviceAliases: string[] = [],
 ) {
-  const settings = membershipCreditSettings(record, membershipService);
+  const settings = membershipCreditSettings(record, membershipService, serviceId, serviceAliases);
   if (!isActiveCustomerMembership(record)) return false;
   if (!settings.creditsPerDay || settings.creditsPerDay < 1) return false;
   if (record.currentPeriodStart && bookingDate < record.currentPeriodStart) return false;
@@ -3174,8 +3344,15 @@ function membershipCreditUsedInPeriod(
   period: MembershipCreditLimitPeriod,
   ledger: MembershipCreditLedgerEntry[],
   excludedBookingId = "",
+  serviceIds: string[] = [],
 ) {
   const range = membershipCreditLimitPeriodRange(creditDate, period);
+  const normalizedServiceIds = new Set(
+    serviceIds
+      .filter((identifier) => normalizeServiceIdentifier(identifier) !== "all services")
+      .map(normalizeServiceIdentifier)
+      .filter(Boolean)
+  );
   return ledger
     .filter(
       (entry) =>
@@ -3183,7 +3360,8 @@ function membershipCreditUsedInPeriod(
         entry.creditDate >= range.start &&
         entry.creditDate <= range.end &&
         isMembershipCreditSpend(entry) &&
-        entry.bookingId !== excludedBookingId,
+        entry.bookingId !== excludedBookingId &&
+        (!normalizedServiceIds.size || normalizedServiceIds.has(normalizeServiceIdentifier(entry.serviceId))),
     )
     .reduce((total, entry) => total + Math.abs(entry.amount), 0);
 }
@@ -3194,12 +3372,21 @@ function membershipCreditRemaining(
   ledger: MembershipCreditLedgerEntry[],
   excludedBookingId = "",
   membershipService?: MembershipCreditSettingsSource,
+  serviceId = "",
+  serviceAliases: string[] = [],
 ) {
-  const settings = membershipCreditSettings(record, membershipService);
+  const settings = membershipCreditSettings(record, membershipService, serviceId, serviceAliases);
   return Math.max(
     0,
     settings.creditsPerDay -
-      membershipCreditUsedInPeriod(record.id, creditDate, settings.creditLimitPeriod, ledger, excludedBookingId),
+      membershipCreditUsedInPeriod(
+        record.id,
+        creditDate,
+        settings.creditLimitPeriod,
+        ledger,
+        excludedBookingId,
+        settings.eligibleServiceIds
+      ),
   );
 }
 
@@ -3324,6 +3511,20 @@ function updatedMembershipCreditLedgerForBooking(current: MembershipCreditLedger
 
 function membershipCreditScopeLabel(record: CustomerMembershipRecord, servicesById: Map<string, Service>) {
   const membershipService = servicesById.get(record.membershipServiceId) ?? null;
+  const rules = effectiveMembershipCreditRules(record, membershipService);
+  if (rules.length > 1) {
+    return rules
+      .map((rule) => {
+        const services = rule.serviceIds.some((id) => normalizeServiceIdentifier(id) === "all services")
+          ? "All services"
+          : rule.serviceIds
+              .map((id) => servicesById.get(id)?.name ?? id)
+              .filter(Boolean)
+              .join(", ");
+        return `${membershipCreditAllowanceLabel(rule.credits, rule.period)}: ${services}`;
+      })
+      .join("; ");
+  }
   const settings = membershipCreditSettings(record, membershipService);
   if (settings.creditScope === "all_services") return "All services";
   const names = settings.eligibleServiceIds.map((id) => servicesById.get(id)?.name).filter(Boolean);
@@ -4353,6 +4554,14 @@ function createRentalDraftFromService(service: Service, defaultScheduleId: strin
 }
 
 function createMembershipDraftFromService(service?: Service | null): MembershipDraft {
+  const serviceRules = normalizeMembershipCreditRules(service?.membershipCreditRules);
+  const creditRules = (serviceRules.length ? serviceRules : membershipCreditRulesFromLegacy(service ?? undefined)).map((rule, index) => ({
+    id: rule.id || makeId("rule"),
+    serviceIds: rule.serviceIds,
+    credits: String(rule.credits),
+    period: rule.period,
+  }));
+
   return {
     name: service?.name ?? "",
     description: service?.description ?? "",
@@ -4363,9 +4572,50 @@ function createMembershipDraftFromService(service?: Service | null): MembershipD
     creditLimitPeriod: normalizeMembershipCreditLimitPeriod(service?.membershipCreditLimitPeriod),
     creditScope: service?.membershipCreditScope ?? "selected_services",
     eligibleServiceIds: service?.membershipEligibleServiceIds ?? [],
+    creditRules: creditRules.length
+      ? creditRules
+      : [
+          {
+            id: makeId("rule"),
+            serviceIds: service?.membershipCreditScope === "all_services" ? ["all_services"] : service?.membershipEligibleServiceIds ?? [],
+            credits: service?.membershipCreditsPerDay != null ? String(service.membershipCreditsPerDay) : "1",
+            period: normalizeMembershipCreditLimitPeriod(service?.membershipCreditLimitPeriod),
+          },
+        ],
     private: service?.status === "Off",
     stripeProductId: service?.stripeProductId ?? "",
     stripePriceId: service?.stripePriceId ?? "",
+  };
+}
+
+function normalizeMembershipDraftCreditRules(draft: MembershipDraft) {
+  const directRules = draft.creditRules
+    .map((rule, index) => ({
+      id: rule.id || `rule-${index + 1}`,
+      serviceIds: rule.serviceIds.map((serviceId) => serviceId.trim()).filter(Boolean),
+      credits: Math.max(0, Math.floor(Number(rule.credits || 0))),
+      period: normalizeMembershipCreditLimitPeriod(rule.period),
+    }))
+    .filter((rule) => rule.credits > 0 && rule.serviceIds.length > 0);
+
+  if (directRules.length) return directRules;
+
+  return membershipCreditRulesFromLegacy({
+    membershipCreditsPerDay: Number(draft.creditsPerDay || 0),
+    membershipCreditLimitPeriod: draft.creditLimitPeriod,
+    membershipCreditScope: draft.creditScope,
+    membershipEligibleServiceIds: draft.eligibleServiceIds,
+  });
+}
+
+function legacyCreditFieldsFromRules(rules: MembershipCreditRule[]) {
+  const firstRule = rules[0];
+  const isAllServices = firstRule?.serviceIds.some((id) => normalizeServiceIdentifier(id) === "all services");
+  return {
+    creditsPerDay: firstRule?.credits ?? 0,
+    creditLimitPeriod: normalizeMembershipCreditLimitPeriod(firstRule?.period),
+    creditScope: isAllServices ? ("all_services" as MembershipCreditScope) : ("selected_services" as MembershipCreditScope),
+    eligibleServiceIds: isAllServices ? [] : firstRule?.serviceIds ?? [],
   };
 }
 
@@ -4410,6 +4660,9 @@ function syncCustomerMembershipCreditsForService(
       : Array.isArray(service.membershipEligibleServiceIds)
         ? service.membershipEligibleServiceIds.filter(Boolean)
         : [];
+  const creditRules = normalizeMembershipCreditRules(service.membershipCreditRules).length
+    ? normalizeMembershipCreditRules(service.membershipCreditRules)
+    : membershipCreditRulesFromLegacy(service);
 
   let changed = false;
   const next = Object.entries(customerMembershipsByCustomerId).reduce<Record<string, CustomerMembershipRecord[]>>(
@@ -4424,6 +4677,7 @@ function syncCustomerMembershipCreditsForService(
           creditLimitPeriod,
           creditScope,
           eligibleServiceIds,
+          creditRules,
           updatedAt,
         };
       });
@@ -5128,6 +5382,7 @@ export default function BookingAdminApp({
             membershipEligibleServiceIds: Array.isArray(service.membership_eligible_service_ids)
               ? service.membership_eligible_service_ids
               : [],
+            membershipCreditRules: normalizeMembershipCreditRules(service.membership_credit_rules),
             stripeProductId: service.stripe_product_id ?? null,
             stripePriceId: service.stripe_price_id ?? null,
           })),
@@ -6073,6 +6328,9 @@ export default function BookingAdminApp({
     const eligibleServiceIds = Array.isArray(service.membershipEligibleServiceIds)
       ? service.membershipEligibleServiceIds.filter(Boolean)
       : [];
+    const creditRules = normalizeMembershipCreditRules(service.membershipCreditRules).length
+      ? normalizeMembershipCreditRules(service.membershipCreditRules)
+      : membershipCreditRulesFromLegacy(service);
     const currentPeriodEnd = addMembershipPeriod(now, billingPeriod);
 
     if (dataSource === "local") {
@@ -6087,6 +6345,7 @@ export default function BookingAdminApp({
         creditLimitPeriod,
         creditScope: service.membershipCreditScope ?? "selected_services",
         eligibleServiceIds,
+        creditRules,
         currentPeriodStart: now,
         currentPeriodEnd,
         stripeSubscriptionId: "",
@@ -6120,6 +6379,7 @@ export default function BookingAdminApp({
           credit_limit_period: creditLimitPeriod,
           credit_scope: service.membershipCreditScope ?? "selected_services",
           eligible_service_ids: eligibleServiceIds,
+          credit_rules: membershipCreditRulesToJson(creditRules),
           current_period_start: now,
           current_period_end: currentPeriodEnd,
           stripe_subscription_id: null,
@@ -6298,6 +6558,11 @@ export default function BookingAdminApp({
           credit_limit_period: normalizeMembershipCreditLimitPeriod(item.membershipCreditLimitPeriod),
           credit_scope: item.membershipCreditScope ?? "selected_services",
           eligible_service_ids: item.membershipEligibleServiceIds ?? [],
+          credit_rules: membershipCreditRulesToJson(
+            normalizeMembershipCreditRules(item.membershipCreditRules).length
+              ? normalizeMembershipCreditRules(item.membershipCreditRules)
+              : membershipCreditRulesFromLegacy(item)
+          ),
           updated_at: new Date().toISOString(),
         })
         .eq("membership_service_id", item.id)
@@ -6328,16 +6593,20 @@ export default function BookingAdminApp({
     }
 
     const parsedPrice = Number(membershipDraft.price || 0);
-    const parsedCredits = Number(membershipDraft.creditsPerDay || 0);
-    const creditLimitPeriod = normalizeMembershipCreditLimitPeriod(membershipDraft.creditLimitPeriod);
     const parsedMemberLimit = membershipDraft.memberLimit.trim() ? Number(membershipDraft.memberLimit) : null;
+    const creditRules = normalizeMembershipDraftCreditRules(membershipDraft);
+    const legacyCreditFields = legacyCreditFieldsFromRules(creditRules);
 
     if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
       showToast("Enter a valid membership price.");
       return;
     }
-    if (!Number.isFinite(parsedCredits) || parsedCredits < 0) {
-      showToast("Enter a valid credit amount.");
+    if (!creditRules.length) {
+      showToast("Add at least one credit rule with an eligible service.");
+      return;
+    }
+    if (creditRules.some((rule) => !Number.isFinite(rule.credits) || rule.credits < 1)) {
+      showToast("Enter a valid credit amount for each credit rule.");
       return;
     }
     if (parsedMemberLimit !== null && (!Number.isFinite(parsedMemberLimit) || parsedMemberLimit < 0)) {
@@ -6365,11 +6634,11 @@ export default function BookingAdminApp({
       collectFee: false,
       membershipBillingPeriod: membershipDraft.billingPeriod,
       membershipMemberLimit: parsedMemberLimit,
-      membershipCreditsPerDay: Math.floor(parsedCredits),
-      membershipCreditLimitPeriod: creditLimitPeriod,
-      membershipCreditScope: membershipDraft.creditScope,
-      membershipEligibleServiceIds:
-        membershipDraft.creditScope === "all_services" ? [] : membershipDraft.eligibleServiceIds,
+      membershipCreditsPerDay: legacyCreditFields.creditsPerDay,
+      membershipCreditLimitPeriod: legacyCreditFields.creditLimitPeriod,
+      membershipCreditScope: legacyCreditFields.creditScope,
+      membershipEligibleServiceIds: legacyCreditFields.eligibleServiceIds,
+      membershipCreditRules: creditRules,
       stripeProductId: membershipDraft.stripeProductId.trim() || null,
       stripePriceId: membershipDraft.stripePriceId.trim() || null,
     });
@@ -6379,6 +6648,7 @@ export default function BookingAdminApp({
 
     if (dataSource === "local") {
       saveLocal(next, successMessage);
+      setCustomerMembershipsByCustomerId((previous) => syncCustomerMembershipCreditsForService(previous, item));
       router.push(serviceBasePath);
       return;
     }
@@ -6387,6 +6657,24 @@ export default function BookingAdminApp({
 
     try {
       await upsertModalChange({ type: "service", item }, resourceIdsByName);
+      const activeMembershipPatch = await supabase
+        .from("booking_customer_memberships")
+        .update({
+          credits_per_day: item.membershipCreditsPerDay ?? 0,
+          credit_limit_period: normalizeMembershipCreditLimitPeriod(item.membershipCreditLimitPeriod),
+          credit_scope: item.membershipCreditScope ?? "selected_services",
+          eligible_service_ids: item.membershipEligibleServiceIds ?? [],
+          credit_rules: membershipCreditRulesToJson(
+            normalizeMembershipCreditRules(item.membershipCreditRules).length
+              ? normalizeMembershipCreditRules(item.membershipCreditRules)
+              : membershipCreditRulesFromLegacy(item)
+          ),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("membership_service_id", item.id)
+        .in("status", ["Active", "Paused", "Past Due"]);
+      if (activeMembershipPatch.error) throw activeMembershipPatch.error;
+      setCustomerMembershipsByCustomerId((previous) => syncCustomerMembershipCreditsForService(previous, item));
       showToast(successMessage);
       router.push(serviceBasePath);
     } catch (error) {
@@ -7956,12 +8244,25 @@ function ServicesView({
               const instructorNames = getLessonInstructorNames(service, staff);
               const visibleInstructorNames = instructorNames.slice(0, 4);
               const remainingInstructorCount = Math.max(0, instructorNames.length - visibleInstructorNames.length);
+              const membershipCreditRules = normalizeMembershipCreditRules(service.membershipCreditRules);
               const membershipEligibleServiceNames =
-                service.membershipCreditScope === "all_services"
+                membershipCreditRules.some((rule) =>
+                  rule.serviceIds.some((serviceId) => normalizeServiceIdentifier(serviceId) === "all services")
+                ) || service.membershipCreditScope === "all_services"
                   ? ["All services"]
-                  : (service.membershipEligibleServiceIds ?? [])
+                  : (membershipCreditRules.length
+                      ? Array.from(new Set(membershipCreditRules.flatMap((rule) => rule.serviceIds)))
+                      : service.membershipEligibleServiceIds ?? []
+                    )
                       .map((serviceId) => servicesById.get(serviceId)?.name ?? "")
                       .filter(Boolean);
+              const membershipCreditSummary =
+                membershipCreditRules.length > 1
+                  ? "Multiple allowances"
+                  : membershipCreditAllowanceLabel(
+                      Math.max(0, Math.floor(Number(service.membershipCreditsPerDay ?? 0))),
+                      normalizeMembershipCreditLimitPeriod(service.membershipCreditLimitPeriod)
+                    );
               const visibleMembershipEligibleServices = membershipEligibleServiceNames.slice(0, 3);
               const remainingMembershipEligibleServiceCount = Math.max(
                 0,
@@ -8037,10 +8338,7 @@ function ServicesView({
                         {formatServicePrice(service.price)}
                       </div>
                       <div className="min-w-0 pt-1 text-[14px] font-medium text-black md:text-[16px]">
-                        {membershipCreditAllowanceLabel(
-                          Math.max(0, Math.floor(Number(service.membershipCreditsPerDay ?? 0))),
-                          normalizeMembershipCreditLimitPeriod(service.membershipCreditLimitPeriod)
-                        )}
+                        {membershipCreditSummary}
                       </div>
                       <div className="min-w-0 pt-1">
                         {membershipEligibleServiceNames.length ? (
@@ -8174,16 +8472,49 @@ function MembershipEditorView({
     setDraft((current) => ({ ...current, [key]: value }));
   };
 
-  const toggleEligibleService = (serviceId: string) => {
+  const updateCreditRule = (ruleId: string, patch: Partial<MembershipCreditRuleDraft>) => {
     setDraft((current) => {
-      const selected = current.eligibleServiceIds.includes(serviceId);
       return {
         ...current,
-        eligibleServiceIds: selected
-          ? current.eligibleServiceIds.filter((id) => id !== serviceId)
-          : [...current.eligibleServiceIds, serviceId],
+        creditRules: current.creditRules.map((rule) => (rule.id === ruleId ? { ...rule, ...patch } : rule)),
       };
     });
+  };
+
+  const toggleCreditRuleService = (ruleId: string, serviceId: string) => {
+    setDraft((current) => ({
+      ...current,
+      creditRules: current.creditRules.map((rule) => {
+        if (rule.id !== ruleId) return rule;
+        const selected = rule.serviceIds.includes(serviceId);
+        return {
+          ...rule,
+          serviceIds: selected ? rule.serviceIds.filter((id) => id !== serviceId) : [...rule.serviceIds, serviceId],
+        };
+      }),
+    }));
+  };
+
+  const addCreditRule = () => {
+    setDraft((current) => ({
+      ...current,
+      creditRules: [
+        ...current.creditRules,
+        {
+          id: makeId("rule"),
+          serviceIds: [],
+          credits: "1",
+          period: "day",
+        },
+      ],
+    }));
+  };
+
+  const removeCreditRule = (ruleId: string) => {
+    setDraft((current) => ({
+      ...current,
+      creditRules: current.creditRules.length > 1 ? current.creditRules.filter((rule) => rule.id !== ruleId) : current.creditRules,
+    }));
   };
 
   const title = mode === "edit" && service ? service.name : "Add Membership";
@@ -8309,86 +8640,114 @@ function MembershipEditorView({
               Give members booking credits they can spend instead of payment.
             </p>
           </div>
-          <div className="grid gap-5">
-            <div className="grid gap-4 md:grid-cols-[minmax(0,180px)_minmax(0,220px)]">
-              <label className="grid gap-2 text-sm font-semibold">
-                # of credits
-                <input
-                  className="h-12 rounded border border-black/20 px-4 text-base font-normal outline-none focus:border-black"
-                  inputMode="numeric"
-                  value={draft.creditsPerDay}
-                  onChange={(event) => update("creditsPerDay", event.target.value)}
-                />
-              </label>
-              <label className="grid gap-2 text-sm font-semibold">
-                Time period
-                <select
-                  className="h-12 rounded border border-black/20 px-4 text-base font-normal outline-none focus:border-black"
-                  value={draft.creditLimitPeriod}
-                  onChange={(event) =>
-                    update("creditLimitPeriod", normalizeMembershipCreditLimitPeriod(event.target.value))
-                  }
-                >
-                  <option value="day">Daily</option>
-                  <option value="week">Weekly</option>
-                  <option value="month">Monthly</option>
-                </select>
-              </label>
-            </div>
-            <p className="-mt-2 text-sm text-black/55">
-              {Number(draft.creditsPerDay || 0) || 0} credit{Number(draft.creditsPerDay || 0) === 1 ? "" : "s"} can be redeemed per{" "}
-              {membershipCreditLimitPeriodLabel(draft.creditLimitPeriod)}.
-            </p>
-            <div className="grid gap-3 text-sm font-semibold">
-              Eligible services
-              <div className="flex flex-wrap gap-2">
-                {[
-                  ["selected_services", "Selected services"],
-                  ["all_services", "All services"],
-                ].map(([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    className={`rounded border px-4 py-2 text-sm font-semibold ${
-                      draft.creditScope === value
-                        ? "border-black bg-black text-white"
-                        : "border-black/15 bg-white text-black"
-                    }`}
-                    onClick={() => update("creditScope", value as MembershipCreditScope)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
+          <div className="grid gap-4">
+            {draft.creditRules.map((rule, index) => {
+              const credits = Math.max(0, Math.floor(Number(rule.credits || 0)));
+              const isAllServices = rule.serviceIds.some((serviceId) => normalizeServiceIdentifier(serviceId) === "all services");
 
-            {draft.creditScope === "selected_services" ? (
-              <div className="grid gap-2 rounded-lg border border-black/10 p-3">
-                {eligibleServices.length ? (
-                  eligibleServices.map((eligibleService) => (
-                    <label
-                      key={eligibleService.id}
-                      className="flex items-center justify-between gap-4 rounded-md px-3 py-2 hover:bg-black/[0.03]"
-                    >
-                      <span>
-                        <span className="block text-sm font-semibold">{eligibleService.name}</span>
-                        <span className="text-xs font-normal text-black/55">
-                          {getServiceSectionLabel(eligibleService.category)} / {eligibleService.duration} mins / $
-                          {eligibleService.price}
-                        </span>
-                      </span>
+              return (
+                <div key={rule.id} className="grid gap-4 rounded-lg border border-black/10 bg-black/[0.015] p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-black/60">Credit Detail {index + 1}</div>
+                      <div className="mt-1 text-sm text-black/55">
+                        {credits} credit{credits === 1 ? "" : "s"} can be redeemed per{" "}
+                        {membershipCreditLimitPeriodLabel(rule.period)}.
+                      </div>
+                    </div>
+                    {draft.creditRules.length > 1 ? (
+                      <button
+                        type="button"
+                        className="rounded border border-red-200 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
+                        onClick={() => removeCreditRule(rule.id)}
+                      >
+                        Remove
+                      </button>
+                    ) : null}
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-[minmax(0,180px)_minmax(0,220px)]">
+                    <label className="grid gap-2 text-sm font-semibold">
+                      # of credits
                       <input
-                        type="checkbox"
-                        checked={draft.eligibleServiceIds.includes(eligibleService.id)}
-                        onChange={() => toggleEligibleService(eligibleService.id)}
+                        className="h-12 rounded border border-black/20 bg-white px-4 text-base font-normal outline-none focus:border-black"
+                        inputMode="numeric"
+                        value={rule.credits}
+                        onChange={(event) => updateCreditRule(rule.id, { credits: event.target.value })}
                       />
                     </label>
-                  ))
-                ) : (
-                  <div className="px-3 py-4 text-sm text-black/50">No bookable services have been created yet.</div>
-                )}
-              </div>
-            ) : null}
+                    <label className="grid gap-2 text-sm font-semibold">
+                      Time period
+                      <select
+                        className="h-12 rounded border border-black/20 bg-white px-4 text-base font-normal outline-none focus:border-black"
+                        value={rule.period}
+                        onChange={(event) =>
+                          updateCreditRule(rule.id, {
+                            period: normalizeMembershipCreditLimitPeriod(event.target.value),
+                          })
+                        }
+                      >
+                        <option value="day">Daily</option>
+                        <option value="week">Weekly</option>
+                        <option value="month">Monthly</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="grid gap-3 text-sm font-semibold">
+                    Services
+                    <div className="grid gap-2 rounded-lg border border-black/10 bg-white p-3">
+                      <label className="flex items-center justify-between gap-4 rounded-md px-3 py-2 hover:bg-black/[0.03]">
+                        <span>
+                          <span className="block text-sm font-semibold">All services</span>
+                          <span className="text-xs font-normal text-black/55">Use this rule for every bookable service.</span>
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={isAllServices}
+                          onChange={(event) =>
+                            updateCreditRule(rule.id, {
+                              serviceIds: event.target.checked ? ["all_services"] : [],
+                            })
+                          }
+                        />
+                      </label>
+                      {!isAllServices && eligibleServices.length ? (
+                        eligibleServices.map((eligibleService) => (
+                          <label
+                            key={eligibleService.id}
+                            className="flex items-center justify-between gap-4 rounded-md px-3 py-2 hover:bg-black/[0.03]"
+                          >
+                            <span>
+                              <span className="block text-sm font-semibold">{eligibleService.name}</span>
+                              <span className="text-xs font-normal text-black/55">
+                                {getServiceSectionLabel(eligibleService.category)} / {eligibleService.duration} mins / $
+                                {eligibleService.price}
+                              </span>
+                            </span>
+                            <input
+                              type="checkbox"
+                              checked={rule.serviceIds.includes(eligibleService.id)}
+                              onChange={() => toggleCreditRuleService(rule.id, eligibleService.id)}
+                            />
+                          </label>
+                        ))
+                      ) : !isAllServices ? (
+                        <div className="px-3 py-4 text-sm text-black/50">No bookable services have been created yet.</div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            <button
+              type="button"
+              className="justify-self-start rounded bg-[#31589b] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#27487f]"
+              onClick={addCreditRule}
+            >
+              Add another credit
+            </button>
           </div>
         </div>
 
@@ -15601,9 +15960,16 @@ function CalendarChargeModal({
           booking.date,
           membershipCreditLedger,
           booking.id,
-          membershipService
+          membershipService,
+          bookingServiceId,
+          bookingServiceAliases
         );
-        const creditLimitPeriod = membershipCreditSettings(record, membershipService).creditLimitPeriod;
+        const creditLimitPeriod = membershipCreditSettings(
+          record,
+          membershipService,
+          bookingServiceId,
+          bookingServiceAliases
+        ).creditLimitPeriod;
         return {
           record,
           remaining,
@@ -22011,8 +22377,15 @@ function EditorModal({
               membershipCreditLedger,
               activeBookingDraft.id,
               membershipService,
+              activeBookingServiceId,
+              activeBookingServiceAliases
             );
-            const creditLimitPeriod = membershipCreditSettings(record, membershipService).creditLimitPeriod;
+            const creditLimitPeriod = membershipCreditSettings(
+              record,
+              membershipService,
+              activeBookingServiceId,
+              activeBookingServiceAliases
+            ).creditLimitPeriod;
 
             return {
               record,

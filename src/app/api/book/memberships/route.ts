@@ -78,6 +78,45 @@ function stringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
 }
 
+function normalizeCreditRules(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item, index) => {
+      const record = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+      const rawServiceIds = Array.isArray(record.serviceIds)
+        ? record.serviceIds
+        : Array.isArray(record.service_ids)
+          ? record.service_ids
+          : [];
+      const credits = Math.max(0, Math.floor(Number(record.credits ?? 0)));
+      return {
+        id: String(record.id ?? `rule-${index + 1}`),
+        serviceIds: stringArray(rawServiceIds),
+        credits,
+        period: normalizeCreditLimitPeriod(record.period ?? record.credit_limit_period),
+      };
+    })
+    .filter((rule) => rule.credits > 0 && rule.serviceIds.length > 0);
+}
+
+function legacyCreditRules(service: Record<string, unknown>) {
+  const credits = Math.max(0, Math.floor(Number(service.membership_credits_per_day ?? 0)));
+  if (credits < 1) return [];
+  const serviceIds =
+    normalizeCreditScope(service.membership_credit_scope) === "all_services"
+      ? ["all_services"]
+      : stringArray(service.membership_eligible_service_ids);
+  if (!serviceIds.length) return [];
+  return [
+    {
+      id: "legacy",
+      serviceIds,
+      credits,
+      period: normalizeCreditLimitPeriod(service.membership_credit_limit_period),
+    },
+  ];
+}
+
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as PurchaseMembershipBody;
@@ -101,7 +140,7 @@ export async function POST(req: Request) {
     const serviceResult = await supabase
       .from("booking_services")
       .select(
-        "id,name,service_type,price,membership_billing_period,membership_credits_per_day,membership_credit_limit_period,membership_credit_scope,membership_eligible_service_ids,stripe_price_id,status"
+        "id,name,service_type,price,membership_billing_period,membership_credits_per_day,membership_credit_limit_period,membership_credit_scope,membership_eligible_service_ids,membership_credit_rules,stripe_price_id,status"
       )
       .eq("id", serviceId)
       .maybeSingle();
@@ -180,6 +219,9 @@ export async function POST(req: Request) {
     const creditLimitPeriod = normalizeCreditLimitPeriod(service.membership_credit_limit_period);
     const creditScope = normalizeCreditScope(service.membership_credit_scope);
     const eligibleServiceIds = stringArray(service.membership_eligible_service_ids);
+    const creditRules = normalizeCreditRules(service.membership_credit_rules).length
+      ? normalizeCreditRules(service.membership_credit_rules)
+      : legacyCreditRules(service);
     const stripePriceId = clean(service.stripe_price_id);
 
     if (priceCents > 0) {
@@ -298,6 +340,7 @@ export async function POST(req: Request) {
           credit_limit_period: creditLimitPeriod,
           credit_scope: creditScope,
           eligible_service_ids: eligibleServiceIds,
+          credit_rules: creditRules,
           current_period_start: currentPeriodStart,
           current_period_end: currentPeriodEnd,
           stripe_subscription_id: subscription.id,
@@ -372,6 +415,7 @@ export async function POST(req: Request) {
         credit_limit_period: creditLimitPeriod,
         credit_scope: creditScope,
         eligible_service_ids: eligibleServiceIds,
+        credit_rules: creditRules,
         current_period_start: now,
         current_period_end: addMembershipPeriod(now, billingPeriod),
         stripe_subscription_id: null,

@@ -23,6 +23,7 @@ import {
   type PublicBookingData,
   type PublicBookingSchedule,
   type PublicBookingService,
+  type PublicMembershipCreditRule,
 } from "@/lib/publicBooking";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -90,6 +91,7 @@ type CustomerMembershipRecord = {
   creditLimitPeriod: string;
   creditScope: string;
   eligibleServiceIds: string[];
+  creditRules: PublicMembershipCreditRule[];
   currentPeriodStart: string;
   currentPeriodEnd: string;
   startedAt: string;
@@ -257,6 +259,11 @@ function membershipStatusClasses(status: string) {
 }
 
 function membershipCreditLabel(service: PublicBookingService) {
+  if (service.membershipCreditRules.length > 1) return "Multiple credit allowances";
+  const rule = service.membershipCreditRules[0];
+  if (rule) {
+    return `${rule.credits} credit${rule.credits === 1 ? "" : "s"} per ${membershipCreditPeriodLabel(rule.period)}`;
+  }
   const credits = Math.max(0, Math.floor(Number(service.membershipCreditsPerDay ?? 0)));
   if (!credits) return "Member booking credits";
   const period = membershipCreditPeriodLabel(service.membershipCreditLimitPeriod);
@@ -264,6 +271,14 @@ function membershipCreditLabel(service: PublicBookingService) {
 }
 
 function membershipEligibleServiceNames(service: PublicBookingService, data: PublicBookingData) {
+  if (service.membershipCreditRules.some((rule) => rule.serviceIds.includes("all_services"))) return ["All services"];
+  const ruleServiceIds = Array.from(new Set(service.membershipCreditRules.flatMap((rule) => rule.serviceIds)));
+  if (ruleServiceIds.length) {
+    const eligibleNames = ruleServiceIds
+      .map((serviceId) => data.services.find((item) => item.id === serviceId)?.name ?? "")
+      .filter(Boolean);
+    return eligibleNames.length ? eligibleNames : ["No eligible services selected"];
+  }
   if (service.membershipCreditScope === "all_services") return ["All services"];
   if (service.membershipEligibleServiceNames.length) return service.membershipEligibleServiceNames;
   const eligibleNames = service.membershipEligibleServiceIds
@@ -273,6 +288,11 @@ function membershipEligibleServiceNames(service: PublicBookingService, data: Pub
 }
 
 function membershipRecordCreditLabel(membership: CustomerMembershipRecord) {
+  if (membership.creditRules.length > 1) return "Multiple credit allowances";
+  const rule = membership.creditRules[0];
+  if (rule) {
+    return `${rule.credits} credit${rule.credits === 1 ? "" : "s"} per ${membershipCreditPeriodLabel(rule.period)}`;
+  }
   const credits = Math.max(0, Math.floor(Number(membership.creditsPerDay ?? 0)));
   const period = membershipCreditPeriodLabel(membership.creditLimitPeriod);
   return `${credits} credit${credits === 1 ? "" : "s"} per ${period}`;
@@ -287,8 +307,14 @@ function membershipIsAvailableForDate(membership: CustomerMembershipRecord, date
 }
 
 function membershipCoversService(membership: CustomerMembershipRecord, service: PublicBookingService, date: string) {
-  if (membership.status !== "Active" || membership.creditsPerDay <= 0) return false;
+  if (membership.status !== "Active") return false;
   if (!membershipIsAvailableForDate(membership, date)) return false;
+  if (membership.creditRules.length) {
+    return membership.creditRules.some(
+      (rule) => rule.credits > 0 && (rule.serviceIds.includes("all_services") || rule.serviceIds.includes(service.id))
+    );
+  }
+  if (membership.creditsPerDay <= 0) return false;
   if (membership.creditScope === "all_services") return true;
   return membership.eligibleServiceIds.includes(service.id);
 }
@@ -828,9 +854,7 @@ function MembershipSummaryCard({
       ) : null}
       <div className="mt-4 grid gap-2 text-[14px] text-black/65 sm:grid-cols-2">
         <div>
-          {membership.creditsPerDay > 0
-            ? `${membership.creditsPerDay} credit${membership.creditsPerDay === 1 ? "" : "s"} per ${period}`
-            : "Member booking credits"}
+          {membershipRecordCreditLabel(membership)}
         </div>
         <div>{membership.autoRenew ? "Auto renews" : "Does not auto renew"}</div>
         {membership.currentPeriodEnd ? <div>Renews {formatLongDate(membership.currentPeriodEnd.slice(0, 10))}</div> : null}
@@ -1201,9 +1225,7 @@ function MembershipDetailsModal({
             <div className="flex justify-between gap-6 border-b border-black/10 pb-3">
               <span className="text-black/50">Credits</span>
               <span className="text-right font-semibold">
-                {membership.creditsPerDay > 0
-                  ? `${membership.creditsPerDay} credit${membership.creditsPerDay === 1 ? "" : "s"} per ${period}`
-                  : "Member booking credits"}
+                {membershipRecordCreditLabel(membership)}
               </span>
             </div>
             <div className="flex justify-between gap-6 border-b border-black/10 pb-3">
@@ -2140,7 +2162,7 @@ export default function CustomerBookingApp() {
   const memberCreditServiceIds = useMemo(() => {
     const covered = new Set<string>();
     customerDashboard.memberships.forEach((membership) => {
-      if (membership.status !== "Active" || membership.creditsPerDay <= 0 || !membershipIsAvailableForDate(membership, selectedDate)) return;
+      if (membership.status !== "Active" || !membershipIsAvailableForDate(membership, selectedDate)) return;
       data.services.forEach((service) => {
         if (service.category !== "memberships" && membershipCoversService(membership, service, selectedDate)) {
           covered.add(service.id);

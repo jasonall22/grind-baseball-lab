@@ -2,6 +2,12 @@ export type PublicBookingCategory = "rentals" | "lessons" | "camps" | "classes" 
 export type PublicMembershipBillingPeriod = "Weekly" | "Monthly" | "Yearly";
 export type PublicMembershipCreditLimitPeriod = "daily" | "weekly" | "monthly";
 export type PublicMembershipCreditScope = "all_services" | "selected_services";
+export type PublicMembershipCreditRule = {
+  id: string;
+  serviceIds: string[];
+  credits: number;
+  period: PublicMembershipCreditLimitPeriod;
+};
 
 export type PublicBookingSettings = {
   facilityName: string;
@@ -44,6 +50,7 @@ export type PublicBookingService = {
   membershipCreditScope: PublicMembershipCreditScope;
   membershipEligibleServiceIds: string[];
   membershipEligibleServiceNames: string[];
+  membershipCreditRules: PublicMembershipCreditRule[];
   stripePriceId: string | null;
 };
 
@@ -167,6 +174,7 @@ export const fallbackPublicBookingData: PublicBookingData = {
       membershipCreditScope: "selected_services",
       membershipEligibleServiceIds: [],
       membershipEligibleServiceNames: [],
+      membershipCreditRules: [],
       stripePriceId: null,
     },
     {
@@ -190,6 +198,7 @@ export const fallbackPublicBookingData: PublicBookingData = {
       membershipCreditScope: "selected_services",
       membershipEligibleServiceIds: [],
       membershipEligibleServiceNames: [],
+      membershipCreditRules: [],
       stripePriceId: null,
     },
     {
@@ -213,6 +222,7 @@ export const fallbackPublicBookingData: PublicBookingData = {
       membershipCreditScope: "selected_services",
       membershipEligibleServiceIds: [],
       membershipEligibleServiceNames: [],
+      membershipCreditRules: [],
       stripePriceId: null,
     },
   ],
