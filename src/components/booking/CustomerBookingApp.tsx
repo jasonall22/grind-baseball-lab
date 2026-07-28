@@ -2833,7 +2833,7 @@ export default function CustomerBookingApp() {
                 </button>
 
                 {accountMenuOpen ? (
-                  <div className="absolute right-0 top-full z-40 mt-3 w-64 overflow-hidden rounded-[6px] border border-black/10 bg-white text-black shadow-[0_12px_30px_rgba(0,0,0,0.24)]">
+                  <div className="absolute left-1/2 top-full z-40 mt-3 w-[min(19rem,calc(100vw-2rem))] -translate-x-1/2 overflow-hidden rounded-[6px] border border-black/10 bg-white text-black shadow-[0_12px_30px_rgba(0,0,0,0.24)] sm:left-auto sm:right-0 sm:w-64 sm:translate-x-0">
                     <div className="border-b border-black/10 px-4 py-3">
                       <div className="text-[15px] font-semibold">{parentAccount.parentName}</div>
                       <div className="mt-1 truncate text-[13px] text-black/55">{parentAccount.email}</div>
