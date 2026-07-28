@@ -2011,6 +2011,7 @@ export default function CustomerBookingApp() {
   const [membershipCardStatus, setMembershipCardStatus] = useState("");
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const servicesSectionRef = useRef<HTMLElement | null>(null);
+  const pendingHeroScrollRef = useRef(false);
 
   useEffect(() => {
     let mounted = true;
@@ -2172,6 +2173,13 @@ export default function CustomerBookingApp() {
   }, [selectedServiceId, parentAccount?.id, parentAccount?.waiverAgreed]);
 
   useEffect(() => {
+    if (!pendingHeroScrollRef.current || !selectedCategory) return;
+    pendingHeroScrollRef.current = false;
+
+    window.setTimeout(scrollToServicesSection, 75);
+  }, [selectedCategory]);
+
+  useEffect(() => {
     function closeAccountMenu(event: MouseEvent) {
       if (!accountMenuOpen) return;
       if (accountMenuRef.current?.contains(event.target as Node)) return;
@@ -2225,10 +2233,19 @@ export default function CustomerBookingApp() {
   }
 
   function selectHeroCategory(category: PublicBookingCategory) {
+    pendingHeroScrollRef.current = true;
     setSelectedCategory(category);
-    window.requestAnimationFrame(() => {
-      servicesSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
+    if (selectedCategory === category) {
+      window.setTimeout(scrollToServicesSection, 75);
+    }
+  }
+
+  function scrollToServicesSection() {
+    const section = servicesSectionRef.current;
+    if (!section) return;
+
+    const top = section.getBoundingClientRect().top + window.scrollY - 12;
+    window.scrollTo({ top, behavior: "smooth" });
   }
 
   async function loadParentAccount(token: string): Promise<CustomerAccountPayload | null> {
