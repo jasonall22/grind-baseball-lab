@@ -4390,6 +4390,45 @@ function buildMembershipMembersByServiceId(
   return membersByServiceId;
 }
 
+function syncCustomerMembershipCreditsForService(
+  customerMembershipsByCustomerId: Record<string, CustomerMembershipRecord[]>,
+  service: Service
+) {
+  const updatedAt = new Date().toISOString();
+  const creditsPerDay = Math.max(0, Math.floor(Number(service.membershipCreditsPerDay ?? 0)));
+  const creditLimitPeriod = normalizeMembershipCreditLimitPeriod(service.membershipCreditLimitPeriod);
+  const creditScope = normalizeMembershipCreditScope(service.membershipCreditScope);
+  const eligibleServiceIds =
+    creditScope === "all_services"
+      ? []
+      : Array.isArray(service.membershipEligibleServiceIds)
+        ? service.membershipEligibleServiceIds.filter(Boolean)
+        : [];
+
+  let changed = false;
+  const next = Object.entries(customerMembershipsByCustomerId).reduce<Record<string, CustomerMembershipRecord[]>>(
+    (acc, [customerId, memberships]) => {
+      acc[customerId] = memberships.map((membership) => {
+        if (membership.membershipServiceId !== service.id || !isActiveCustomerMembership(membership)) return membership;
+
+        changed = true;
+        return {
+          ...membership,
+          creditsPerDay,
+          creditLimitPeriod,
+          creditScope,
+          eligibleServiceIds,
+          updatedAt,
+        };
+      });
+      return acc;
+    },
+    {}
+  );
+
+  return changed ? next : customerMembershipsByCustomerId;
+}
+
 function getRentalDeleteGuard(
   service: Service,
   state: AppState,
@@ -6234,6 +6273,7 @@ export default function BookingAdminApp({
 
     if (dataSource === "local") {
       saveLocal(next, successMessage);
+      setCustomerMembershipsByCustomerId((previous) => syncCustomerMembershipCreditsForService(previous, item));
       router.push(serviceBasePath);
       return;
     }
@@ -6242,6 +6282,20 @@ export default function BookingAdminApp({
 
     try {
       await upsertModalChange({ type: "service", item }, resourceIdsByName);
+      const activeMembershipPatch = await supabase
+        .from("booking_customer_memberships")
+        .update({
+          credits_per_day: item.membershipCreditsPerDay ?? 0,
+          credit_limit_period: normalizeMembershipCreditLimitPeriod(item.membershipCreditLimitPeriod),
+          credit_scope: item.membershipCreditScope ?? "selected_services",
+          eligible_service_ids: item.membershipEligibleServiceIds ?? [],
+          updated_at: new Date().toISOString(),
+        })
+        .eq("membership_service_id", item.id)
+        .in("status", ["Active", "Paused", "Past Due"]);
+      if (activeMembershipPatch.error) throw activeMembershipPatch.error;
+
+      setCustomerMembershipsByCustomerId((previous) => syncCustomerMembershipCreditsForService(previous, item));
       showToast(successMessage);
       router.push(serviceBasePath);
     } catch (error) {
