@@ -263,6 +263,14 @@ function membershipCreditLabel(service: PublicBookingService) {
   return `${credits} credit${credits === 1 ? "" : "s"} per ${period}`;
 }
 
+function membershipEligibleServicesLabel(service: PublicBookingService, data: PublicBookingData) {
+  if (service.membershipCreditScope === "all_services") return "All services";
+  const eligibleNames = service.membershipEligibleServiceIds
+    .map((serviceId) => data.services.find((item) => item.id === serviceId)?.name ?? "")
+    .filter(Boolean);
+  return eligibleNames.length ? eligibleNames.join(", ") : "No eligible services selected";
+}
+
 function membershipRecordCreditLabel(membership: CustomerMembershipRecord) {
   const credits = Math.max(0, Math.floor(Number(membership.creditsPerDay ?? 0)));
   const period = membershipCreditPeriodLabel(membership.creditLimitPeriod);
@@ -2950,7 +2958,15 @@ export default function CustomerBookingApp() {
                             <div className="mt-3 text-[15px] leading-6 text-black/60">
                               {serviceCardDescription(service, data)}
                             </div>
-                          ) : null}
+                          ) : (
+                            <div className="mt-3 text-[15px] leading-6 text-black/60">
+                              <div>{membershipCreditLabel(service)}.</div>
+                              <div className="mt-1">
+                                <span className="font-semibold text-black/70">Eligible:</span>{" "}
+                                {membershipEligibleServicesLabel(service, data)}
+                              </div>
+                            </div>
+                          )}
                           <span className="mt-5 inline-flex rounded-full bg-[#eef4fb] px-4 py-1.5 text-[13px] font-semibold text-[#315f90]">
                             {serviceCardBadge(service)}
                           </span>
