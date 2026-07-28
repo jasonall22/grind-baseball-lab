@@ -519,8 +519,8 @@ function MonthCalendar({ value, onChange }: { value: string; onChange: (value: s
   }
 
   return (
-    <div className="w-full max-w-[360px] rounded-[3px] bg-white p-5 shadow-[0_8px_22px_rgba(0,0,0,0.18)] sm:p-6">
-      <div className="mb-5 flex items-center justify-between text-[17px] font-semibold">
+    <div className="w-full max-w-[320px] rounded-[3px] bg-white p-4 shadow-[0_8px_22px_rgba(0,0,0,0.16)]">
+      <div className="mb-3 flex items-center justify-between text-[16px] font-semibold">
         <button type="button" onClick={() => moveMonth(-1)} className="rounded-full p-1 text-black/45 hover:bg-black/5">
           {"<"}
         </button>
@@ -534,12 +534,12 @@ function MonthCalendar({ value, onChange }: { value: string; onChange: (value: s
           {">"}
         </button>
       </div>
-      <div className="grid grid-cols-7 gap-1.5 text-center text-[14px] text-black/45">
+      <div className="grid grid-cols-7 gap-1 text-center text-[13px] text-black/45">
         {["S", "M", "T", "W", "T", "F", "S"].map((day, index) => (
           <div key={`${day}-${index}`}>{day}</div>
         ))}
       </div>
-      <div className="mt-4 grid grid-cols-7 gap-1.5 text-center text-[15px]">
+      <div className="mt-3 grid grid-cols-7 gap-1 text-center text-[14px]">
         {cells.map((day, index) => {
           if (!day) return <div key={`blank-${index}`} />;
           const date = isoDate(new Date(selected.getFullYear(), selected.getMonth(), Number(day)));
@@ -551,7 +551,7 @@ function MonthCalendar({ value, onChange }: { value: string; onChange: (value: s
               type="button"
               disabled={!available}
               onClick={() => onChange(date)}
-              className={`mx-auto flex h-10 w-10 items-center justify-center rounded-full sm:h-11 sm:w-11 ${
+              className={`mx-auto flex h-8 w-8 items-center justify-center rounded-full sm:h-9 sm:w-9 ${
                 active
                   ? "bg-[#221f1f] font-semibold text-white"
                   : available
@@ -733,9 +733,9 @@ function ModalShell({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/55 px-4 py-10">
-      <div className="flex h-[min(83vh,795px)] w-full max-w-[752px] flex-col overflow-hidden rounded-[4px] bg-white shadow-[0_18px_40px_rgba(0,0,0,0.34)]">
-        <div className="flex h-[90px] shrink-0 items-center border-b border-black/10 px-8">
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/55 px-3 py-6 sm:px-4 sm:py-10">
+      <div className="flex h-[min(90vh,820px)] w-full max-w-[752px] flex-col overflow-hidden rounded-[4px] bg-white shadow-[0_18px_40px_rgba(0,0,0,0.34)]">
+        <div className="flex h-[76px] shrink-0 items-center border-b border-black/10 px-5 sm:h-[84px] sm:px-8">
           <button type="button" onClick={onBack} className="text-[34px] text-black/45 disabled:opacity-25" disabled={step === "overview" || step === "done"}>
             {"<"}
           </button>
@@ -745,10 +745,10 @@ function ModalShell({
             x
           </button>
         </div>
-        <div key={step} className="min-h-0 flex-1 overflow-y-auto px-8 py-7">
+        <div key={step} className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-8 sm:py-6">
           {children}
         </div>
-        <div className="shrink-0 border-t border-black/10 px-4 py-4">{footer}</div>
+        <div className="shrink-0 border-t border-black/10 px-4 py-3">{footer}</div>
       </div>
     </div>
   );
@@ -3010,7 +3010,7 @@ export default function CustomerBookingApp() {
           avatar={step === "overview" ? undefined : initials(selectedPlayer)}
           footer={
             step === "overview" ? (
-              <button type="button" onClick={() => setStep("player")} className="w-full rounded-[10px] bg-[#272322] py-4 text-[18px] font-semibold text-white shadow-lg">
+              <button type="button" onClick={() => setStep("player")} className="w-full rounded-[10px] bg-[#272322] py-3.5 text-[18px] font-semibold text-white shadow-lg">
                 {isMembership ? "Join now" : "Book now"}
               </button>
             ) : step === "player" ? (
@@ -3018,7 +3018,7 @@ export default function CustomerBookingApp() {
                 type="button"
                 disabled={!parentAccount || !form.parentName || !form.playerName || !form.email || (needsCoach && !selectedCoachId)}
                 onClick={() => setStep(isMembership ? "summary" : "time")}
-                className="w-full rounded-[10px] bg-[#272322] py-4 text-[18px] font-semibold text-white disabled:bg-black/12 disabled:text-black/30"
+                className="w-full rounded-[10px] bg-[#272322] py-3.5 text-[18px] font-semibold text-white disabled:bg-black/12 disabled:text-black/30"
               >
                 Next
               </button>
@@ -3027,7 +3027,7 @@ export default function CustomerBookingApp() {
                 type="button"
                 disabled={!selectedTime}
                 onClick={() => setStep("summary")}
-                className="w-full rounded-[10px] bg-[#272322] py-4 text-[18px] font-semibold text-white disabled:bg-black/12 disabled:text-black/30"
+                className="w-full rounded-[10px] bg-[#272322] py-3.5 text-[18px] font-semibold text-white disabled:bg-black/12 disabled:text-black/30"
               >
                 Next
               </button>
@@ -3037,7 +3037,7 @@ export default function CustomerBookingApp() {
                   type="button"
                   disabled={submitting || !waiverAcceptedForCheckout}
                   onClick={() => submitMembershipPurchase()}
-                  className="w-full rounded-[10px] bg-[#3a3432] py-4 text-[18px] font-semibold text-white disabled:opacity-60"
+                  className="w-full rounded-[10px] bg-[#3a3432] py-3.5 text-[18px] font-semibold text-white disabled:opacity-60"
                 >
                   {submitting ? "Saving..." : selectedService.price > 0 ? "Pay with credit card" : "Start membership"}
                 </button>
@@ -3335,8 +3335,8 @@ export default function CustomerBookingApp() {
           ) : null}
 
           {step === "time" ? (
-            <div>
-              <label className="grid max-w-[420px] gap-3 text-[14px] font-medium">
+            <div className="pb-3">
+              <label className="grid max-w-[360px] gap-2 text-[14px] font-medium">
                 Date
                 <input
                   type="date"
@@ -3346,11 +3346,11 @@ export default function CustomerBookingApp() {
                     setSelectedDate(event.target.value);
                     setSelectedTime(null);
                   }}
-                  className="h-[58px] rounded-[4px] border border-black px-5 text-[18px] font-normal"
+                  className="h-[52px] rounded-[4px] border border-black px-4 text-[17px] font-normal"
                 />
               </label>
-              <div className="mt-5 grid items-start gap-6 md:grid-cols-[minmax(280px,360px)_minmax(220px,1fr)]">
-                <div className="max-w-[360px]">
+              <div className="mt-4 grid items-start gap-5 md:grid-cols-[minmax(250px,320px)_minmax(240px,1fr)]">
+                <div className="max-w-[320px]">
                   <MonthCalendar
                     value={selectedDate}
                     onChange={(value) => {
@@ -3359,8 +3359,8 @@ export default function CustomerBookingApp() {
                     }}
                   />
                 </div>
-                <div className="min-w-0 rounded-[8px] border border-black/10 bg-white px-4 py-4">
-                  <div className="mb-3 flex items-center justify-between gap-4">
+                <div className="min-w-0 rounded-[8px] border border-black/10 bg-white px-4 py-3">
+                  <div className="mb-3 flex items-start justify-between gap-4">
                     <div>
                       <div className="text-[15px] font-semibold">Available Times</div>
                       <div className="mt-1 text-[13px] text-black/50">{formatLongDate(selectedDate)}</div>
@@ -3371,14 +3371,14 @@ export default function CustomerBookingApp() {
                       </div>
                     ) : null}
                   </div>
-                  <div className="grid max-h-[330px] gap-3 overflow-y-auto pr-1 sm:grid-cols-2 md:grid-cols-1 xl:grid-cols-2">
+                  <div className="grid max-h-[275px] gap-2 overflow-y-auto pr-1">
                   {availableTimes.length ? (
                     availableTimes.slice(0, 18).map((choice) => (
                       <button
                         key={`${choice.resourceId}-${choice.start}`}
                         type="button"
                         onClick={() => setSelectedTime(choice)}
-                        className={`w-full rounded-full px-4 py-3 text-center text-[14px] font-semibold ${
+                        className={`w-full rounded-[8px] px-4 py-2.5 text-center text-[14px] font-semibold leading-tight ${
                           selectedTime?.resourceId === choice.resourceId && selectedTime.start === choice.start
                             ? "bg-[#252121] text-white"
                             : "bg-black/8 text-black/75 hover:bg-black/12"
