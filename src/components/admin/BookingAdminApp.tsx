@@ -7832,6 +7832,7 @@ function ServicesView({
     });
   }, [activeSection, membershipMembersByServiceId, search, services, staff]);
 
+  const servicesById = useMemo(() => new Map(services.map((service) => [service.id, service])), [services]);
   const visibleServiceIds = useMemo(() => filteredServices.map((service) => service.id), [filteredServices]);
   const currentCopy = serviceSectionMeta[activeSection];
   const isLessonsSection = activeSection === "lessons";
@@ -7921,9 +7922,9 @@ function ServicesView({
             <div className="grid grid-cols-[minmax(220px,1.65fr)_140px_120px_120px_220px_64px] gap-3 bg-[#f3f6f7] px-5 py-4 text-[15px] font-semibold text-black">
               <div>Name</div>
               <div>Visibility</div>
-              <div>Price</div>
-              <div>Billing</div>
-              <div>Members</div>
+              <div>Public Price</div>
+              <div>Credits</div>
+              <div>Eligible Services</div>
               <div />
             </div>
           ) : (
@@ -7942,14 +7943,19 @@ function ServicesView({
               const rooms = (service.rooms?.length ? service.rooms : [service.resource]).map((item) => item.trim()).filter(Boolean);
               const visibility = service.status === "Active" ? "Everyone" : "Private";
               const instructorNames = getLessonInstructorNames(service, staff);
-              const compactInstructorNames = instructorNames.join(", ");
               const visibleInstructorNames = instructorNames.slice(0, 4);
               const remainingInstructorCount = Math.max(0, instructorNames.length - visibleInstructorNames.length);
-              const membershipNames = membershipMembersByServiceId.get(service.id) ?? [];
-              const compactMembershipNames = membershipNames.join(", ");
-              const visibleMembershipNames = membershipNames.slice(0, 3);
-              const remainingMembershipCount = Math.max(0, membershipNames.length - visibleMembershipNames.length);
-              const membershipBillingLabel = service.price > 0 ? "Monthly" : "Included";
+              const membershipEligibleServiceNames =
+                service.membershipCreditScope === "all_services"
+                  ? ["All services"]
+                  : (service.membershipEligibleServiceIds ?? [])
+                      .map((serviceId) => servicesById.get(serviceId)?.name ?? "")
+                      .filter(Boolean);
+              const visibleMembershipEligibleServices = membershipEligibleServiceNames.slice(0, 3);
+              const remainingMembershipEligibleServiceCount = Math.max(
+                0,
+                membershipEligibleServiceNames.length - visibleMembershipEligibleServices.length
+              );
 
               return (
                 <div
@@ -7968,22 +7974,12 @@ function ServicesView({
                       if (canEdit) onEdit(service.id);
                     }}
                     disabled={!canEdit}
-                      className={[
+                    className={[
                       "min-w-0 text-left text-[16px] font-medium leading-6 text-black",
                       canEdit ? "cursor-pointer hover:underline" : "cursor-default",
                     ].join(" ")}
                   >
                     <span className="block break-words">{service.name}</span>
-                    {isLessonsSection && compactInstructorNames ? (
-                      <span className="mt-1 block text-[12px] font-normal leading-4 text-black/55 xl:hidden">{compactInstructorNames}</span>
-                    ) : null}
-                    {isMembershipsSection ? (
-                      <span className="mt-1 block text-[12px] font-normal leading-4 text-black/55 xl:hidden">
-                        {membershipNames.length
-                          ? `${membershipNames.length} member${membershipNames.length === 1 ? "" : "s"}`
-                          : "No members yet"}
-                      </span>
-                    ) : null}
                   </button>
 
                   <div className="min-w-0 pt-1">
@@ -8036,30 +8032,30 @@ function ServicesView({
                         {formatServicePrice(service.price)}
                       </div>
                       <div className="min-w-0 pt-1 text-[16px] font-medium text-black">
-                        {membershipBillingLabel}
+                        {membershipCreditAllowanceLabel(
+                          Math.max(0, Math.floor(Number(service.membershipCreditsPerDay ?? 0))),
+                          normalizeMembershipCreditLimitPeriod(service.membershipCreditLimitPeriod)
+                        )}
                       </div>
                       <div className="min-w-0 pt-1">
-                        {membershipNames.length ? (
-                          <div className="flex flex-wrap items-center gap-1">
-                            {visibleMembershipNames.map((name) => (
+                        {membershipEligibleServiceNames.length ? (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {visibleMembershipEligibleServices.map((name) => (
                               <span
                                 key={name}
-                                className="inline-flex max-w-full items-center gap-1 rounded-full bg-[#f1efef] px-2 py-1 text-[11px] font-medium leading-none text-black"
+                                className="inline-flex max-w-full rounded-full bg-[#f1efef] px-2.5 py-1 text-[12px] font-medium leading-none text-black"
                               >
-                                <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#d9d9d9] text-[#777]">
-                                  <Icon name="user" className="h-[10px] w-[10px]" />
-                                </span>
                                 <span className="truncate whitespace-nowrap">{name}</span>
                               </span>
                             ))}
-                            {remainingMembershipCount > 0 ? (
-                              <span className="inline-flex items-center rounded-full bg-[#f1efef] px-2 py-1 text-[11px] font-medium leading-none text-black/80">
-                                +{remainingMembershipCount} more
+                            {remainingMembershipEligibleServiceCount > 0 ? (
+                              <span className="inline-flex items-center rounded-full bg-[#f1efef] px-2.5 py-1 text-[12px] font-medium leading-none text-black/80">
+                                +{remainingMembershipEligibleServiceCount} more
                               </span>
                             ) : null}
                           </div>
                         ) : (
-                          <span className="block break-words text-[13px] text-black/45">No members yet</span>
+                          <span className="block break-words text-[13px] text-black/45">No eligible services</span>
                         )}
                       </div>
                     </>
