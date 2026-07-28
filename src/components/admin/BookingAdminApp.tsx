@@ -8272,21 +8272,26 @@ function ServicesView({
               return (
                 <div
                   key={service.id}
-                  className={`grid ${serviceGridClass} items-start gap-2 border-t border-black/10 px-3 py-4 md:gap-3 md:px-5 md:py-5`}
+                  role={canEdit ? "button" : undefined}
+                  tabIndex={canEdit ? 0 : undefined}
+                  onClick={() => {
+                    if (canEdit) onEdit(service.id);
+                  }}
+                  onKeyDown={(event) => {
+                    if (!canEdit) return;
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onEdit(service.id);
+                    }
+                  }}
+                  className={[
+                    `grid ${serviceGridClass} items-start gap-2 border-t border-black/10 px-3 py-4 md:gap-3 md:px-5 md:py-5`,
+                    canEdit ? "cursor-pointer transition hover:bg-black/[0.025] focus:outline-none focus:ring-2 focus:ring-black/15" : "",
+                  ].join(" ")}
                 >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (canEdit) onEdit(service.id);
-                    }}
-                    disabled={!canEdit}
-                    className={[
-                      "min-w-0 text-left text-[14px] font-medium leading-5 text-black md:text-[16px] md:leading-6",
-                      canEdit ? "cursor-pointer hover:underline" : "cursor-default",
-                    ].join(" ")}
-                  >
+                  <div className="min-w-0 text-left text-[14px] font-medium leading-5 text-black md:text-[16px] md:leading-6">
                     <span className="block break-words">{service.name}</span>
-                  </button>
+                  </div>
 
                   <div className="min-w-0 pt-1">
                     <span
@@ -8402,7 +8407,10 @@ function ServicesView({
                       <>
                         <button
                           type="button"
-                          onClick={() => onReorder(visibleServiceIds, service.id, "up")}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onReorder(visibleServiceIds, service.id, "up");
+                          }}
                           disabled={index === 0}
                           className="grid h-8 w-8 place-items-center rounded-lg border border-black/12 text-black/45 disabled:opacity-40 md:h-9 md:w-9"
                           aria-label="Move service up"
@@ -8411,7 +8419,10 @@ function ServicesView({
                         </button>
                         <button
                           type="button"
-                          onClick={() => onReorder(visibleServiceIds, service.id, "down")}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onReorder(visibleServiceIds, service.id, "down");
+                          }}
                           disabled={index === filteredServices.length - 1}
                           className="grid h-8 w-8 place-items-center rounded-lg border border-black/12 text-black/45 disabled:opacity-40 md:h-9 md:w-9"
                           aria-label="Move service down"
