@@ -274,41 +274,17 @@ function membershipCreditLabel(service: PublicBookingService) {
   return `${credits} credit${credits === 1 ? "" : "s"} per ${period}`;
 }
 
-function membershipCreditRuleServiceNames(
-  rule: PublicMembershipCreditRule,
-  service: PublicBookingService,
-  data: PublicBookingData
-) {
-  if (rule.serviceIds.includes("all_services")) return ["All services"];
-  const serviceNames = rule.serviceIds
-    .map((serviceId) => data.services.find((item) => item.id === serviceId)?.name ?? "")
-    .filter(Boolean);
-  if (serviceNames.length) return serviceNames;
-  return service.membershipEligibleServiceNames.length ? service.membershipEligibleServiceNames : ["Eligible services"];
-}
-
-function membershipCreditUsageLines(service: PublicBookingService, data: PublicBookingData) {
+function membershipCreditUsageLines(service: PublicBookingService) {
   if (service.membershipCreditRules.length) {
-    const groupedRules = new Map<string, { creditText: string; serviceNames: Set<string>; allServices: boolean }>();
-    service.membershipCreditRules.forEach((rule) => {
-      const creditText = `${rule.credits} credit${rule.credits === 1 ? "" : "s"} per ${membershipCreditPeriodLabel(rule.period)}`;
-      const existing = groupedRules.get(creditText) ?? { creditText, serviceNames: new Set<string>(), allServices: false };
-      const names = membershipCreditRuleServiceNames(rule, service, data);
-      if (names.includes("All services")) {
-        existing.allServices = true;
-      } else {
-        names.forEach((name) => existing.serviceNames.add(name));
-      }
-      groupedRules.set(creditText, existing);
-    });
-    return Array.from(groupedRules.values()).map((rule) => {
-      if (rule.allServices) return `${rule.creditText} for all services`;
-      const serviceCount = rule.serviceNames.size;
-      if (serviceCount <= 2) return `${rule.creditText}: ${Array.from(rule.serviceNames).join(", ")}`;
-      return `${rule.creditText} for ${serviceCount} eligible services`;
-    });
+    return Array.from(
+      new Set(
+        service.membershipCreditRules.map(
+          (rule) => `${rule.credits} credit${rule.credits === 1 ? "" : "s"} per ${membershipCreditPeriodLabel(rule.period)}`
+        )
+      )
+    );
   }
-  return [`${membershipCreditLabel(service)}: ${membershipEligibleServiceNames(service, data).join(", ")}`];
+  return [membershipCreditLabel(service)];
 }
 
 function membershipEligibleServiceNames(service: PublicBookingService, data: PublicBookingData) {
@@ -3013,7 +2989,7 @@ export default function CustomerBookingApp() {
                     const visibleMembershipEligibleNames = membershipEligibleNames.slice(0, 3);
                     const hiddenMembershipEligibleCount = Math.max(0, membershipEligibleNames.length - visibleMembershipEligibleNames.length);
                     const membershipCreditUsage =
-                      service.category === "memberships" ? membershipCreditUsageLines(service, data) : [];
+                      service.category === "memberships" ? membershipCreditUsageLines(service) : [];
                     return (
                       <button
                         key={service.id}
