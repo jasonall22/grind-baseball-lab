@@ -6225,6 +6225,45 @@ export default function BookingAdminApp({
     if (updateResult.error) throw updateResult.error;
   }
 
+  async function createRoomInSupabase(name: string, scheduleId: string, sortOrder: number) {
+    if (dataSource === "local") return null;
+
+    const existingResult = await supabase
+      .from("booking_resources")
+      .select("id,name,sort_order,is_active,schedule_id")
+      .ilike("name", name)
+      .limit(1);
+    if (existingResult.error) throw existingResult.error;
+
+    const existing = ((existingResult.data ?? []) as BookingResourceRow[])[0];
+    if (existing?.is_active) {
+      throw new Error("That room already exists.");
+    }
+
+    const payload = {
+      name,
+      sort_order: sortOrder,
+      is_active: true,
+      schedule_id: scheduleId,
+    };
+
+    const savedResult = existing
+      ? await supabase
+          .from("booking_resources")
+          .update(payload)
+          .eq("id", existing.id)
+          .select("id,name,sort_order,is_active,schedule_id")
+          .single()
+      : await supabase
+          .from("booking_resources")
+          .insert(payload)
+          .select("id,name,sort_order,is_active,schedule_id")
+          .single();
+
+    if (savedResult.error) throw savedResult.error;
+    return savedResult.data as BookingResourceRow;
+  }
+
   async function saveModalChange(next: AppState, message: string, change: ModalSaveChange) {
     if (change.type === "customer" && !canEditCustomers) {
       showToast("You do not have permission to edit customers.");
@@ -7406,7 +7445,34 @@ export default function BookingAdminApp({
                   schedules: assignRoomToSchedule(state.schedules, name, draft.scheduleId),
                 };
 
-                await saveSettings(next);
+                if (dataSource === "local") {
+                  saveLocal(next, "Room saved.");
+                  router.push("/admin/settings/rooms");
+                  return;
+                }
+
+                const previousState = state;
+                setState(next);
+                stateToStorage(next);
+
+                try {
+                  const savedRoom = await createRoomInSupabase(name, draft.scheduleId, next.resources.length);
+                  if (savedRoom) {
+                    setResourceIdsByName((current) => ({
+                      ...current,
+                      [savedRoom.name]: savedRoom.id,
+                    }));
+                  }
+                  showToast("Room saved.");
+                } catch (error) {
+                  console.error(error);
+                  setState(previousState);
+                  stateToStorage(previousState);
+                  showToast(getErrorMessage(error, "Room could not be saved."));
+                  void loadFromSupabase();
+                  return;
+                }
+
                 router.push("/admin/settings/rooms");
               }}
             />
