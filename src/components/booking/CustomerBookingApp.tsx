@@ -2010,6 +2010,7 @@ export default function CustomerBookingApp() {
   const [membershipCardSetup, setMembershipCardSetup] = useState<MembershipCardSetup | null>(null);
   const [membershipCardStatus, setMembershipCardStatus] = useState("");
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
+  const servicesSectionRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -2221,6 +2222,13 @@ export default function CustomerBookingApp() {
       password: "",
     }));
     setShowSignInModal(true);
+  }
+
+  function selectHeroCategory(category: PublicBookingCategory) {
+    setSelectedCategory(category);
+    window.requestAnimationFrame(() => {
+      servicesSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   }
 
   async function loadParentAccount(token: string): Promise<CustomerAccountPayload | null> {
@@ -2863,12 +2871,12 @@ export default function CustomerBookingApp() {
       <BookingHero
         settings={data.settings}
         schedules={data.schedules}
-        onSelectCategory={setSelectedCategory}
+        onSelectCategory={selectHeroCategory}
         onSignIn={openSignInModal}
         showSignIn={!parentAccount}
       />
 
-      <section className="mx-auto max-w-[1240px] px-5 py-10 lg:px-8">
+      <section ref={servicesSectionRef} className="scroll-mt-4 mx-auto max-w-[1240px] px-5 py-10 lg:px-8">
         <div className="min-w-0">
           <div className="flex items-center gap-3">
             {selectedCategory ? (
