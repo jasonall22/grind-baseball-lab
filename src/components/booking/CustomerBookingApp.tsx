@@ -292,10 +292,29 @@ function membershipCreditUsageGroups(service: PublicBookingService, data: Public
       serviceNamesForMembershipRule(rule, service, data).forEach((name) => names.add(name));
       groups.set(creditLabel, names);
     });
-    return Array.from(groups.entries()).map(([creditLabel, names]) => ({
+    const entries = Array.from(groups.entries()).map(([creditLabel, names]) => ({
       creditLabel,
       services: Array.from(names),
     }));
+    const creditPriority = (label: string) => {
+      if (label.endsWith("per day")) return 3;
+      if (label.endsWith("per week")) return 2;
+      if (label.endsWith("per month")) return 1;
+      return 0;
+    };
+    const bestServicePriority = new Map<string, number>();
+    entries.forEach((entry) => {
+      const priority = creditPriority(entry.creditLabel);
+      entry.services.forEach((name) => {
+        bestServicePriority.set(name, Math.max(bestServicePriority.get(name) ?? -1, priority));
+      });
+    });
+    return entries
+      .map((entry) => ({
+        ...entry,
+        services: entry.services.filter((name) => creditPriority(entry.creditLabel) === bestServicePriority.get(name)),
+      }))
+      .filter((entry) => entry.services.length);
   }
   return [
     {
