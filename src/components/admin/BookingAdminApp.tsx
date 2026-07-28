@@ -19142,7 +19142,7 @@ function SettingsView({
                                         className="text-black/45 transition hover:text-black disabled:text-black/20"
                                         aria-label={`Move ${room} up`}
                                       >
-                                        <Icon name="chevron" className="h-5 w-5 rotate-90" />
+                                        <Icon name="chevron" className="h-5 w-5 -rotate-90" />
                                       </button>
                                       <button
                                         type="button"
@@ -19151,7 +19151,7 @@ function SettingsView({
                                         className="text-black/45 transition hover:text-black disabled:text-black/20"
                                         aria-label={`Move ${room} down`}
                                       >
-                                        <Icon name="chevron" className="h-5 w-5 -rotate-90" />
+                                        <Icon name="chevron" className="h-5 w-5 rotate-90" />
                                       </button>
                                     </div>
                                   </td>
@@ -19667,7 +19667,7 @@ function SettingsView({
                                 className="disabled:text-black/20"
                                 aria-label={`Move ${room} up`}
                               >
-                                <Icon name="chevron" className="h-4 w-4 rotate-90" />
+                                <Icon name="chevron" className="h-4 w-4 -rotate-90" />
                               </button>
                               <button
                                 type="button"
@@ -19676,7 +19676,7 @@ function SettingsView({
                                 className="disabled:text-black/20"
                                 aria-label={`Move ${room} down`}
                               >
-                                <Icon name="chevron" className="h-4 w-4 -rotate-90" />
+                                <Icon name="chevron" className="h-4 w-4 rotate-90" />
                               </button>
                             </div>
                           </td>
