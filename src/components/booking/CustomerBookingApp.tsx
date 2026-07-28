@@ -274,17 +274,35 @@ function membershipCreditLabel(service: PublicBookingService) {
   return `${credits} credit${credits === 1 ? "" : "s"} per ${period}`;
 }
 
-function membershipCreditUsageLines(service: PublicBookingService) {
+function serviceNamesForMembershipRule(rule: PublicMembershipCreditRule, service: PublicBookingService, data: PublicBookingData) {
+  if (rule.serviceIds.includes("all_services")) return ["All services"];
+  const names = rule.serviceIds
+    .map((serviceId) => data.services.find((item) => item.id === serviceId)?.name ?? "")
+    .filter(Boolean);
+  if (names.length) return names;
+  return service.membershipEligibleServiceNames.length ? service.membershipEligibleServiceNames : ["Eligible services"];
+}
+
+function membershipCreditUsageGroups(service: PublicBookingService, data: PublicBookingData) {
   if (service.membershipCreditRules.length) {
-    return Array.from(
-      new Set(
-        service.membershipCreditRules.map(
-          (rule) => `${rule.credits} credit${rule.credits === 1 ? "" : "s"} per ${membershipCreditPeriodLabel(rule.period)}`
-        )
-      )
-    );
+    const groups = new Map<string, Set<string>>();
+    service.membershipCreditRules.forEach((rule) => {
+      const creditLabel = `${rule.credits} credit${rule.credits === 1 ? "" : "s"} per ${membershipCreditPeriodLabel(rule.period)}`;
+      const names = groups.get(creditLabel) ?? new Set<string>();
+      serviceNamesForMembershipRule(rule, service, data).forEach((name) => names.add(name));
+      groups.set(creditLabel, names);
+    });
+    return Array.from(groups.entries()).map(([creditLabel, names]) => ({
+      creditLabel,
+      services: Array.from(names),
+    }));
   }
-  return [membershipCreditLabel(service)];
+  return [
+    {
+      creditLabel: membershipCreditLabel(service),
+      services: membershipEligibleServiceNames(service, data),
+    },
+  ];
 }
 
 function membershipEligibleServiceNames(service: PublicBookingService, data: PublicBookingData) {
@@ -2984,12 +3002,8 @@ export default function CustomerBookingApp() {
                   ))
                 : orderedServicesForCategory.map((service) => {
                     const isCoveredByMembership = memberCreditServiceIds.has(service.id);
-                    const membershipEligibleNames =
-                      service.category === "memberships" ? membershipEligibleServiceNames(service, data) : [];
-                    const visibleMembershipEligibleNames = membershipEligibleNames.slice(0, 3);
-                    const hiddenMembershipEligibleCount = Math.max(0, membershipEligibleNames.length - visibleMembershipEligibleNames.length);
                     const membershipCreditUsage =
-                      service.category === "memberships" ? membershipCreditUsageLines(service) : [];
+                      service.category === "memberships" ? membershipCreditUsageGroups(service, data) : [];
                     return (
                       <button
                         key={service.id}
@@ -3010,32 +3024,24 @@ export default function CustomerBookingApp() {
                                 <div className="text-[12px] font-semibold uppercase tracking-[0.08em] text-black/45">
                                   Credit usage
                                 </div>
-                                <div className="mt-2 grid gap-1.5">
-                                  {membershipCreditUsage.map((line) => (
-                                    <div key={line} className="text-[14px] font-medium leading-5 text-black/70">
-                                      {line}
+                                <div className="mt-2 grid gap-3">
+                                  {membershipCreditUsage.map((group) => (
+                                    <div key={group.creditLabel}>
+                                      <div className="text-[14px] font-semibold leading-5 text-black/75">
+                                        {group.creditLabel}
+                                      </div>
+                                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                        {group.services.map((name) => (
+                                          <span
+                                            key={`${group.creditLabel}-${name}`}
+                                            className="inline-flex max-w-full rounded-full bg-black/[0.05] px-3 py-1 text-[12px] font-semibold leading-5 text-black/70"
+                                          >
+                                            <span className="truncate">{name}</span>
+                                          </span>
+                                        ))}
+                                      </div>
                                     </div>
                                   ))}
-                                </div>
-                              </div>
-                              <div className="mt-3">
-                                <div className="text-[12px] font-semibold uppercase tracking-[0.08em] text-black/45">
-                                  Eligible services
-                                </div>
-                                <div className="mt-2 flex flex-wrap gap-1.5">
-                                  {visibleMembershipEligibleNames.map((name) => (
-                                    <span
-                                      key={name}
-                                      className="inline-flex max-w-full rounded-full bg-black/[0.05] px-3 py-1 text-[12px] font-semibold leading-5 text-black/70"
-                                    >
-                                      <span className="truncate">{name}</span>
-                                    </span>
-                                  ))}
-                                  {hiddenMembershipEligibleCount ? (
-                                    <span className="inline-flex rounded-full bg-black/[0.05] px-3 py-1 text-[12px] font-semibold leading-5 text-black/60">
-                                      +{hiddenMembershipEligibleCount} more
-                                    </span>
-                                  ) : null}
                                 </div>
                               </div>
                             </div>
