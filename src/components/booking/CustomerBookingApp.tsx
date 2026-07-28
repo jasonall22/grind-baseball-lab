@@ -2946,9 +2946,11 @@ export default function CustomerBookingApp() {
                         <LogoPanel compact />
                         <div className="px-5 py-6 sm:px-6">
                           <div className="text-[20px] font-semibold leading-tight">{service.name}</div>
-                          <div className="mt-3 text-[15px] leading-6 text-black/60">
-                            {serviceCardDescription(service, data)}
-                          </div>
+                          {service.category !== "memberships" ? (
+                            <div className="mt-3 text-[15px] leading-6 text-black/60">
+                              {serviceCardDescription(service, data)}
+                            </div>
+                          ) : null}
                           <span className="mt-5 inline-flex rounded-full bg-[#eef4fb] px-4 py-1.5 text-[13px] font-semibold text-[#315f90]">
                             {serviceCardBadge(service)}
                           </span>
