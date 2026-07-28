@@ -289,10 +289,23 @@ function membershipCreditRuleServiceNames(
 
 function membershipCreditUsageLines(service: PublicBookingService, data: PublicBookingData) {
   if (service.membershipCreditRules.length) {
-    return service.membershipCreditRules.map((rule) => {
+    const groupedRules = new Map<string, { creditText: string; serviceNames: Set<string>; allServices: boolean }>();
+    service.membershipCreditRules.forEach((rule) => {
       const creditText = `${rule.credits} credit${rule.credits === 1 ? "" : "s"} per ${membershipCreditPeriodLabel(rule.period)}`;
-      const serviceText = membershipCreditRuleServiceNames(rule, service, data).join(", ");
-      return `${creditText}: ${serviceText}`;
+      const existing = groupedRules.get(creditText) ?? { creditText, serviceNames: new Set<string>(), allServices: false };
+      const names = membershipCreditRuleServiceNames(rule, service, data);
+      if (names.includes("All services")) {
+        existing.allServices = true;
+      } else {
+        names.forEach((name) => existing.serviceNames.add(name));
+      }
+      groupedRules.set(creditText, existing);
+    });
+    return Array.from(groupedRules.values()).map((rule) => {
+      if (rule.allServices) return `${rule.creditText} for all services`;
+      const serviceCount = rule.serviceNames.size;
+      if (serviceCount <= 2) return `${rule.creditText}: ${Array.from(rule.serviceNames).join(", ")}`;
+      return `${rule.creditText} for ${serviceCount} eligible services`;
     });
   }
   return [`${membershipCreditLabel(service)}: ${membershipEligibleServiceNames(service, data).join(", ")}`];
@@ -2997,6 +3010,8 @@ export default function CustomerBookingApp() {
                     const isCoveredByMembership = memberCreditServiceIds.has(service.id);
                     const membershipEligibleNames =
                       service.category === "memberships" ? membershipEligibleServiceNames(service, data) : [];
+                    const visibleMembershipEligibleNames = membershipEligibleNames.slice(0, 3);
+                    const hiddenMembershipEligibleCount = Math.max(0, membershipEligibleNames.length - visibleMembershipEligibleNames.length);
                     const membershipCreditUsage =
                       service.category === "memberships" ? membershipCreditUsageLines(service, data) : [];
                     return (
@@ -3032,7 +3047,7 @@ export default function CustomerBookingApp() {
                                   Eligible services
                                 </div>
                                 <div className="mt-2 flex flex-wrap gap-1.5">
-                                  {membershipEligibleNames.map((name) => (
+                                  {visibleMembershipEligibleNames.map((name) => (
                                     <span
                                       key={name}
                                       className="inline-flex max-w-full rounded-full bg-black/[0.05] px-3 py-1 text-[12px] font-semibold leading-5 text-black/70"
@@ -3040,6 +3055,11 @@ export default function CustomerBookingApp() {
                                       <span className="truncate">{name}</span>
                                     </span>
                                   ))}
+                                  {hiddenMembershipEligibleCount ? (
+                                    <span className="inline-flex rounded-full bg-black/[0.05] px-3 py-1 text-[12px] font-semibold leading-5 text-black/60">
+                                      +{hiddenMembershipEligibleCount} more
+                                    </span>
+                                  ) : null}
                                 </div>
                               </div>
                             </div>
