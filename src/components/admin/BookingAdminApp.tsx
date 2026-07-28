@@ -7906,30 +7906,32 @@ function ServicesView({
         </label>
       </div>
 
-      <div className="mt-5 overflow-hidden rounded-lg border border-black/10 bg-white">
-        <div>
+      <div className="mt-5 overflow-x-auto rounded-lg border border-black/10 bg-white">
+        <div className="min-w-[760px]">
           {isLessonsSection ? (
-            <div className="grid grid-cols-[minmax(0,1.5fr)_96px_84px_84px_40px] gap-2 bg-[#f5f6f8] px-4 py-3 text-[14px] font-semibold text-black md:grid-cols-[minmax(180px,1.5fr)_130px_120px_140px_48px] md:gap-3 md:py-3 xl:grid-cols-[minmax(0,1.65fr)_170px_120px_120px_250px_72px] xl:gap-3 xl:px-5 xl:py-3">
+            <div className="grid grid-cols-[minmax(220px,1.65fr)_140px_120px_120px_220px_64px] gap-3 bg-[#f3f6f7] px-5 py-4 text-[15px] font-semibold text-black">
               <div>Name</div>
               <div>Visibility</div>
-              <div>Price</div>
+              <div>Public Price</div>
               <div>Duration</div>
-              <div className="hidden xl:block">Instructors</div>
+              <div>Instructors</div>
               <div />
             </div>
           ) : isMembershipsSection ? (
-            <div className="grid grid-cols-[minmax(0,1.2fr)_90px_78px_84px_40px] gap-2 bg-[#f5f6f8] px-4 py-3 text-[14px] font-semibold text-black md:grid-cols-[minmax(180px,1.45fr)_120px_120px_120px_48px] md:gap-3 md:py-3 xl:grid-cols-[minmax(0,1.65fr)_170px_140px_140px_240px_72px] xl:gap-3 xl:px-5 xl:py-3">
+            <div className="grid grid-cols-[minmax(220px,1.65fr)_140px_120px_120px_220px_64px] gap-3 bg-[#f3f6f7] px-5 py-4 text-[15px] font-semibold text-black">
               <div>Name</div>
               <div>Visibility</div>
               <div>Price</div>
               <div>Billing</div>
-              <div className="hidden xl:block">Members</div>
+              <div>Members</div>
               <div />
             </div>
           ) : (
-            <div className="grid grid-cols-[minmax(0,1.2fr)_86px_88px_40px] gap-2 bg-[#f5f6f8] px-4 py-3 text-[14px] font-semibold text-black md:grid-cols-[minmax(150px,1.35fr)_120px_minmax(140px,1fr)_48px] md:gap-3 md:py-3 xl:grid-cols-[minmax(0,1.6fr)_170px_220px_72px] xl:gap-3 xl:px-5 xl:py-3">
+            <div className="grid grid-cols-[minmax(220px,1.65fr)_140px_120px_120px_220px_64px] gap-3 bg-[#f3f6f7] px-5 py-4 text-[15px] font-semibold text-black">
               <div>Name</div>
               <div>Visibility</div>
+              <div>Public Price</div>
+              <div>Duration</div>
               <div>Rooms</div>
               <div />
             </div>
@@ -7954,10 +7956,10 @@ function ServicesView({
                   key={service.id}
                   className={
                     isLessonsSection
-                      ? "grid grid-cols-[minmax(0,1.5fr)_96px_84px_84px_40px] items-start gap-2 border-t border-black/10 px-4 py-3 md:grid-cols-[minmax(180px,1.5fr)_130px_120px_140px_48px] md:gap-3 md:py-4 xl:grid-cols-[minmax(0,1.65fr)_170px_120px_120px_250px_72px] xl:gap-3 xl:px-5 xl:py-4"
+                      ? "grid grid-cols-[minmax(220px,1.65fr)_140px_120px_120px_220px_64px] items-start gap-3 border-t border-black/10 px-5 py-5"
                       : isMembershipsSection
-                        ? "grid grid-cols-[minmax(0,1.2fr)_90px_78px_84px_40px] items-start gap-2 border-t border-black/10 px-4 py-3 md:grid-cols-[minmax(180px,1.45fr)_120px_120px_120px_48px] md:gap-3 md:py-4 xl:grid-cols-[minmax(0,1.65fr)_170px_140px_140px_240px_72px] xl:gap-3 xl:px-5 xl:py-4"
-                      : "grid grid-cols-[minmax(0,1.2fr)_86px_88px_40px] items-start gap-2 border-t border-black/10 px-4 py-3 md:grid-cols-[minmax(150px,1.35fr)_120px_minmax(140px,1fr)_48px] md:gap-3 md:py-4 xl:grid-cols-[minmax(0,1.6fr)_170px_220px_72px] xl:gap-3 xl:px-5 xl:py-4"
+                        ? "grid grid-cols-[minmax(220px,1.65fr)_140px_120px_120px_220px_64px] items-start gap-3 border-t border-black/10 px-5 py-5"
+                      : "grid grid-cols-[minmax(220px,1.65fr)_140px_120px_120px_220px_64px] items-start gap-3 border-t border-black/10 px-5 py-5"
                   }
                 >
                   <button
@@ -7966,8 +7968,8 @@ function ServicesView({
                       if (canEdit) onEdit(service.id);
                     }}
                     disabled={!canEdit}
-                    className={[
-                      "min-w-0 text-left text-[14px] font-medium leading-5 text-black md:text-[15px] md:leading-5 xl:text-[15px]",
+                      className={[
+                      "min-w-0 text-left text-[16px] font-medium leading-6 text-black",
                       canEdit ? "cursor-pointer hover:underline" : "cursor-default",
                     ].join(" ")}
                   >
@@ -7987,7 +7989,7 @@ function ServicesView({
                   <div className="min-w-0 pt-1">
                     <span
                       className={[
-                        "inline-flex rounded-full px-2 py-1 text-[11px] font-medium md:px-2.5 md:py-1 md:text-[12px] xl:px-3",
+                        "inline-flex rounded-full px-3 py-1 text-[13px] font-medium",
                         visibility === "Everyone" ? "bg-emerald-50 text-emerald-700" : "bg-[#f3f4f6] text-[#667085]",
                       ].join(" ")}
                     >
@@ -7997,13 +7999,13 @@ function ServicesView({
 
                   {isLessonsSection ? (
                     <>
-                      <div className="min-w-0 pt-1 text-[13px] font-medium text-black md:text-[14px] xl:text-[15px]">
+                      <div className="min-w-0 pt-1 text-[16px] font-medium text-black">
                         {formatServicePrice(service.price)}
                       </div>
-                      <div className="min-w-0 pt-1 text-[13px] font-medium text-black md:text-[14px] xl:text-[15px]">
+                      <div className="min-w-0 pt-1 text-[16px] font-medium text-black">
                         {formatServiceDuration(service.duration)}
                       </div>
-                      <div className="hidden min-w-0 pt-1 xl:block">
+                      <div className="min-w-0 pt-1">
                         {instructorNames.length ? (
                           <div className="flex flex-wrap items-center gap-1">
                             {visibleInstructorNames.map((name) => (
@@ -8030,13 +8032,13 @@ function ServicesView({
                     </>
                   ) : isMembershipsSection ? (
                     <>
-                      <div className="min-w-0 pt-1 text-[13px] font-medium text-black md:text-[14px] xl:text-[15px]">
+                      <div className="min-w-0 pt-1 text-[16px] font-medium text-black">
                         {formatServicePrice(service.price)}
                       </div>
-                      <div className="min-w-0 pt-1 text-[13px] font-medium text-black md:text-[14px] xl:text-[15px]">
+                      <div className="min-w-0 pt-1 text-[16px] font-medium text-black">
                         {membershipBillingLabel}
                       </div>
-                      <div className="hidden min-w-0 pt-1 xl:block">
+                      <div className="min-w-0 pt-1">
                         {membershipNames.length ? (
                           <div className="flex flex-wrap items-center gap-1">
                             {visibleMembershipNames.map((name) => (
@@ -8062,15 +8064,22 @@ function ServicesView({
                       </div>
                     </>
                   ) : (
-                    <div className="min-w-0 pt-1">
-                      <div className="flex flex-col items-start gap-2 md:flex-row md:flex-wrap md:gap-2">
+                    <>
+                      <div className="min-w-0 pt-1 text-[16px] font-medium text-black">
+                        {formatServicePrice(service.price)}
+                      </div>
+                      <div className="min-w-0 pt-1 text-[16px] font-medium text-black">
+                        {formatServiceDuration(service.duration)}
+                      </div>
+                      <div className="min-w-0 pt-1">
+                        <div className="flex flex-wrap items-start gap-2">
                         {rooms.length ? (
                           rooms.map((room, roomIndex) => (
                             <span
                               key={room}
                               className={[
-                                "rounded-full bg-[#f1efef] px-2 py-1 text-[11px] font-medium text-black md:px-2.5 md:py-1 md:text-[12px]",
-                                roomIndex > 1 ? "hidden xl:inline-flex" : "inline-flex",
+                                "rounded-full bg-[#f1efef] px-2.5 py-1 text-[12px] font-medium text-black",
+                                roomIndex > 2 ? "hidden xl:inline-flex" : "inline-flex",
                               ].join(" ")}
                             >
                               {room}
@@ -8079,13 +8088,14 @@ function ServicesView({
                         ) : (
                           <span className="text-[11px] text-black/40 md:text-[13px]">No rooms</span>
                         )}
-                        {rooms.length > 2 ? (
-                          <span className="inline-flex rounded-full bg-[#f1efef] px-2 py-1 text-[11px] font-medium text-black md:px-2.5 md:py-1 md:text-[12px] xl:hidden">
-                            +{rooms.length - 2} more
+                        {rooms.length > 3 ? (
+                          <span className="inline-flex rounded-full bg-[#f1efef] px-2.5 py-1 text-[12px] font-medium text-black xl:hidden">
+                            +{rooms.length - 3} more
                           </span>
                         ) : null}
+                        </div>
                       </div>
-                    </div>
+                    </>
                   )}
 
                   <div className="flex flex-col items-end gap-2 pt-1">
