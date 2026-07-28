@@ -8146,6 +8146,7 @@ function MembershipEditorView({
   deleteGuardMessage: string | null;
 }) {
   const [draft, setDraft] = useState<MembershipDraft>(() => createMembershipDraftFromService(service));
+  const [stripeSetupOpen, setStripeSetupOpen] = useState(false);
   const eligibleServices = useMemo(
     () =>
       services
@@ -8380,43 +8381,54 @@ function MembershipEditorView({
           </div>
         </div>
 
-        <div className="grid gap-8 px-5 py-6 md:grid-cols-[240px_minmax(0,1fr)]">
-          <div>
-            <h3 className="text-lg font-semibold">Stripe</h3>
-            <p className="mt-1 text-sm leading-6 text-black/65">
-              Optional Stripe IDs used when subscription auto-charge is connected.
-            </p>
-          </div>
-          <div className="grid gap-5 md:grid-cols-2">
-            <label className="grid gap-2 text-sm font-semibold">
-              <span>
-                Stripe product ID{" "}
-                <span className="rounded-full bg-black/10 px-2 py-0.5 text-xs font-medium text-black/60">
-                  Optional
-                </span>
+        <div className="border-t border-black/10 px-5 py-4">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-4 text-left"
+            onClick={() => setStripeSetupOpen((current) => !current)}
+            aria-expanded={stripeSetupOpen}
+          >
+            <span>
+              <span className="block text-lg font-semibold">Advanced / Stripe setup</span>
+              <span className="mt-1 block text-sm leading-6 text-black/60">
+                Optional billing IDs used for membership subscriptions.
               </span>
-              <input
-                className="h-12 rounded border border-black/20 px-4 text-base font-normal outline-none focus:border-black"
-                value={draft.stripeProductId}
-                onChange={(event) => update("stripeProductId", event.target.value)}
-                placeholder="prod_..."
-              />
-            </label>
-            <label className="grid gap-2 text-sm font-semibold">
-              <span>
-                Stripe price ID{" "}
-                <span className="rounded-full bg-black/10 px-2 py-0.5 text-xs font-medium text-black/60">
-                  Optional
+            </span>
+            <span className="text-2xl leading-none text-black/45">{stripeSetupOpen ? "-" : "+"}</span>
+          </button>
+
+          {stripeSetupOpen ? (
+            <div className="mt-5 grid gap-5 md:grid-cols-2">
+              <label className="grid gap-2 text-sm font-semibold">
+                <span>
+                  Stripe product ID{" "}
+                  <span className="rounded-full bg-black/10 px-2 py-0.5 text-xs font-medium text-black/60">
+                    Optional
+                  </span>
                 </span>
-              </span>
-              <input
-                className="h-12 rounded border border-black/20 px-4 text-base font-normal outline-none focus:border-black"
-                value={draft.stripePriceId}
-                onChange={(event) => update("stripePriceId", event.target.value)}
-                placeholder="price_..."
-              />
-            </label>
-          </div>
+                <input
+                  className="h-12 rounded border border-black/20 px-4 text-base font-normal outline-none focus:border-black"
+                  value={draft.stripeProductId}
+                  onChange={(event) => update("stripeProductId", event.target.value)}
+                  placeholder="prod_..."
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-semibold">
+                <span>
+                  Stripe price ID{" "}
+                  <span className="rounded-full bg-black/10 px-2 py-0.5 text-xs font-medium text-black/60">
+                    Optional
+                  </span>
+                </span>
+                <input
+                  className="h-12 rounded border border-black/20 px-4 text-base font-normal outline-none focus:border-black"
+                  value={draft.stripePriceId}
+                  onChange={(event) => update("stripePriceId", event.target.value)}
+                  placeholder="price_..."
+                />
+              </label>
+            </div>
+          ) : null}
         </div>
 
         <div className="flex items-center justify-between border-t border-black/10 bg-black/[0.03] px-5 py-4">
