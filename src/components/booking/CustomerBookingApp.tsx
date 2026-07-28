@@ -285,6 +285,8 @@ function membershipCoversService(membership: CustomerMembershipRecord, service: 
 }
 
 function serviceCardDescription(service: PublicBookingService, data: PublicBookingData) {
+  const savedDescription = service.description.trim();
+  if (savedDescription) return savedDescription;
   if (service.category === "memberships") {
     return `${membershipCreditLabel(service)} for eligible services.`;
   }

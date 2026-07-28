@@ -29,6 +29,9 @@ export type PublicBookingService = {
   category: PublicBookingCategory;
   duration: number;
   price: number;
+  previewText: string;
+  description: string;
+  mediaUrl: string;
   rooms: string[];
   resourceId: string | null;
   instructors: string[];
@@ -148,6 +151,9 @@ export const fallbackPublicBookingData: PublicBookingData = {
       category: "rentals",
       duration: 30,
       price: 45,
+      previewText: "",
+      description: "",
+      mediaUrl: "",
       rooms: ["Cage 1", "Cage 2"],
       resourceId: "cage-1",
       instructors: [],
@@ -167,6 +173,9 @@ export const fallbackPublicBookingData: PublicBookingData = {
       category: "lessons",
       duration: 30,
       price: 60,
+      previewText: "",
+      description: "",
+      mediaUrl: "",
       rooms: ["Cage 1", "Cage 2"],
       resourceId: "cage-1",
       instructors: ["Jason Allaire", "Jr. Jason Allaire"],
@@ -186,6 +195,9 @@ export const fallbackPublicBookingData: PublicBookingData = {
       category: "rentals",
       duration: 30,
       price: 30,
+      previewText: "",
+      description: "",
+      mediaUrl: "",
       rooms: ["Pitching Lane"],
       resourceId: "pitching-lane",
       instructors: [],

@@ -356,6 +356,9 @@ type BookingServiceRow = {
   service_type: ServiceSection | null;
   status: Service["status"];
   sort_order: number;
+  preview_text?: string | null;
+  description?: string | null;
+  media_url?: string | null;
   calendar_color: string | null;
   schedule_id: string | null;
   collect_tax?: boolean | null;
@@ -2673,6 +2676,9 @@ async function upsertModalChange(change: ModalSaveChange, resourceIdsByName: Rec
       instructor_names: item.instructors?.length ? item.instructors : [],
       service_type: item.category,
       status: item.status,
+      preview_text: item.previewText ?? "",
+      description: item.description ?? "",
+      media_url: item.mediaUrl ?? "",
       calendar_color: normalizeCalendarColor(item.calendarColor),
       schedule_id: item.scheduleId ?? null,
       collect_tax: Boolean(item.collectTax),
@@ -5107,6 +5113,9 @@ export default function BookingAdminApp({
             instructors: service.instructor_names ?? [],
             category: service.service_type ?? inferServiceCategory(service.name),
             status: service.status,
+            previewText: service.preview_text ?? "",
+            description: service.description ?? "",
+            mediaUrl: service.media_url ?? "",
             calendarColor: normalizeCalendarColor(service.calendar_color),
             scheduleId: service.schedule_id,
             collectTax: Boolean(service.collect_tax),
