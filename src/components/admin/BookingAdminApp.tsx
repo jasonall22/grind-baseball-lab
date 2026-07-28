@@ -7837,6 +7837,13 @@ function ServicesView({
   const currentCopy = serviceSectionMeta[activeSection];
   const isLessonsSection = activeSection === "lessons";
   const isMembershipsSection = activeSection === "memberships";
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
+  const serviceGridClass =
+    "grid-cols-[minmax(132px,1.45fr)_92px_82px_82px_144px_42px] md:grid-cols-[minmax(220px,1.65fr)_140px_120px_120px_220px_64px]";
+
+  useEffect(() => {
+    tableScrollRef.current?.scrollTo({ left: 0 });
+  }, [activeSection, search]);
 
   return (
     <section className="min-h-screen px-[18px] py-6 xl:px-6 xl:py-8">
@@ -7907,10 +7914,10 @@ function ServicesView({
         </label>
       </div>
 
-      <div className="mt-5 overflow-x-auto rounded-lg border border-black/10 bg-white">
-        <div className="min-w-[760px]">
+      <div ref={tableScrollRef} className="mt-5 overflow-x-auto rounded-lg border border-black/10 bg-white">
+        <div className="min-w-[590px] md:min-w-[760px]">
           {isLessonsSection ? (
-            <div className="grid grid-cols-[minmax(220px,1.65fr)_140px_120px_120px_220px_64px] gap-3 bg-[#f3f6f7] px-5 py-4 text-[15px] font-semibold text-black">
+            <div className={`grid ${serviceGridClass} gap-2 bg-[#f3f6f7] px-3 py-3 text-[13px] font-semibold text-black md:gap-3 md:px-5 md:py-4 md:text-[15px]`}>
               <div>Name</div>
               <div>Visibility</div>
               <div>Public Price</div>
@@ -7919,7 +7926,7 @@ function ServicesView({
               <div />
             </div>
           ) : isMembershipsSection ? (
-            <div className="grid grid-cols-[minmax(220px,1.65fr)_140px_120px_120px_220px_64px] gap-3 bg-[#f3f6f7] px-5 py-4 text-[15px] font-semibold text-black">
+            <div className={`grid ${serviceGridClass} gap-2 bg-[#f3f6f7] px-3 py-3 text-[13px] font-semibold text-black md:gap-3 md:px-5 md:py-4 md:text-[15px]`}>
               <div>Name</div>
               <div>Visibility</div>
               <div>Public Price</div>
@@ -7928,7 +7935,7 @@ function ServicesView({
               <div />
             </div>
           ) : (
-            <div className="grid grid-cols-[minmax(220px,1.65fr)_140px_120px_120px_220px_64px] gap-3 bg-[#f3f6f7] px-5 py-4 text-[15px] font-semibold text-black">
+            <div className={`grid ${serviceGridClass} gap-2 bg-[#f3f6f7] px-3 py-3 text-[13px] font-semibold text-black md:gap-3 md:px-5 md:py-4 md:text-[15px]`}>
               <div>Name</div>
               <div>Visibility</div>
               <div>Public Price</div>
@@ -7960,13 +7967,7 @@ function ServicesView({
               return (
                 <div
                   key={service.id}
-                  className={
-                    isLessonsSection
-                      ? "grid grid-cols-[minmax(220px,1.65fr)_140px_120px_120px_220px_64px] items-start gap-3 border-t border-black/10 px-5 py-5"
-                      : isMembershipsSection
-                        ? "grid grid-cols-[minmax(220px,1.65fr)_140px_120px_120px_220px_64px] items-start gap-3 border-t border-black/10 px-5 py-5"
-                      : "grid grid-cols-[minmax(220px,1.65fr)_140px_120px_120px_220px_64px] items-start gap-3 border-t border-black/10 px-5 py-5"
-                  }
+                  className={`grid ${serviceGridClass} items-start gap-2 border-t border-black/10 px-3 py-4 md:gap-3 md:px-5 md:py-5`}
                 >
                   <button
                     type="button"
@@ -7975,7 +7976,7 @@ function ServicesView({
                     }}
                     disabled={!canEdit}
                     className={[
-                      "min-w-0 text-left text-[16px] font-medium leading-6 text-black",
+                      "min-w-0 text-left text-[14px] font-medium leading-5 text-black md:text-[16px] md:leading-6",
                       canEdit ? "cursor-pointer hover:underline" : "cursor-default",
                     ].join(" ")}
                   >
@@ -7985,7 +7986,7 @@ function ServicesView({
                   <div className="min-w-0 pt-1">
                     <span
                       className={[
-                        "inline-flex rounded-full px-3 py-1 text-[13px] font-medium",
+                        "inline-flex rounded-full px-2 py-1 text-[12px] font-medium md:px-3 md:text-[13px]",
                         visibility === "Everyone" ? "bg-emerald-50 text-emerald-700" : "bg-[#f3f4f6] text-[#667085]",
                       ].join(" ")}
                     >
@@ -7995,10 +7996,10 @@ function ServicesView({
 
                   {isLessonsSection ? (
                     <>
-                      <div className="min-w-0 pt-1 text-[16px] font-medium text-black">
+                      <div className="min-w-0 pt-1 text-[14px] font-medium text-black md:text-[16px]">
                         {formatServicePrice(service.price)}
                       </div>
-                      <div className="min-w-0 pt-1 text-[16px] font-medium text-black">
+                      <div className="min-w-0 pt-1 text-[14px] font-medium text-black md:text-[16px]">
                         {formatServiceDuration(service.duration)}
                       </div>
                       <div className="min-w-0 pt-1">
@@ -8007,7 +8008,7 @@ function ServicesView({
                             {visibleInstructorNames.map((name) => (
                               <span
                                 key={name}
-                                className="inline-flex max-w-full items-center gap-1 rounded-full bg-[#f1efef] px-2 py-1 text-[11px] font-medium leading-none text-black"
+                                className="inline-flex max-w-[126px] items-center gap-1 rounded-full bg-[#f1efef] px-1.5 py-1 text-[10px] font-medium leading-none text-black md:max-w-full md:px-2 md:text-[11px]"
                               >
                                 <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#d9d9d9] text-[#777]">
                                   <Icon name="user" className="h-[10px] w-[10px]" />
@@ -8022,16 +8023,16 @@ function ServicesView({
                             ) : null}
                           </div>
                         ) : (
-                          <span className="block break-words text-[13px] text-black/45">No instructors</span>
+                          <span className="block break-words text-[12px] text-black/45 md:text-[13px]">No instructors</span>
                         )}
                       </div>
                     </>
                   ) : isMembershipsSection ? (
                     <>
-                      <div className="min-w-0 pt-1 text-[16px] font-medium text-black">
+                      <div className="min-w-0 pt-1 text-[14px] font-medium text-black md:text-[16px]">
                         {formatServicePrice(service.price)}
                       </div>
-                      <div className="min-w-0 pt-1 text-[16px] font-medium text-black">
+                      <div className="min-w-0 pt-1 text-[14px] font-medium text-black md:text-[16px]">
                         {membershipCreditAllowanceLabel(
                           Math.max(0, Math.floor(Number(service.membershipCreditsPerDay ?? 0))),
                           normalizeMembershipCreditLimitPeriod(service.membershipCreditLimitPeriod)
@@ -8043,7 +8044,7 @@ function ServicesView({
                             {visibleMembershipEligibleServices.map((name) => (
                               <span
                                 key={name}
-                                className="inline-flex max-w-full rounded-full bg-[#f1efef] px-2.5 py-1 text-[12px] font-medium leading-none text-black"
+                                className="inline-flex max-w-[132px] rounded-full bg-[#f1efef] px-2 py-1 text-[10px] font-medium leading-none text-black md:max-w-full md:px-2.5 md:text-[12px]"
                               >
                                 <span className="truncate whitespace-nowrap">{name}</span>
                               </span>
@@ -8055,16 +8056,16 @@ function ServicesView({
                             ) : null}
                           </div>
                         ) : (
-                          <span className="block break-words text-[13px] text-black/45">No eligible services</span>
+                          <span className="block break-words text-[12px] text-black/45 md:text-[13px]">No eligible services</span>
                         )}
                       </div>
                     </>
                   ) : (
                     <>
-                      <div className="min-w-0 pt-1 text-[16px] font-medium text-black">
+                      <div className="min-w-0 pt-1 text-[14px] font-medium text-black md:text-[16px]">
                         {formatServicePrice(service.price)}
                       </div>
-                      <div className="min-w-0 pt-1 text-[16px] font-medium text-black">
+                      <div className="min-w-0 pt-1 text-[14px] font-medium text-black md:text-[16px]">
                         {formatServiceDuration(service.duration)}
                       </div>
                       <div className="min-w-0 pt-1">
@@ -8074,7 +8075,7 @@ function ServicesView({
                             <span
                               key={room}
                               className={[
-                                "rounded-full bg-[#f1efef] px-2.5 py-1 text-[12px] font-medium text-black",
+                                "rounded-full bg-[#f1efef] px-2 py-1 text-[10px] font-medium text-black md:px-2.5 md:text-[12px]",
                                 roomIndex > 2 ? "hidden xl:inline-flex" : "inline-flex",
                               ].join(" ")}
                             >
