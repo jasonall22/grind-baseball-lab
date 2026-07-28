@@ -121,6 +121,7 @@ export async function GET() {
       settingsResult,
       resourcesResult,
       servicesResult,
+      serviceNamesResult,
       schedulesResult,
       slotsResult,
       overridesResult,
@@ -131,6 +132,7 @@ export async function GET() {
       supabase.from("booking_settings").select("*").eq("key", "default").maybeSingle(),
       supabase.from("booking_resources").select("id,name,sort_order,is_active,schedule_id").eq("is_active", true).order("sort_order"),
       supabase.from("booking_services").select("*").eq("status", "Active").order("sort_order"),
+      supabase.from("booking_services").select("id,name").order("sort_order"),
       supabase.from("booking_schedules").select("id,name,slug,is_default,is_active").eq("is_active", true),
       supabase.from("booking_schedule_slots").select("id,schedule_id,weekday,start_time,end_time,sort_order").order("weekday").order("sort_order"),
       supabase.from("booking_schedule_overrides").select("schedule_id,override_date,is_closed,start_time,end_time,sort_order").order("override_date").order("sort_order"),
@@ -156,6 +158,7 @@ export async function GET() {
       settingsResult,
       resourcesResult,
       servicesResult,
+      serviceNamesResult,
       schedulesResult,
       slotsResult,
       overridesResult,
@@ -245,6 +248,12 @@ export async function GET() {
       sortOrder: parseNumber(resource.sort_order),
       scheduleId: typeof resource.schedule_id === "string" ? resource.schedule_id : null,
     }));
+    const serviceNameMap = new Map(
+      ((serviceNamesResult.data ?? []) as Array<Record<string, unknown>>).map((service) => [
+        String(service.id),
+        String(service.name ?? ""),
+      ])
+    );
 
     const services = ((servicesResult.data ?? []) as Array<Record<string, unknown>>).map((service) => ({
       id: String(service.id),
@@ -266,6 +275,9 @@ export async function GET() {
       membershipCreditLimitPeriod: normalizeCreditLimitPeriod(service.membership_credit_limit_period),
       membershipCreditScope: normalizeCreditScope(service.membership_credit_scope),
       membershipEligibleServiceIds: stringArray(service.membership_eligible_service_ids),
+      membershipEligibleServiceNames: stringArray(service.membership_eligible_service_ids)
+        .map((serviceId) => serviceNameMap.get(serviceId) ?? "")
+        .filter(Boolean),
       stripePriceId: typeof service.stripe_price_id === "string" && service.stripe_price_id.trim() ? service.stripe_price_id.trim() : null,
     }));
 

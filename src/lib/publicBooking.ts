@@ -43,6 +43,7 @@ export type PublicBookingService = {
   membershipCreditLimitPeriod: PublicMembershipCreditLimitPeriod;
   membershipCreditScope: PublicMembershipCreditScope;
   membershipEligibleServiceIds: string[];
+  membershipEligibleServiceNames: string[];
   stripePriceId: string | null;
 };
 
@@ -165,6 +166,7 @@ export const fallbackPublicBookingData: PublicBookingData = {
       membershipCreditLimitPeriod: "daily",
       membershipCreditScope: "selected_services",
       membershipEligibleServiceIds: [],
+      membershipEligibleServiceNames: [],
       stripePriceId: null,
     },
     {
@@ -187,6 +189,7 @@ export const fallbackPublicBookingData: PublicBookingData = {
       membershipCreditLimitPeriod: "daily",
       membershipCreditScope: "selected_services",
       membershipEligibleServiceIds: [],
+      membershipEligibleServiceNames: [],
       stripePriceId: null,
     },
     {
@@ -209,6 +212,7 @@ export const fallbackPublicBookingData: PublicBookingData = {
       membershipCreditLimitPeriod: "daily",
       membershipCreditScope: "selected_services",
       membershipEligibleServiceIds: [],
+      membershipEligibleServiceNames: [],
       stripePriceId: null,
     },
   ],

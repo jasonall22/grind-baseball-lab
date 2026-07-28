@@ -263,12 +263,13 @@ function membershipCreditLabel(service: PublicBookingService) {
   return `${credits} credit${credits === 1 ? "" : "s"} per ${period}`;
 }
 
-function membershipEligibleServicesLabel(service: PublicBookingService, data: PublicBookingData) {
-  if (service.membershipCreditScope === "all_services") return "All services";
+function membershipEligibleServiceNames(service: PublicBookingService, data: PublicBookingData) {
+  if (service.membershipCreditScope === "all_services") return ["All services"];
+  if (service.membershipEligibleServiceNames.length) return service.membershipEligibleServiceNames;
   const eligibleNames = service.membershipEligibleServiceIds
     .map((serviceId) => data.services.find((item) => item.id === serviceId)?.name ?? "")
     .filter(Boolean);
-  return eligibleNames.length ? eligibleNames.join(", ") : "No eligible services selected";
+  return eligibleNames.length ? eligibleNames : ["No eligible services selected"];
 }
 
 function membershipRecordCreditLabel(membership: CustomerMembershipRecord) {
@@ -2944,6 +2945,8 @@ export default function CustomerBookingApp() {
                   ))
                 : orderedServicesForCategory.map((service) => {
                     const isCoveredByMembership = memberCreditServiceIds.has(service.id);
+                    const membershipEligibleNames =
+                      service.category === "memberships" ? membershipEligibleServiceNames(service, data) : [];
                     return (
                       <button
                         key={service.id}
@@ -2961,9 +2964,20 @@ export default function CustomerBookingApp() {
                           ) : (
                             <div className="mt-3 text-[15px] leading-6 text-black/60">
                               <div>{membershipCreditLabel(service)}.</div>
-                              <div className="mt-1">
-                                <span className="font-semibold text-black/70">Eligible:</span>{" "}
-                                {membershipEligibleServicesLabel(service, data)}
+                              <div className="mt-3">
+                                <div className="text-[12px] font-semibold uppercase tracking-[0.08em] text-black/45">
+                                  Eligible services
+                                </div>
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                  {membershipEligibleNames.map((name) => (
+                                    <span
+                                      key={name}
+                                      className="inline-flex max-w-full rounded-full bg-black/[0.05] px-3 py-1 text-[12px] font-semibold leading-5 text-black/70"
+                                    >
+                                      <span className="truncate">{name}</span>
+                                    </span>
+                                  ))}
+                                </div>
                               </div>
                             </div>
                           )}
