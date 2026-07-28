@@ -259,7 +259,11 @@ function membershipStatusClasses(status: string) {
 }
 
 function membershipCreditLabel(service: PublicBookingService) {
-  if (service.membershipCreditRules.length > 1) return "Multiple credit allowances";
+  if (service.membershipCreditRules.length > 1) {
+    return service.membershipCreditRules
+      .map((rule) => `${rule.credits} credit${rule.credits === 1 ? "" : "s"} per ${membershipCreditPeriodLabel(rule.period)}`)
+      .join(", ");
+  }
   const rule = service.membershipCreditRules[0];
   if (rule) {
     return `${rule.credits} credit${rule.credits === 1 ? "" : "s"} per ${membershipCreditPeriodLabel(rule.period)}`;
@@ -268,6 +272,30 @@ function membershipCreditLabel(service: PublicBookingService) {
   if (!credits) return "Member booking credits";
   const period = membershipCreditPeriodLabel(service.membershipCreditLimitPeriod);
   return `${credits} credit${credits === 1 ? "" : "s"} per ${period}`;
+}
+
+function membershipCreditRuleServiceNames(
+  rule: PublicMembershipCreditRule,
+  service: PublicBookingService,
+  data: PublicBookingData
+) {
+  if (rule.serviceIds.includes("all_services")) return ["All services"];
+  const serviceNames = rule.serviceIds
+    .map((serviceId) => data.services.find((item) => item.id === serviceId)?.name ?? "")
+    .filter(Boolean);
+  if (serviceNames.length) return serviceNames;
+  return service.membershipEligibleServiceNames.length ? service.membershipEligibleServiceNames : ["Eligible services"];
+}
+
+function membershipCreditUsageLines(service: PublicBookingService, data: PublicBookingData) {
+  if (service.membershipCreditRules.length) {
+    return service.membershipCreditRules.map((rule) => {
+      const creditText = `${rule.credits} credit${rule.credits === 1 ? "" : "s"} per ${membershipCreditPeriodLabel(rule.period)}`;
+      const serviceText = membershipCreditRuleServiceNames(rule, service, data).join(", ");
+      return `${creditText}: ${serviceText}`;
+    });
+  }
+  return [`${membershipCreditLabel(service)}: ${membershipEligibleServiceNames(service, data).join(", ")}`];
 }
 
 function membershipEligibleServiceNames(service: PublicBookingService, data: PublicBookingData) {
@@ -2969,6 +2997,8 @@ export default function CustomerBookingApp() {
                     const isCoveredByMembership = memberCreditServiceIds.has(service.id);
                     const membershipEligibleNames =
                       service.category === "memberships" ? membershipEligibleServiceNames(service, data) : [];
+                    const membershipCreditUsage =
+                      service.category === "memberships" ? membershipCreditUsageLines(service, data) : [];
                     return (
                       <button
                         key={service.id}
@@ -2985,7 +3015,18 @@ export default function CustomerBookingApp() {
                             </div>
                           ) : (
                             <div className="mt-3 text-[15px] leading-6 text-black/60">
-                              <div>{membershipCreditLabel(service)}.</div>
+                              <div>
+                                <div className="text-[12px] font-semibold uppercase tracking-[0.08em] text-black/45">
+                                  Credit usage
+                                </div>
+                                <div className="mt-2 grid gap-1.5">
+                                  {membershipCreditUsage.map((line) => (
+                                    <div key={line} className="text-[14px] font-medium leading-5 text-black/70">
+                                      {line}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
                               <div className="mt-3">
                                 <div className="text-[12px] font-semibold uppercase tracking-[0.08em] text-black/45">
                                   Eligible services
