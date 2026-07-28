@@ -7393,7 +7393,11 @@ function HomeView({ facilityName }: { facilityName: string }) {
 
 function AdminBrandLogo({ size = "desktop" }: { size?: "desktop" | "mobile" }) {
   return (
-    <div className={size === "mobile" ? "w-[146px]" : "w-[126px]"}>
+    <Link
+      href="https://www.grindbaseballlab.com/book"
+      aria-label="Open booking site"
+      className={["block", size === "mobile" ? "w-[146px]" : "w-[126px]"].join(" ")}
+    >
       <Image
         src="/logo.png"
         alt="The Grind Baseball Lab"
@@ -7402,7 +7406,7 @@ function AdminBrandLogo({ size = "desktop" }: { size?: "desktop" | "mobile" }) {
         priority
         className="h-auto w-full object-contain"
       />
-    </div>
+    </Link>
   );
 }
 
