@@ -4948,13 +4948,9 @@ export default function BookingAdminApp({
     if (!currentStaffMember) return new Set<string>();
     return new Set(permissionKeysForRole(currentStaffMember.role, state.rolePermissions));
   }, [currentStaffMember, state.rolePermissions]);
-  const canManageSiteAdmin = !hasSupabaseEnv || currentProfileRole === "admin";
   const canViewMainNavItem = useCallback(
-    (item: BookingAdminView) => {
-      if (item === "home") return canManageSiteAdmin;
-      return hasAnyPermission(currentPermissionKeys, navPermissionKeys[item]);
-    },
-    [canManageSiteAdmin, currentPermissionKeys]
+    (item: BookingAdminView) => item === "home" || hasAnyPermission(currentPermissionKeys, navPermissionKeys[item]),
+    [currentPermissionKeys]
   );
   const visibleNavItems = useMemo(
     () => navItems.filter((item) => canViewMainNavItem(item.key)),
