@@ -58,6 +58,7 @@ type ParentAccount = {
   familyMembers?: FamilyMember[];
   waiverAgreed?: boolean;
   isAdmin?: boolean;
+  canManageSiteAdmin?: boolean;
 };
 type CustomerBookingRecord = {
   id: string;
@@ -2907,7 +2908,7 @@ export default function CustomerBookingApp() {
                       <div className="text-[15px] font-semibold">{parentAccount.parentName}</div>
                       <div className="mt-1 truncate text-[13px] text-black/55">{parentAccount.email}</div>
                     </div>
-                    {parentAccount.isAdmin ? (
+                    {parentAccount.canManageSiteAdmin ? (
                       <button
                         type="button"
                         onClick={() => {

@@ -48,23 +48,6 @@ function initialsFromName(name: string) {
   return parts[0]?.[0]?.toUpperCase() ?? "U";
 }
 
-async function fetchCanOpenAdmin(accessToken: string | null) {
-  if (!accessToken) return false;
-
-  try {
-    const response = await fetch("/api/book/customers", {
-      cache: "no-store",
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!response.ok) return false;
-
-    const payload = (await response.json()) as { customer?: { isAdmin?: boolean } | null };
-    return payload.customer?.isAdmin === true;
-  } catch {
-    return false;
-  }
-}
-
 export default function SiteNav() {
   const router = useRouter();
 
@@ -100,18 +83,16 @@ export default function SiteNav() {
       setCanOpenAdmin(false);
 
       if (session?.user?.id) {
-        const [profileResult, adminAllowed] = await Promise.all([
-          supabase
-            .from("profiles")
-            .select("id, role, full_name, first_name, last_name")
-            .eq("id", session.user.id)
-            .maybeSingle(),
-          fetchCanOpenAdmin(session.access_token),
-        ]);
+        const profileResult = await supabase
+          .from("profiles")
+          .select("id, role, full_name, first_name, last_name")
+          .eq("id", session.user.id)
+          .maybeSingle();
 
         if (!mounted) return;
-        setProfile((profileResult.data as ProfileRow) ?? null);
-        setCanOpenAdmin(adminAllowed);
+        const nextProfile = (profileResult.data as ProfileRow) ?? null;
+        setProfile(nextProfile);
+        setCanOpenAdmin(nextProfile?.role === "admin");
       }
 
       setAuthReady(true);
@@ -236,7 +217,7 @@ export default function SiteNav() {
 
                       {canOpenAdmin && (
                         <Link
-                          href="/admin"
+                          href="/admin/home"
                           className="block px-4 py-3 text-sm hover:bg-white/10"
                           onClick={() => setMenuOpen(false)}
                         >

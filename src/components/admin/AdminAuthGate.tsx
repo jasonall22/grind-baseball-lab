@@ -81,6 +81,12 @@ export default function AdminAuthGate({
       const profile = prof as ProfileRoleRow | null;
       const role: Role = profile?.role ?? null;
 
+      if (pathname === "/admin/home" && role !== "admin") {
+        setStatus("denied");
+        router.replace("/book");
+        return;
+      }
+
       if (session.user.email) {
         const { data: staffMember } = await supabase
           .from("booking_staff_members")

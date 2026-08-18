@@ -220,6 +220,20 @@ async function hasActiveStaffAccess(supabase: CustomerSupabaseClient, email: str
   return Boolean((staffResult.data as { id?: string } | null)?.id);
 }
 
+async function hasSiteAdminAccess(supabase: CustomerSupabaseClient, userId: string | null | undefined) {
+  const normalizedUserId = clean(userId);
+  if (!normalizedUserId) return false;
+
+  const profileResult = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", normalizedUserId)
+    .maybeSingle();
+
+  if (profileResult.error) throw profileResult.error;
+  return (profileResult.data as { role?: string | null } | null)?.role === "admin";
+}
+
 export async function GET(req: Request) {
   try {
     const authHeader = req.headers.get("authorization") ?? "";
@@ -233,6 +247,7 @@ export async function GET(req: Request) {
     const user = userResult.data.user;
     const email = clean(user.email).toLowerCase();
     const isAdmin = await hasActiveStaffAccess(supabase, email);
+    const canManageSiteAdmin = await hasSiteAdminAccess(supabase, user.id);
     const customerResult = await supabase
       .from("booking_customers")
       .select("id,parent_name,player_name,email,phone,age,birth_year,birth_month,birth_day,gender,emergency_contact_name,emergency_contact_email,emergency_contact_phone,family_members,waiver_agreed")
@@ -419,6 +434,7 @@ export async function GET(req: Request) {
         familyMembers: normalizeFamilyMembers(customer?.family_members),
         waiverAgreed: Boolean(customer?.waiver_agreed),
         isAdmin,
+        canManageSiteAdmin,
       },
       dashboard,
     });
@@ -527,6 +543,7 @@ export async function POST(req: Request) {
     if (insertResult.error) throw insertResult.error;
     const customerId = (insertResult.data as { id: string }).id;
     const isAdmin = await hasActiveStaffAccess(supabase, email);
+    const canManageSiteAdmin = await hasSiteAdminAccess(supabase, userId);
 
     return NextResponse.json({
       ok: true,
@@ -546,6 +563,7 @@ export async function POST(req: Request) {
         familyMembers: savedFamilyMembers,
         waiverAgreed: Boolean(body.waiverAgreed),
         isAdmin,
+        canManageSiteAdmin,
       },
     });
   } catch (error) {
@@ -567,6 +585,7 @@ export async function PATCH(req: Request) {
 
     const email = clean(userResult.data.user.email).toLowerCase();
     const isAdmin = await hasActiveStaffAccess(supabase, email);
+    const canManageSiteAdmin = await hasSiteAdminAccess(supabase, userResult.data.user.id);
     const customerResult = await supabase
       .from("booking_customers")
       .select("id,family_members,waiver_agreed")
@@ -627,6 +646,7 @@ export async function PATCH(req: Request) {
         familyMembers: normalizeFamilyMembers(updated.family_members),
         waiverAgreed: Boolean(updated.waiver_agreed),
         isAdmin,
+        canManageSiteAdmin,
       },
     });
   } catch (error) {
