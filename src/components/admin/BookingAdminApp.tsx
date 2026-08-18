@@ -7729,17 +7729,142 @@ export default function BookingAdminApp({
 }
 
 function HomeView({ facilityName }: { facilityName: string }) {
+  const dashboardCards: Array<{
+    title: string;
+    description: string;
+    href: string;
+    icon: IconName;
+    tone: "front" | "booking";
+  }> = [
+    {
+      title: "Hero Slider",
+      description: "Change the main homepage images, headlines, buttons, and overlay settings.",
+      href: "/admin/hero",
+      icon: "camera",
+      tone: "front",
+    },
+    {
+      title: "News & Updates",
+      description: "Edit homepage news slides and announcements.",
+      href: "/admin/news",
+      icon: "send",
+      tone: "front",
+    },
+    {
+      title: "Coaches / Trainers",
+      description: "Add, edit, reorder, and manage coaches shown on the public front page.",
+      href: "/admin/trainers",
+      icon: "user",
+      tone: "front",
+    },
+    {
+      title: "Booking Calendar",
+      description: "Manage bookings, blocked time, rooms, staff, and calendar operations.",
+      href: "/admin/calendar",
+      icon: "calendar",
+      tone: "booking",
+    },
+    {
+      title: "Services",
+      description: "Edit rentals, lessons, memberships, classes, camps, pricing, and credits.",
+      href: "/admin/services/rentals",
+      icon: "link",
+      tone: "booking",
+    },
+    {
+      title: "Customers",
+      description: "View customer accounts, memberships, billing, family members, and bookings.",
+      href: "/admin/customers",
+      icon: "user",
+      tone: "booking",
+    },
+  ];
+
   return (
-    <section className="min-h-screen px-8 py-8">
-      <div className="flex items-center gap-5">
-        <div className="grid h-[98px] w-[98px] place-items-center rounded-full border-[3px] border-[#526f9a] text-center font-extrabold uppercase leading-none text-[#2f4e78]">
-          <div>
-            <div className="text-[9px]">The</div>
-            <div className="text-lg italic">Grind</div>
-            <div className="text-[7px] text-sky-700">Baseball Lab</div>
+    <section className="min-h-screen bg-[#f6f7f9] px-5 py-6 pb-24 lg:px-8 lg:py-8">
+      <div className="mx-auto max-w-[1180px]">
+        <div className="overflow-hidden rounded-[10px] border border-black/10 bg-white shadow-sm">
+          <div className="border-t-4 border-t-[#2d91c8]" />
+          <div className="flex flex-col gap-5 px-5 py-6 sm:flex-row sm:items-center sm:justify-between lg:px-7">
+            <div className="flex items-center gap-5">
+              <div className="grid h-[78px] w-[78px] place-items-center rounded-full border-[3px] border-[#526f9a] text-center font-extrabold uppercase leading-none text-[#2f4e78] sm:h-[92px] sm:w-[92px]">
+                <div>
+                  <div className="text-[8px]">The</div>
+                  <div className="text-[16px] italic sm:text-lg">Grind</div>
+                  <div className="text-[7px] text-sky-700">Baseball Lab</div>
+                </div>
+              </div>
+              <div>
+                <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-black/45">Admin Dashboard</p>
+                <h1 className="mt-1 text-[24px] font-semibold text-black sm:text-[30px]">{facilityName}</h1>
+                <p className="mt-2 max-w-[620px] text-[14px] leading-6 text-black/60">
+                  Manage the public front page and the booking app from one place.
+                </p>
+              </div>
+            </div>
+
+            <Link
+              href="/book"
+              className="inline-flex min-h-11 items-center justify-center rounded-lg border border-black/10 bg-white px-5 text-[15px] font-semibold text-black shadow-sm transition hover:bg-black/[0.03]"
+            >
+              View booking page
+            </Link>
           </div>
         </div>
-        <h1 className="text-[23px] font-medium">{facilityName}</h1>
+
+        <div className="mt-7">
+          <div className="mb-3 flex items-center gap-3">
+            <h2 className="text-[18px] font-semibold text-black">Front Page</h2>
+            <span className="h-px flex-1 bg-black/10" />
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            {dashboardCards
+              .filter((card) => card.tone === "front")
+              .map((card) => (
+                <Link
+                  key={card.href}
+                  href={card.href}
+                  className="group min-h-[154px] rounded-[10px] border border-black/10 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-[#2d91c8]/45 hover:shadow-md"
+                >
+                  <div className="mb-5 grid h-11 w-11 place-items-center rounded-lg bg-[#eaf7fd] text-[#177faf]">
+                    <Icon name={card.icon} className="h-5 w-5" />
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <h3 className="text-[18px] font-semibold text-black">{card.title}</h3>
+                    <Icon name="chevron" className="mt-1 h-4 w-4 text-black/30 transition group-hover:text-black" />
+                  </div>
+                  <p className="mt-2 text-[14px] leading-6 text-black/60">{card.description}</p>
+                </Link>
+              ))}
+          </div>
+        </div>
+
+        <div className="mt-8">
+          <div className="mb-3 flex items-center gap-3">
+            <h2 className="text-[18px] font-semibold text-black">Booking App</h2>
+            <span className="h-px flex-1 bg-black/10" />
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            {dashboardCards
+              .filter((card) => card.tone === "booking")
+              .map((card) => (
+                <Link
+                  key={card.href}
+                  href={card.href}
+                  className="group min-h-[154px] rounded-[10px] border border-black/10 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-black/25 hover:shadow-md"
+                >
+                  <div className="mb-5 grid h-11 w-11 place-items-center rounded-lg bg-black/[0.06] text-black">
+                    <Icon name={card.icon} className="h-5 w-5" />
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <h3 className="text-[18px] font-semibold text-black">{card.title}</h3>
+                    <Icon name="chevron" className="mt-1 h-4 w-4 text-black/30 transition group-hover:text-black" />
+                  </div>
+                  <p className="mt-2 text-[14px] leading-6 text-black/60">{card.description}</p>
+                </Link>
+              ))}
+          </div>
+        </div>
       </div>
     </section>
   );
