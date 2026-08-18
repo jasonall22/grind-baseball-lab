@@ -8072,6 +8072,22 @@ function AdminAccountMenu({
             <div className="text-xs font-semibold uppercase tracking-[0.12em] text-black/45">Signed in</div>
             <div className="mt-1 truncate text-sm font-semibold">{displayEmail || "Admin account"}</div>
           </div>
+          <Link
+            href="/admin/home"
+            onClick={() => setIsOpen(false)}
+            className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold text-black transition hover:bg-black/[0.04]"
+          >
+            <Icon name="home" className="h-4 w-4" />
+            Front Page Admin
+          </Link>
+          <Link
+            href="/admin/settings"
+            onClick={() => setIsOpen(false)}
+            className="flex w-full items-center gap-3 border-b border-black/10 px-4 py-3 text-left text-sm font-semibold text-black transition hover:bg-black/[0.04]"
+          >
+            <Icon name="gear" className="h-4 w-4" />
+            Booking Settings
+          </Link>
           <button
             type="button"
             onClick={() => void logOut()}

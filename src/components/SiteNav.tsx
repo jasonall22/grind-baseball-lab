@@ -235,13 +235,22 @@ export default function SiteNav() {
                       </Link>
 
                       {canOpenAdmin && (
-                        <Link
-                          href="/admin"
-                          className="block px-4 py-3 text-sm hover:bg-white/10"
-                          onClick={() => setMenuOpen(false)}
-                        >
-                          Admin Dashboard
-                        </Link>
+                        <>
+                          <Link
+                            href="/admin/home"
+                            className="block px-4 py-3 text-sm hover:bg-white/10"
+                            onClick={() => setMenuOpen(false)}
+                          >
+                            Front Page Admin
+                          </Link>
+                          <Link
+                            href="/admin/settings"
+                            className="block px-4 py-3 text-sm hover:bg-white/10"
+                            onClick={() => setMenuOpen(false)}
+                          >
+                            Booking Settings
+                          </Link>
+                        </>
                       )}
 
                       <button

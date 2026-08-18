@@ -2908,16 +2908,28 @@ export default function CustomerBookingApp() {
                       <div className="mt-1 truncate text-[13px] text-black/55">{parentAccount.email}</div>
                     </div>
                     {parentAccount.isAdmin ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAccountMenuOpen(false);
-                          window.location.assign("/admin/home");
-                        }}
-                        className="block w-full border-b border-black/10 px-4 py-3 text-left text-[15px] font-semibold hover:bg-black/[0.04]"
-                      >
-                        Admin Dashboard
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAccountMenuOpen(false);
+                            window.location.assign("/admin/home");
+                          }}
+                          className="block w-full border-b border-black/10 px-4 py-3 text-left text-[15px] font-semibold hover:bg-black/[0.04]"
+                        >
+                          Front Page Admin
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAccountMenuOpen(false);
+                            window.location.assign("/admin/settings");
+                          }}
+                          className="block w-full border-b border-black/10 px-4 py-3 text-left text-[15px] font-semibold hover:bg-black/[0.04]"
+                        >
+                          Booking Settings
+                        </button>
+                      </>
                     ) : null}
                     <button
                       type="button"
