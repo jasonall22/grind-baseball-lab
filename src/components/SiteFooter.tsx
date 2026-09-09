@@ -6,7 +6,7 @@ export default function SiteFooter() {
 
   const email = "info@grindbaseballlab.com";
   const phoneDisplay = "941-946-7386";
-  const phoneHref = "tel:+1949467386";
+  const phoneHref = "tel:+19419467386";
   const facebookHref =
     "https://www.facebook.com/profile.php?id=61568109854345";
 
