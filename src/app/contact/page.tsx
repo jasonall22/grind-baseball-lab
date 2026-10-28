@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { getWebsiteSettings } from "@/lib/getWebsiteSettings";
+import { telephoneHref } from "@/lib/websiteSettings";
 
 export const metadata: Metadata = {
   title: "Contact The Grind Baseball Lab in Venice, FL",
@@ -9,20 +11,20 @@ export const metadata: Metadata = {
   },
 };
 
-export default function ContactPage() {
-  const addressLine1 = "613 Cypress Ave";
-  const addressLine2 = "Venice, FL 34285";
+export default async function ContactPage() {
+  const settings = await getWebsiteSettings();
+  const addressLine1 = settings.address_line1;
+  const addressLine2 = settings.address_line2;
 
   const mapsQuery = encodeURIComponent(
-    `The Grind Baseball Lab, ${addressLine1}, ${addressLine2}`
+    `${settings.site_name}, ${addressLine1}, ${addressLine2}`
   );
   const mapsHref = `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
 
-  const email = "info@grindbaseballlab.com";
-  const phoneDisplay = "(941) 307-7362";
-  const phoneHref = "tel:+19413077362";
-  const facebookHref =
-    "https://www.facebook.com/profile.php?id=61568109854345";
+  const email = settings.email;
+  const phoneDisplay = settings.phone;
+  const phoneHref = telephoneHref(settings.phone);
+  const facebookHref = settings.facebook_url;
 
   return (
     <main className="bg-white text-black">

@@ -9,6 +9,8 @@ import PricingSection from "@/components/PricingSection";
 import BecomeMemberSection from "@/components/BecomeMemberSection";
 import TrainersSection from "@/components/TrainersSection";
 import LocalSeoSection from "@/components/LocalSeoSection";
+import { getWebsiteSettings } from "@/lib/getWebsiteSettings";
+import { telephoneHref } from "@/lib/websiteSettings";
 
 const localBusinessJsonLd = {
   "@context": "https://schema.org",
@@ -80,7 +82,16 @@ const websiteJsonLd = {
 };
 
 export default async function HomePage() {
-  const heroData = await getInitialHeroData();
+  const [heroData, settings] = await Promise.all([getInitialHeroData(), getWebsiteSettings()]);
+  const businessJsonLd = {
+    ...localBusinessJsonLd,
+    name: settings.site_name,
+    telephone: telephoneHref(settings.phone).slice(4),
+    email: settings.email,
+    address: { ...localBusinessJsonLd.address, streetAddress: settings.address_line1 },
+    hasMap: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${settings.site_name}, ${settings.address_line1}, ${settings.address_line2}`)}`,
+    sameAs: [settings.facebook_url],
+  };
   const firstHeroImage = heroData.slides.find((slide) => slide.image_url)?.image_url;
 
   if (firstHeroImage) {
@@ -92,7 +103,7 @@ export default async function HomePage() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify(localBusinessJsonLd).replace(/</g, "\\u003c"),
+          __html: JSON.stringify(businessJsonLd).replace(/</g, "\\u003c"),
         }}
       />
       <script

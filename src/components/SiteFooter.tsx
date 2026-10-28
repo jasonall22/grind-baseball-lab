@@ -1,14 +1,15 @@
-export default function SiteFooter() {
+import { DEFAULT_WEBSITE_SETTINGS, telephoneHref, type WebsiteSettings } from "@/lib/websiteSettings";
+
+export default function SiteFooter({ settings = DEFAULT_WEBSITE_SETTINGS }: { settings?: WebsiteSettings }) {
   const mapsQuery = encodeURIComponent(
-    "The Grind Baseball Lab, 613 Cypress Ave, Venice, FL 34285"
+    `${settings.site_name}, ${settings.address_line1}, ${settings.address_line2}`
   );
   const mapsHref = `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
 
-  const email = "info@grindbaseballlab.com";
-  const phoneDisplay = "(941) 307-7362";
-  const phoneHref = "tel:+19413077362";
-  const facebookHref =
-    "https://www.facebook.com/profile.php?id=61568109854345";
+  const email = settings.email;
+  const phoneDisplay = settings.phone;
+  const phoneHref = telephoneHref(settings.phone);
+  const facebookHref = settings.facebook_url;
 
   return (
     <footer className="relative bg-white text-black">
@@ -53,7 +54,7 @@ export default function SiteFooter() {
                       </div>
                       <div>
                         <div className="text-base font-semibold tracking-tight">
-                          The Grind Baseball Lab
+                          {settings.site_name}
                         </div>
                         <div className="mt-0.5 text-xs font-semibold tracking-[0.18em] text-black/45 uppercase">
                           Train like it matters
@@ -76,10 +77,10 @@ export default function SiteFooter() {
 
                     <div className="mt-3 rounded-2xl border border-black/10 bg-white p-5 shadow-sm">
                       <div className="text-sm font-semibold text-black">
-                        613 Cypress Ave
+                        {settings.address_line1}
                       </div>
                       <div className="mt-1 text-sm text-black/65">
-                        Venice, FL 34285
+                        {settings.address_line2}
                       </div>
 
                       <div className="mt-4">

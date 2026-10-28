@@ -3,10 +3,11 @@
 import { usePathname } from "next/navigation";
 import SiteFooter from "@/components/SiteFooter";
 import SiteNav from "@/components/SiteNav";
+import type { WebsiteSettings } from "@/lib/websiteSettings";
 
-export default function SiteChrome({ children }: { children: React.ReactNode }) {
+export default function SiteChrome({ children, settings }: { children: React.ReactNode; settings: WebsiteSettings }) {
   const pathname = usePathname();
-  const isStandaloneRoute = pathname?.startsWith("/admin") || pathname === "/book";
+  const isStandaloneRoute = pathname?.startsWith("/admin");
 
   if (isStandaloneRoute) {
     return <main>{children}</main>;
@@ -16,7 +17,7 @@ export default function SiteChrome({ children }: { children: React.ReactNode }) 
     <>
       <SiteNav />
       <main>{children}</main>
-      <SiteFooter />
+      <SiteFooter settings={settings} />
     </>
   );
 }

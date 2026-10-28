@@ -1,9 +1,16 @@
-import AdminAuthGate from "@/components/admin/AdminAuthGate";
+import { redirect } from "next/navigation";
+import { createServerSupabase } from "@/lib/serverSupabase";
+import AdminNavigation from "@/components/admin/AdminNavigation";
 
-export default function AdminLayout({
+export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <AdminAuthGate>{children}</AdminAuthGate>;
+  const supabase = await createServerSupabase();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login?next=/admin");
+  const { data: profile, error } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  if (error || profile?.role !== "admin") redirect("/");
+  return <div className="min-h-screen bg-white text-black"><AdminNavigation />{children}</div>;
 }

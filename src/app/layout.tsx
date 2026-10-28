@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import SiteChrome from "@/components/SiteChrome";
+import { getWebsiteSettings } from "@/lib/getWebsiteSettings";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.grindbaseballlab.com"),
@@ -50,15 +51,16 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const settings = await getWebsiteSettings();
   return (
     <html lang="en">
       <body className="min-h-screen bg-white text-black">
-        <SiteChrome>{children}</SiteChrome>
+        <SiteChrome settings={settings}>{children}</SiteChrome>
       </body>
     </html>
   );

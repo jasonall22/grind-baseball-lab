@@ -36,9 +36,8 @@ function isPublicPath(pathname: string) {
 
 async function getUserRole(
   supabase: ServerSupabaseClient,
-  userId: string,
-  email: string | null | undefined
-): Promise<"member" | "grind_member" | "admin" | "staff"> {
+  userId: string
+): Promise<"member" | "grind_member" | "admin"> {
   const { data } = await supabase
     .from("profiles")
     .select("role")
@@ -46,20 +45,7 @@ async function getUserRole(
     .maybeSingle();
 
   const role = (data?.role ?? "member") as string;
-  const normalizedEmail = (email ?? "").trim().toLowerCase();
-  const { data: staffMember } = await supabase
-    .from("booking_staff_members")
-    .select("id,role")
-    .eq("is_active", true)
-    .ilike("email", normalizedEmail)
-    .maybeSingle();
-
-  const staffRole = (staffMember?.role ?? "") as string;
-  if (staffRole === "Owner" || staffRole === "Admin") return "admin";
-  if (staffMember?.id) return "staff";
-
-  if (role === "admin") return "member";
-  if (role === "owner" || role === "staff" || role === "instructor") return "staff";
+  if (role === "admin") return "admin";
   if (role === "grind_member") return "grind_member";
   return "member";
 }
@@ -108,16 +94,16 @@ export async function middleware(req: NextRequest) {
 
   if (!user) {
     const url = req.nextUrl.clone();
-    url.pathname = "/";
-    url.search = "";
+    url.pathname = "/login";
+    url.search = `?next=${encodeURIComponent(pathname)}`;
     url.hash = "";
     return NextResponse.redirect(url);
   }
 
-  const role = await getUserRole(supabase, user.id, user.email);
+  const role = await getUserRole(supabase, user.id);
 
   if (pathname.startsWith("/admin")) {
-    if (role !== "admin" && role !== "staff") {
+    if (role !== "admin") {
       const url = req.nextUrl.clone();
       url.pathname = role === "grind_member" ? "/dashboard" : "/";
       url.search = "";
@@ -128,7 +114,7 @@ export async function middleware(req: NextRequest) {
   }
 
   if (pathname.startsWith("/dashboard")) {
-    if (role !== "admin" && role !== "staff" && role !== "grind_member") {
+    if (role !== "admin" && role !== "grind_member") {
       const url = req.nextUrl.clone();
       url.pathname = "/";
       url.search = "";

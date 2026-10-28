@@ -258,9 +258,9 @@ export default function AdminPricingPage() {
       <div className="mx-auto max-w-5xl px-4 py-12">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-3xl font-semibold">Pricing</h1>
+            <h1 className="text-3xl font-semibold">Book Cage Time</h1>
             <p className="mt-1 text-sm text-black/60">
-              This controls the public Pricing section.
+              Manage public cage pricing and links to Swift booking.
             </p>
           </div>
 

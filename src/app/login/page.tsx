@@ -173,7 +173,7 @@ function LoginInner() {
             </div>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight">Sign in</h1>
             <p className="mt-2 text-sm text-black/60">
-              Access your account and manage bookings.
+              Sign in to your Grind Baseball Lab account.
             </p>
           </div>
 

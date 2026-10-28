@@ -1,5 +1,5 @@
-import BookingAdminApp from "@/components/admin/BookingAdminApp";
+import { redirect } from "next/navigation";
 
 export default function AdminHomePage() {
-  return <BookingAdminApp view="home" />;
+  redirect("/admin");
 }
