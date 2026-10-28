@@ -330,7 +330,7 @@ export async function GET() {
       settings: {
         facilityName: String(settings.facility_name || fallbackSettings.facilityName),
         address: String(settings.address || fallbackSettings.address),
-        phone: String(settings.phone || fallbackSettings.phone),
+        phone: fallbackSettings.phone,
         taxRates: normalizeMoneySettings(settings.tax_rates, fallbackSettings.taxRates) as PublicBookingData["settings"]["taxRates"],
         customFees: normalizeMoneySettings(settings.custom_fees, fallbackSettings.customFees) as PublicBookingData["settings"]["customFees"],
         waiverEnabled: Boolean(settings.waiver_enabled ?? fallbackSettings.waiverEnabled),

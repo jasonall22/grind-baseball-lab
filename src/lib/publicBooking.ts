@@ -137,7 +137,7 @@ export const fallbackPublicBookingData: PublicBookingData = {
   settings: {
     facilityName: "The Grind Baseball Lab",
     address: "613 Cypress Ave, Venice, FL 34285 US",
-    phone: "+19415250880",
+    phone: "(941) 307-7362",
     taxRates: [{ id: "tax-state", name: "State Tax", percentage: "7" }],
     customFees: [{ id: "fee-service", name: "Service Fee", amount: "3.5" }],
     waiverEnabled: true,

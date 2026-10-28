@@ -20,7 +20,7 @@ const localBusinessJsonLd = {
   image: "https://www.grindbaseballlab.com/logo.png",
   description:
     "Indoor baseball training facility in Venice, Florida offering batting cages, hitting training, HitTrax, lessons, camps, and baseball coaching.",
-  telephone: "+19419467386",
+  telephone: "+19413077362",
   email: "info@grindbaseballlab.com",
   priceRange: "$$",
   address: {

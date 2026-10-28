@@ -5,8 +5,8 @@ export default function SiteFooter() {
   const mapsHref = `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
 
   const email = "info@grindbaseballlab.com";
-  const phoneDisplay = "941-946-7386";
-  const phoneHref = "tel:+19419467386";
+  const phoneDisplay = "(941) 307-7362";
+  const phoneHref = "tel:+19413077362";
   const facebookHref =
     "https://www.facebook.com/profile.php?id=61568109854345";
 
