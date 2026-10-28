@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import FacebookNewsStatus from "@/components/admin/FacebookNewsStatus";
 
 type NewsSlideRow = {
   id: string;
@@ -398,7 +399,7 @@ export default function AdminNewsPage() {
           <div>
             <h1 className="text-2xl sm:text-3xl font-semibold text-black">{pageTitle}</h1>
             <p className="mt-1 text-sm text-black/60">
-              Manage your News &amp; Updates slides. Click a card to edit. (Bucket: <b>{NEWS_BUCKET}</b>)
+              Manage website announcements below. Facebook posts appear automatically once connected.
             </p>
           </div>
 
@@ -430,6 +431,8 @@ export default function AdminNewsPage() {
             {error}
           </div>
         ) : null}
+
+        <FacebookNewsStatus />
 
         {/* GRID VIEW (like hero) */}
         {!selectedId ? (

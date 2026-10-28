@@ -2,17 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import type { NewsSlide } from "@/lib/newsTypes";
 
-type NewsSlide = {
-  id?: string;
-  headline: string;
-  title: string;
-  body: string;
-  right_label: string;
-  right_image_url: string | null; // used as LEFT image in this layout
-  cta_text: string;
-  cta_href: string;
-};
+async function loadFacebookSlides(): Promise<NewsSlide[]> {
+  try {
+    const response = await fetch("/api/news/facebook", { signal: AbortSignal.timeout(8000) });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return Array.isArray(data.slides) ? data.slides : [];
+  } catch { return []; }
+}
 
 export default function NewsUpdatesSection() {
   const [slides, setSlides] = useState<NewsSlide[]>([]);
@@ -24,10 +23,11 @@ export default function NewsUpdatesSection() {
 
   // Slider behavior
   const AUTO_ROTATE = true;
-  const INTERVAL_MS = 3000;
+  const INTERVAL_MS = 8000;
 
   const timerRef = useRef<number | null>(null);
   const [isHovering, setIsHovering] = useState(false);
+  const [paused, setPaused] = useState(false);
 
   // Touch swipe
   const touchStartX = useRef<number | null>(null);
@@ -41,14 +41,14 @@ export default function NewsUpdatesSection() {
       setLoading(true);
       setReady(false);
 
-      const { data, error } = await supabase
+      const [{ data, error }, facebookSlides] = await Promise.all([supabase
         .from("news_slides")
         .select(
           "id, headline, title, body, right_label, right_image_url, cta_text, cta_href, is_active, sort_order"
         )
         .eq("is_active", true)
         .order("sort_order", { ascending: true })
-        .limit(50);
+        .limit(50), loadFacebookSlides()]);
 
       if (!alive) return;
 
@@ -66,12 +66,13 @@ export default function NewsUpdatesSection() {
             }))
           : [];
 
-      setSlides(mapped);
+      const allSlides = [...facebookSlides, ...mapped];
+      setSlides(allSlides);
       setIdx(0);
       setLoading(false);
 
       // No slides -> keep the section blank (no placeholder content)
-      if (mapped.length === 0) {
+      if (allSlides.length === 0) {
         setReady(false);
         return;
       }
@@ -79,7 +80,7 @@ export default function NewsUpdatesSection() {
       setReady(true);
 
       // Preload images in the background so slide changes feel smoother.
-      const urls = mapped
+      const urls = allSlides
         .map((x) => (x?.right_image_url ? String(x.right_image_url) : ""))
         .filter(Boolean);
 
@@ -127,6 +128,7 @@ export default function NewsUpdatesSection() {
     if (loading) return;
     if (!ready) return;
     if (isHovering) return;
+    if (paused) return;
     if (slides.length <= 1) return;
 
     timerRef.current = window.setInterval(() => {
@@ -140,7 +142,7 @@ export default function NewsUpdatesSection() {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [AUTO_ROTATE, INTERVAL_MS, loading, ready, isHovering, slides.length]);
+  }, [AUTO_ROTATE, INTERVAL_MS, loading, ready, isHovering, paused, slides.length]);
 
   // Keyboard arrows (only when ready)
   useEffect(() => {
@@ -200,16 +202,18 @@ export default function NewsUpdatesSection() {
   const showContent = ready && hasSlides && !loading;
 
   return (
-    <section className="bg-white text-black">
+    <section id="news" aria-label="News and updates" className="bg-white text-black">
       <div className="mx-auto max-w-6xl px-4 py-14">
         <div className="text-center">
           <h2 className="text-center text-4xl sm:text-5xl md:text-6xl font-light tracking-wide text-black">
             NEWS AND UPDATES
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-sm sm:text-base text-black/60">
-            Add as many slides as you want in Admin — this will rotate through them.
+            Training tips, upcoming events, and the latest from The Grind.
           </p>
         </div>
+
+        {showContent && slides.length > 1 && <div className="mt-5 text-center"><button type="button" onClick={() => setPaused((value) => !value)} aria-pressed={paused} className="rounded-full border border-black/15 px-4 py-2 text-xs font-semibold text-black/60 hover:bg-black/5">{paused ? "Play updates" : "Pause updates"}</button></div>}
 
         <div className="relative mt-10">
           <div
@@ -284,13 +288,17 @@ export default function NewsUpdatesSection() {
                       {active?.title ?? ""}
                     </h3>
 
-                    <div className="mt-4 text-sm sm:text-base leading-relaxed text-black/70 whitespace-pre-line">
+                    {active?.published_at && <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-black/45"><time dateTime={active.published_at}>{new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "America/New_York" }).format(new Date(active.published_at))}</time></p>}
+
+                    <div className={`mt-4 text-sm sm:text-base leading-relaxed text-black/70 whitespace-pre-line ${active?.source === "facebook" ? "line-clamp-6" : ""}`}>
                       {active?.body ?? ""}
                     </div>
 
                     <div className="mt-8">
                       <a
                         href={active?.cta_href || "#"}
+                        target={active?.source === "facebook" ? "_blank" : undefined}
+                        rel={active?.source === "facebook" ? "noopener noreferrer" : undefined}
                         className="inline-flex items-center justify-center rounded-full bg-black px-7 py-3 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-[1px] hover:shadow-md"
                       >
                         {active?.cta_text || "Learn more"}
