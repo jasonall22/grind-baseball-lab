@@ -27,7 +27,6 @@ export default function NewsUpdatesSection() {
 
   const timerRef = useRef<number | null>(null);
   const [isHovering, setIsHovering] = useState(false);
-  const [paused, setPaused] = useState(false);
 
   // Touch swipe
   const touchStartX = useRef<number | null>(null);
@@ -128,7 +127,6 @@ export default function NewsUpdatesSection() {
     if (loading) return;
     if (!ready) return;
     if (isHovering) return;
-    if (paused) return;
     if (slides.length <= 1) return;
 
     timerRef.current = window.setInterval(() => {
@@ -142,7 +140,7 @@ export default function NewsUpdatesSection() {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [AUTO_ROTATE, INTERVAL_MS, loading, ready, isHovering, paused, slides.length]);
+  }, [AUTO_ROTATE, INTERVAL_MS, loading, ready, isHovering, slides.length]);
 
   // Keyboard arrows (only when ready)
   useEffect(() => {
@@ -212,8 +210,6 @@ export default function NewsUpdatesSection() {
             Training tips, upcoming events, and the latest from The Grind.
           </p>
         </div>
-
-        {showContent && slides.length > 1 && <div className="mt-5 text-center"><button type="button" onClick={() => setPaused((value) => !value)} aria-pressed={paused} className="rounded-full border border-black/15 px-4 py-2 text-xs font-semibold text-black/60 hover:bg-black/5">{paused ? "Play updates" : "Pause updates"}</button></div>}
 
         <div className="relative mt-10">
           <div
