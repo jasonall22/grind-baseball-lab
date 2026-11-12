@@ -57,6 +57,7 @@ export default function SiteNav() {
       { label: "BOOK NOW", href: "#pricing" },
       { label: "OUR PLACE", href: "#our-place" },
       { label: "TRAINERS", href: "#trainers" },
+      { label: "LIABILITY WAIVER", href: "/liability" },
       { label: "CONTACT US", href: "/contact" },
     ],
     []
