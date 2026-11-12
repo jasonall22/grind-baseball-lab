@@ -10,7 +10,8 @@ function isPublicPath(pathname: string) {
     pathname === "/book" ||
     pathname === "/login" ||
     pathname === "/signup" ||
-    pathname === "/contact"
+    pathname === "/contact" ||
+    pathname === "/liability"
   ) {
     return true;
   }
